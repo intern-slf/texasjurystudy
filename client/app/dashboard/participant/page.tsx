@@ -1,14 +1,51 @@
-export default function ParticipantDashboard() {
+import { redirect } from "next/navigation";
+import ParticipantForm from "@/components/ParticipantForm";
+import { createClient } from "@/lib/supabase/server";
+
+export default async function ParticipantDashboard() {
+  // ✅ IMPORTANT: await the client
+  const supabase = await createClient();
+
+  // 1️⃣ Auth check
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/auth/login");
+  }
+
+  // 2️⃣ Check if participant already submitted form
+  const { data: submission } = await supabase
+    .from("jury_participants")
+    .select("id")
+    .eq("user_id", user.id)
+    .single();
+
+  // 3️⃣ If submitted → confirmation UI
+  if (submission) {
+    return (
+      <main className="max-w-3xl mx-auto px-6 py-20">
+        <h1 className="text-2xl font-semibold">
+          Participant Dashboard
+        </h1>
+
+        <p className="mt-4 text-muted-foreground">
+          Your profile has been submitted. You will be notified if you
+          are selected for a focus group session.
+        </p>
+      </main>
+    );
+  }
+
+  // 4️⃣ Otherwise → show the form
   return (
     <main className="max-w-3xl mx-auto px-6 py-20">
-      <h1 className="text-2xl font-semibold">
-        Participant Dashboard
+      <h1 className="text-2xl font-semibold mb-6">
+        Juror Information Form
       </h1>
 
-      <p className="mt-4 text-muted-foreground">
-        Your profile has been submitted. You will be notified if you
-        are selected for a focus group session.
-      </p>
+      <ParticipantForm userId={user.id} />
     </main>
   );
 }
