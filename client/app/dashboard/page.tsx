@@ -1,30 +1,33 @@
-import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+"use client";
 
-export default async function DashboardRouter() {
-  const supabase = await createClient();
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+export default function DashboardRouter() {
+  const router = useRouter();
 
-  if (!user) redirect("/auth/login");
+  useEffect(() => {
+    const supabase = createClient();
 
-  const { data: roleRow } = await supabase
-    .from("roles")
-    .select("role")
-    .eq("uuid", user.id)
-    .single();
+    supabase.auth.getUser().then(async ({ data }) => {
+      if (!data.user) return;
 
-  if (!roleRow) redirect("/");
+      const { data: role } = await supabase
+        .from("roles")
+        .select("role")
+        .eq("user_id", data.user.id)
+        .single();
 
-  if (roleRow.role === "participant") {
-    redirect("/participant");
-  }
+      if (role?.role === "participant") {
+        router.replace("/dashboard/participant");
+      } else if (role?.role === "presenter") {
+        router.replace("/dashboard/presenter/onboarding");
+      } else {
+        router.replace("/");
+      }
+    });
+  }, [router]);
 
-  if (roleRow.role === "presenter") {
-    redirect("/presenter/onboarding");
-  }
-
-  redirect("/");
+  return null;
 }
