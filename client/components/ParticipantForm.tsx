@@ -32,7 +32,7 @@ export default function ParticipantForm({ userId }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Radix Select states
+  // Select states
   const [gender, setGender] = useState("");
   const [race, setRace] = useState("");
 
@@ -131,7 +131,6 @@ export default function ParticipantForm({ userId }: Props) {
           <Label>First Name</Label>
           <Input name="first_name" required />
         </div>
-
         <div>
           <Label>Last Name</Label>
           <Input name="last_name" required />
@@ -159,20 +158,59 @@ export default function ParticipantForm({ userId }: Props) {
       {/* AVAILABILITY */}
       <div className="space-y-2">
         <Label>Availability</Label>
-
         <div className="flex items-center gap-2">
           <Checkbox id="feb_4" name="feb_4" />
-          <Label htmlFor="feb_4">Feb 4, 2026 (9am–12pm)</Label>
+          <Label htmlFor="feb_4">Feb 4, 2026</Label>
         </div>
-
         <div className="flex items-center gap-2">
           <Checkbox id="feb_25" name="feb_25" />
-          <Label htmlFor="feb_25">Feb 25, 2026 (9am–12pm)</Label>
+          <Label htmlFor="feb_25">Feb 25, 2026</Label>
         </div>
-
         <div className="flex items-center gap-2">
           <Checkbox id="mar_18" name="mar_18" />
-          <Label htmlFor="mar_18">Mar 18, 2026 (9am–12pm)</Label>
+          <Label htmlFor="mar_18">Mar 18, 2026</Label>
+        </div>
+      </div>
+
+      {/* CONTACT */}
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label>Email</Label>
+          <Input name="email" type="email" required />
+        </div>
+        <div>
+          <Label>Phone</Label>
+          <Input name="phone" required />
+        </div>
+      </div>
+
+      {/* ADDRESS */}
+      <div className="space-y-4">
+        <h3 className="font-semibold text-lg">Address</h3>
+
+        <div>
+          <Label>Street Address</Label>
+          <Input name="street_address" required />
+        </div>
+
+        <div>
+          <Label>Address Line 2</Label>
+          <Input name="address_line_2" />
+        </div>
+
+        <div className="grid grid-cols-3 gap-4">
+          <div>
+            <Label>City</Label>
+            <Input name="city" required />
+          </div>
+          <div>
+            <Label>County</Label>
+            <Input name="county" required />
+          </div>
+          <div>
+            <Label>ZIP Code</Label>
+            <Input name="zip_code" required />
+          </div>
         </div>
       </div>
 
@@ -208,6 +246,32 @@ export default function ParticipantForm({ userId }: Props) {
           </Select>
         </div>
       ))}
+
+      {/* OTHER REQUIRED FIELDS */}
+      <div>
+        <Label>Marital Status</Label>
+        <Input name="marital_status" required />
+      </div>
+
+      <div>
+        <Label>Education Level</Label>
+        <Input name="education_level" required />
+      </div>
+
+      <div>
+        <Label>Political Affiliation</Label>
+        <Input name="political_affiliation" required />
+      </div>
+
+      <div>
+        <Label>Family Income</Label>
+        <Input name="family_income" required />
+      </div>
+
+      <div>
+        <Label>How did you hear about us?</Label>
+        <Input name="heard_about_us" required />
+      </div>
 
       <Button type="submit" disabled={loading} className="w-full">
         {loading ? "Submitting..." : "Submit Profile"}
