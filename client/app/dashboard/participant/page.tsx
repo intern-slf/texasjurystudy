@@ -15,14 +15,21 @@ export default async function ParticipantDashboard() {
     redirect("/auth/login");
   }
 
-  // 2️⃣ Check if participant already submitted form
+  // 2️⃣ ROLE GATE — presenters must never see this page
+  const role = user.user_metadata?.role;
+
+  if (role === "presenter") {
+    redirect("/dashboard/presenter");
+  }
+
+  // 3️⃣ Check if participant already submitted form
   const { data: submission } = await supabase
     .from("jury_participants")
     .select("id")
     .eq("user_id", user.id)
-    .single();
+    .maybeSingle();
 
-  // 3️⃣ If submitted → confirmation UI
+  // 4️⃣ If submitted → confirmation UI
   if (submission) {
     return (
       <main className="max-w-3xl mx-auto px-6 py-20">
@@ -38,7 +45,7 @@ export default async function ParticipantDashboard() {
     );
   }
 
-  // 4️⃣ Otherwise → show the form
+  // 5️⃣ Otherwise → show the participant form
   return (
     <main className="max-w-3xl mx-auto px-6 py-20">
       <h1 className="text-2xl font-semibold mb-6">
