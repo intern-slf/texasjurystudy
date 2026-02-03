@@ -49,7 +49,7 @@ export default function DashboardPage() {
         const role = user.user_metadata?.role;
 
         router.replace(
-          role === "presentor" ? "/dashboard/presentor" : "/dashboard/participant"
+          role === "presenter" ? "/dashboard/presenter" : "/dashboard/participant"
         );
         return;
       }
@@ -82,7 +82,7 @@ export default function DashboardPage() {
     const role = user.user_metadata?.role;
 
     router.replace(
-      role === "presentor" ? "/presentor" : "/participant"
+      role === "presenter" ? "/dashboard/presenter" : "/dashboard/participant"
     );
   }
 
