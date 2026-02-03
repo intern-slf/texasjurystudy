@@ -5,13 +5,16 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import SignaturePad from "@/components/SignaturePad";
 
+type Role = "presenter" | "participant";
+
 export default function DashboardPage() {
   const supabase = createClient();
   const router = useRouter();
 
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   const [signature, setSignature] = useState("");
-  const [role, setRole] = useState<"presenter" | "participant" | null>(null);
+  const [role, setRole] = useState<Role | null>(null);
 
   const [form, setForm] = useState({
     firstName: "",
@@ -28,19 +31,29 @@ export default function DashboardPage() {
     signature !== "" &&
     (role === "presenter" || form.dob !== "");
 
-  // Check if user already agreed
+  // 🔒 Check agreement + role on mount
   useEffect(() => {
+    let mounted = true;
+
     async function checkAgreement() {
       const {
         data: { user },
       } = await supabase.auth.getUser();
 
-      if (!user) {
+      if (!user || !mounted) {
         setLoading(false);
         return;
       }
 
       const userRole = user.user_metadata?.role;
+
+      // ✅ HARD ROLE GUARD
+      if (userRole !== "presenter" && userRole !== "participant") {
+        console.error("Invalid role:", userRole);
+        setLoading(false);
+        return;
+      }
+
       setRole(userRole);
 
       const table =
@@ -48,16 +61,22 @@ export default function DashboardPage() {
           ? "confidentiality_agreements_presenter"
           : "confidentiality_agreements";
 
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from(table)
         .select("agreed")
         .eq("user_id", user.id)
         .maybeSingle();
 
+      if (error) {
+        console.error("Agreement check failed:", error);
+        setLoading(false);
+        return;
+      }
+
       if (data?.agreed) {
         router.replace(
           userRole === "presenter"
-            ? "/dashboard/presenter"
+            ? "/dashboard/presenter/onboarding"
             : "/dashboard/participant"
         );
         return;
@@ -67,50 +86,77 @@ export default function DashboardPage() {
     }
 
     checkAgreement();
-  }, []);
+
+    return () => {
+      mounted = false;
+    };
+  }, [router, supabase]);
 
   async function submit() {
-    if (!isFormValid) return;
+    if (!isFormValid || submitting || !role) return;
+
+    setSubmitting(true);
 
     const {
       data: { user },
     } = await supabase.auth.getUser();
 
-    if (!user || !role) return;
-
-    if (role === "presenter") {
-      await supabase
-        .from("confidentiality_agreements_presenter")
-        .insert({
-          user_id: user.id,
-          agreed: true,
-          agreed_at: new Date().toISOString(),
-          first_name: form.firstName,
-          last_name: form.lastName,
-          signature_data: signature,
-        });
-    } else {
-      await supabase
-        .from("confidentiality_agreements")
-        .insert({
-          user_id: user.id,
-          agreed: true,
-          first_name: form.firstName,
-          middle_name: form.middleName || null,
-          last_name: form.lastName,
-          date_of_birth: form.dob,
-          signature_data: signature,
-        });
+    if (!user) {
+      setSubmitting(false);
+      return;
     }
+
+    const insertResult =
+  role === "presenter"
+    ? await supabase
+        .from("confidentiality_agreements_presenter")
+        .upsert(
+          {
+            user_id: user.id,
+            agreed: true,
+            agreed_at: new Date().toISOString(),
+            first_name: form.firstName.trim(),
+            last_name: form.lastName.trim(),
+            signature_data: signature,
+          },
+          { onConflict: "user_id" }
+        )
+    : await supabase
+        .from("confidentiality_agreements")
+        .upsert(
+          {
+            user_id: user.id,
+            agreed: true,
+            first_name: form.firstName.trim(),
+            middle_name: form.middleName.trim() || null,
+            last_name: form.lastName.trim(),
+            date_of_birth: form.dob,
+            signature_data: signature,
+          },
+          { onConflict: "user_id" }
+        );
+
+
+    if (insertResult.error) {
+        console.error("Agreement insert failed");
+        console.error("message:", insertResult.error.message);
+        console.error("code:", insertResult.error.code);
+        console.error("details:", insertResult.error.details);
+        console.error("hint:", insertResult.error.hint);
+        setSubmitting(false);
+        return;
+    }
+
 
     router.replace(
       role === "presenter"
-        ? "/dashboard/presenter"
+        ? "/dashboard/presenter/onboarding"
         : "/dashboard/participant"
     );
   }
 
-  if (loading) return null;
+  // ⏳ Hard stop until role + agreement state is known
+  if (loading || !role) return null;
 
   return (
     <main className="max-w-3xl mx-auto px-6 py-16 space-y-6">
@@ -145,7 +191,9 @@ export default function DashboardPage() {
         <input
           type="checkbox"
           checked={form.agreed}
-          onChange={(e) => setForm({ ...form, agreed: e.target.checked })}
+          onChange={(e) =>
+            setForm({ ...form, agreed: e.target.checked })
+          }
         />
         Yes, I agree.
       </label>
@@ -181,7 +229,7 @@ export default function DashboardPage() {
         />
       </div>
 
-      {role !== "presenter" && (
+      {role === "participant" && (
         <div>
           <label className="block text-sm font-medium">
             Date of birth*
@@ -212,11 +260,11 @@ export default function DashboardPage() {
       </div>
 
       <button
-        disabled={!isFormValid}
+        disabled={!isFormValid || submitting}
         onClick={submit}
         className="px-6 py-3 bg-primary text-primary-foreground rounded disabled:opacity-50"
       >
-        Submit & Continue
+        {submitting ? "Submitting..." : "Submit & Continue"}
       </button>
     </main>
   );
