@@ -1,14 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import DashboardRouter from "./router";
 import SignaturePad from "@/components/SignaturePad";
 
 export default function DashboardPage() {
   const supabase = createClient();
+  const router = useRouter();
 
-  const [submitted, setSubmitted] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [signature, setSignature] = useState("");
 
   const [form, setForm] = useState({
@@ -26,6 +27,39 @@ export default function DashboardPage() {
     form.dob !== "" &&
     signature !== "";
 
+  //  Check if user already agreed
+  useEffect(() => {
+    async function checkAgreement() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        setLoading(false);
+        return;
+      }
+
+      const { data } = await supabase
+        .from("confidentiality_agreements")
+        .select("agreed")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (data?.agreed) {
+        const role = user.user_metadata?.role;
+
+        router.replace(
+          role === "presentor" ? "/dashboard/presentor" : "/dashboard/participant"
+        );
+        return;
+      }
+
+      setLoading(false);
+    }
+
+    checkAgreement();
+  }, []);
+
   async function submit() {
     if (!isFormValid) return;
 
@@ -37,7 +71,7 @@ export default function DashboardPage() {
 
     await supabase.from("confidentiality_agreements").insert({
       user_id: user.id,
-      agreed: form.agreed,
+      agreed: true,
       first_name: form.firstName,
       middle_name: form.middleName || null,
       last_name: form.lastName,
@@ -45,12 +79,15 @@ export default function DashboardPage() {
       signature_data: signature,
     });
 
-    setSubmitted(true);
+    const role = user.user_metadata?.role;
+
+    router.replace(
+      role === "presentor" ? "/presentor" : "/participant"
+    );
   }
 
-  if (submitted) {
-    return <DashboardRouter />;
-  }
+  // Prevent flicker while checking DB
+  if (loading) return null;
 
   return (
     <main className="max-w-3xl mx-auto px-6 py-16 space-y-6">
