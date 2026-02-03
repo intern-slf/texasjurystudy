@@ -13,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Checkbox } from "@/components/ui/checkbox";
+  import { Checkbox } from "@/components/ui/checkbox";
 
 type Props = {
   userId: string;
@@ -38,7 +38,6 @@ export default function ParticipantForm({ userId }: Props) {
   const [maritalStatus, setMaritalStatus] = useState("");
   const [politicalAffiliation, setPoliticalAffiliation] = useState("");
 
-  // Organized Yes/No fields for the map (including the new ones)
   const yesNoFields = [
     { label: "Served on a jury?", value: servedOnJury, setter: setServedOnJury },
     { label: "Convicted felon?", value: convictedFelon, setter: setConvictedFelon },
@@ -54,7 +53,6 @@ export default function ParticipantForm({ userId }: Props) {
     setLoading(true);
     setError(null);
 
-    // Basic Validation
     if (!gender || !race || !internetAccess || !maritalStatus || !politicalAffiliation) {
       setError("Please complete all dropdown selections.");
       setLoading(false);
@@ -63,6 +61,7 @@ export default function ParticipantForm({ userId }: Props) {
 
     const form = new FormData(e.currentTarget);
 
+    // Mapped strictly to your Supabase schema columns
     const payload = {
       user_id: userId,
       first_name: form.get("first_name"),
@@ -71,35 +70,50 @@ export default function ParticipantForm({ userId }: Props) {
       gender,
       race,
       county: form.get("county"),
+      
+      // Availability
       availability_weekdays: !!form.get("availability_weekdays"),
       availability_weekends: !!form.get("availability_weekends"),
       availability_anytime: !!form.get("availability_anytime"),
+      
+      // Contact
       email: form.get("email"),
-      phone_number: form.get("phone"),
-      address_line_1: form.get("street_address"),
+      phone: form.get("phone"), // Database column: phone
+
+      // Address
+      street_address: form.get("street_address"), // Database column: street_address
       address_line_2: form.get("address_line_2"),
       city: form.get("city"),
       state: "Texas",
       zip_code: form.get("zip_code"),
       country: "USA",
+      
+      // Booleans
       served_on_jury: servedOnJury === "yes",
       convicted_felon: convictedFelon === "yes",
       us_citizen: usCitizen === "yes",
-      marital_status: maritalStatus === "yes",
       has_children: hasChildren === "yes",
-      education_level: form.get("education_level"),
-      armed_forces_service: servedArmedForces === "yes",
-      employed: currentlyEmployed === "yes",
-      industry: form.get("industry"),
-      family_annual_income: form.get("family_income"),
+      served_armed_forces: servedArmedForces === "yes",
+      currently_employed: currentlyEmployed === "yes",
       internet_access: internetAccess === "yes",
-      political_affiliation: politicalAffiliation === "yes",
-      referral_source: form.get("heard_about_us"),
+      
+      // Select Strings & Inputs
+      marital_status: maritalStatus, 
+      political_affiliation: politicalAffiliation,
+      education_level: form.get("education_level"),
+      industry: form.get("industry"),
+      family_income: form.get("family_income"), 
+      heard_about_us: form.get("heard_about_us"),
+
+      // Timestamps
       entry_date: new Date().toISOString(),
       date_updated: new Date().toISOString(),
     };
 
-    const { error: dbError } = await supabase.from("jury_participants").insert(payload);
+    // Use .upsert() to handle "duplicate key value violates unique constraint"
+    const { error: dbError } = await supabase
+      .from("jury_participants")
+      .upsert(payload, { onConflict: 'user_id' });
 
     if (dbError) {
       setError(dbError.message);
@@ -107,6 +121,7 @@ export default function ParticipantForm({ userId }: Props) {
       return;
     }
 
+    // Success - page will reload to clear state or you could redirect
     window.location.reload();
   }
 
@@ -141,7 +156,7 @@ export default function ParticipantForm({ userId }: Props) {
         </div>
       </div>
 
-      {/* RACE & CONTACT */}
+      {/* CONTACT */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-t pt-4">
         <div className="space-y-2">
           <Label>Race</Label>
@@ -208,7 +223,7 @@ export default function ParticipantForm({ userId }: Props) {
         </div>
       </div>
 
-      {/* YES/NO SECTION */}
+      {/* ELIGIBILITY MAP */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 border-t pt-4">
         {yesNoFields.map(({ label, value, setter }) => (
           <div key={label} className="space-y-2">
@@ -231,8 +246,8 @@ export default function ParticipantForm({ userId }: Props) {
           <Select value={maritalStatus} onValueChange={setMaritalStatus} required>
             <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="yes">YES</SelectItem>
-              <SelectItem value="no">NO</SelectItem>
+              <SelectItem value="yes">Yes</SelectItem>
+              <SelectItem value="no">No</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -247,8 +262,8 @@ export default function ParticipantForm({ userId }: Props) {
           <Select value={politicalAffiliation} onValueChange={setPoliticalAffiliation} required>
             <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="yes">YES</SelectItem>
-              <SelectItem value="no">NO</SelectItem>
+              <SelectItem value="yes">Yes</SelectItem>
+              <SelectItem value="no">No</SelectItem>
             </SelectContent>
           </Select>
         </div>
