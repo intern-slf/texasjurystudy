@@ -14,25 +14,21 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useState, Suspense } from "react";
 
-export function SignUpForm({
-  className,
-  ...props
-}: React.ComponentPropsWithoutRef<"div">) {
+// 1. Move the logic into a internal component
+function SignUpFormFields({ className, ...props }: React.ComponentPropsWithoutRef<"div">) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [repeatPassword, setRepeatPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
+  
+  // Dynamic Hook
   const searchParams = useSearchParams();
 
-  // ✅ Read role from URL, default to participant
-  const role =
-    searchParams.get("role") === "presenter"
-      ? "presenter"
-      : "participant";
+  const role = searchParams.get("role") === "presenter" ? "presenter" : "participant";
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,10 +47,7 @@ export function SignUpForm({
         email,
         password,
         options: {
-          // ✅ Persist role in user metadata
-          data: {
-            role,
-          },
+          data: { role },
           emailRedirectTo: `${window.location.origin}/`,
         },
       });
@@ -125,5 +118,14 @@ export function SignUpForm({
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+// 2. Export the component wrapped in Suspense
+export function SignUpForm(props: React.ComponentPropsWithoutRef<"div">) {
+  return (
+    <Suspense fallback={<div className="h-[400px] w-full animate-pulse bg-muted rounded-xl" />}>
+      <SignUpFormFields {...props} />
+    </Suspense>
   );
 }
