@@ -64,23 +64,28 @@ export default function ParticipantForm({ userId }: Props) {
     { label: "Internet access?", value: internetAccess, setter: setInternetAccess },
   ];
 
+  // Helper to check if the industry field should be active
+  const showIndustryField = currentlyEmployed === "Yes" || currentlyEmployed === "Self-employed";
+
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setLoading(true);
     setError(null);
 
-    // Comprehensive validation for all Select fields
+    const form = new FormData(e.currentTarget);
+    const industryValue = form.get("industry");
+
+    // Comprehensive validation
     if (
       !gender || !race || !state || !maritalStatus || !politicalAffiliation || 
       !educationLevel || !currentlyEmployed || !familyIncome || !referralSource ||
-      !servedOnJury || !convictedFelon || !usCitizen || !hasChildren || !servedArmedForces || !internetAccess
+      !servedOnJury || !convictedFelon || !usCitizen || !hasChildren || !servedArmedForces || !internetAccess ||
+      (showIndustryField && !industryValue)
     ) {
-      setError("Please complete all dropdown selections.");
+      setError("Please complete all required fields.");
       setLoading(false);
       return;
     }
-
-    const form = new FormData(e.currentTarget);
 
     const payload = {
       user_id: userId,
@@ -90,22 +95,16 @@ export default function ParticipantForm({ userId }: Props) {
       gender,
       race,
       county: form.get("county"),
-      
-      // Availability (Checkbox -> Text)
       availability_weekdays: form.get("availability_weekdays") ? "Yes" : "No",
       availability_weekends: form.get("availability_weekends") ? "Yes" : "No",
-      
       email: form.get("email"),
       phone: form.get("phone"),
-
       street_address: form.get("street_address"),
       address_line_2: form.get("address_line_2"),
       city: form.get("city"),
       state,
       zip_code: form.get("zip_code"),
       country: "USA",
-      
-      // Eligibility & Yes/No (Text storage)
       served_on_jury: servedOnJury,
       convicted_felon: convictedFelon,
       us_citizen: usCitizen,
@@ -113,15 +112,13 @@ export default function ParticipantForm({ userId }: Props) {
       served_armed_forces: servedArmedForces,
       currently_employed: currentlyEmployed,
       internet_access: internetAccess,
-      
-      // Details (Select Strings)
       marital_status: maritalStatus, 
       political_affiliation: politicalAffiliation,
       education_level: educationLevel,
-      industry: form.get("industry"),
+      // Store industry as null if 'No' selected
+      industry: showIndustryField ? industryValue : null,
       family_income: familyIncome, 
       heard_about_us: referralSource,
-
       entry_date: new Date().toISOString(),
       date_updated: new Date().toISOString(),
     };
@@ -244,7 +241,7 @@ export default function ParticipantForm({ userId }: Props) {
         </div>
       </div>
 
-      {/* YES/NO SECTION */}
+      {/* ELIGIBILITY & EMPLOYMENT */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 border-t pt-4">
         {yesNoFields.map(({ label, value, setter }) => (
           <div key={label} className="space-y-2">
@@ -258,7 +255,7 @@ export default function ParticipantForm({ userId }: Props) {
             </Select>
           </div>
         ))}
-        {/* Employment Dropdown Added Here */}
+        
         <div className="space-y-2">
           <Label>Are you currently employed?</Label>
           <Select value={currentlyEmployed} onValueChange={setCurrentlyEmployed} required>
@@ -270,6 +267,18 @@ export default function ParticipantForm({ userId }: Props) {
             </SelectContent>
           </Select>
         </div>
+
+        {/* Industry Input - Shows for 'Yes' OR 'Self-employed' */}
+        {showIndustryField && (
+          <div className="space-y-2 animate-in slide-in-from-top-2 duration-200">
+            <Label>Industry / Field</Label>
+            <Input 
+              name="industry" 
+              placeholder="e.g. Healthcare, Tech" 
+              required={showIndustryField} 
+            />
+          </div>
+        )}
       </div>
 
       {/* ADDITIONAL DETAILS */}
@@ -313,11 +322,6 @@ export default function ParticipantForm({ userId }: Props) {
               <SelectItem value="Other">Other</SelectItem>
             </SelectContent>
           </Select>
-        </div>
-
-        <div className="space-y-2">
-          <Label>Industry / Field</Label>
-          <Input name="industry" placeholder="e.g. Healthcare, Tech" />
         </div>
 
         <div className="space-y-2">
