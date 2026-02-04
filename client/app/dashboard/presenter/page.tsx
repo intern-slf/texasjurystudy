@@ -2,6 +2,7 @@ import { revalidatePath } from "next/cache";
 import CaseActions from "@/components/CaseActions";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import PresenterSidebar from "@/components/PresenterSidebar";
 
 type PresenterDashboardProps = {
   searchParams?: Promise<{
@@ -34,7 +35,7 @@ export default async function PresenterDashboard({
     .lt("scheduled_at", new Date().toISOString());
 
   const resolvedSearchParams = await searchParams;
-  const tab =
+  const tab: "current" | "previous" =
     resolvedSearchParams?.tab === "previous"
       ? "previous"
       : "current";
@@ -138,36 +139,8 @@ export default async function PresenterDashboard({
 
   return (
     <main className="flex min-h-screen">
-      {/* Sidebar */}
-      <aside className="w-64 border-r px-4 py-6 space-y-4">
-        <h2 className="text-lg font-semibold">Presenter</h2>
+      <PresenterSidebar activeTab={tab} />
 
-        <nav className="space-y-2">
-          <a
-            href="/dashboard/presenter?tab=current"
-            className={`block ${
-              tab === "current" ? "font-medium underline" : ""
-            }`}
-          >
-            Current
-          </a>
-
-          <a href="/dashboard/presenter/new" className="block">
-            New
-          </a>
-
-          <a
-            href="/dashboard/presenter?tab=previous"
-            className={`block ${
-              tab === "previous" ? "font-medium underline" : ""
-            }`}
-          >
-            Previous
-          </a>
-        </nav>
-      </aside>
-
-      {/* Content */}
       <section className="flex-1 px-8 py-10">
         <h1 className="text-2xl font-semibold mb-6">
           {tab === "current"

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import PresenterSidebar from "@/components/PresenterSidebar";
 
 export default function NewCasePage() {
   const supabase = createClient();
@@ -41,74 +42,85 @@ export default function NewCasePage() {
   }
 
   return (
-    <main className="max-w-3xl mx-auto px-6 py-20">
-      <h1 className="text-2xl font-semibold mb-6">
-        Create New Case
-      </h1>
+    <main className="flex min-h-screen">
+      {/* Sidebar */}
+      <PresenterSidebar />
 
-      <input
-        className="input"
-        placeholder="Title"
-        onChange={(e) =>
-          setForm({ ...form, title: e.target.value })
-        }
-      />
+      {/* Content */}
+      <section className="flex-1 max-w-3xl px-8 py-20">
+        <h1 className="text-2xl font-semibold mb-6">
+          Create New Case
+        </h1>
 
-      <textarea
-        className="input mt-4"
-        placeholder="Description"
-        onChange={(e) =>
-          setForm({
-            ...form,
-            description: e.target.value,
-          })
-        }
-      />
+        <input
+          className="input"
+          placeholder="Title"
+          value={form.title}
+          onChange={(e) =>
+            setForm({ ...form, title: e.target.value })
+          }
+        />
 
-      <input
-        type="number"
-        className="input mt-4"
-        defaultValue={10}
-        onChange={(e) =>
-          setForm({
-            ...form,
-            number_of_attendees: Number(e.target.value),
-          })
-        }
-      />
+        <textarea
+          className="input mt-4"
+          placeholder="Description"
+          value={form.description}
+          onChange={(e) =>
+            setForm({
+              ...form,
+              description: e.target.value,
+            })
+          }
+        />
 
-      <select
-        className="input mt-4"
-        onChange={(e) =>
-          setForm({
-            ...form,
-            documentation_type: e.target.value,
-          })
-        }
-      >
-        <option value="">Select documentation</option>
-        <option value="nda">NDA</option>
-        <option value="consent">Consent</option>
-      </select>
+        <input
+          type="number"
+          className="input mt-4"
+          value={form.number_of_attendees}
+          min={1}
+          onChange={(e) =>
+            setForm({
+              ...form,
+              number_of_attendees: Number(e.target.value),
+            })
+          }
+        />
 
-      {/* Schedule Date & Time */}
-      <input
-        type="datetime-local"
-        className="input mt-4"
-        onChange={(e) =>
-          setForm({
-            ...form,
-            scheduled_at: e.target.value,
-          })
-        }
-      />
+        <select
+          className="input mt-4"
+          value={form.documentation_type}
+          onChange={(e) =>
+            setForm({
+              ...form,
+              documentation_type: e.target.value,
+            })
+          }
+        >
+          <option value="">Select documentation</option>
+          <option value="nda">NDA</option>
+          <option value="consent">Consent</option>
+        </select>
 
-      <button
-        onClick={submit}
-        className="mt-6 px-6 py-3 bg-primary text-primary-foreground rounded"
-      >
-        Create Case
-      </button>
+        {/* Schedule Date & Time */}
+        <input
+          type="datetime-local"
+          className="input mt-4"
+          value={form.scheduled_at}
+          onChange={(e) =>
+            setForm({
+              ...form,
+              scheduled_at: e.target.value,
+            })
+          }
+        />
+
+        <button
+          onClick={submit}
+          className="mt-6 px-6 py-3 bg-primary text-primary-foreground rounded"
+        >
+          Create Case
+        </button>
+      </section>
     </main>
   );
 }
