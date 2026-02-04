@@ -24,7 +24,7 @@ export default function NewCasePage() {
     if (!user) return;
 
     await supabase.from("cases").insert({
-      presenter_id: user.id,
+      user_id: user.id,
       title: form.title,
       description: form.description,
       number_of_attendees: form.number_of_attendees,

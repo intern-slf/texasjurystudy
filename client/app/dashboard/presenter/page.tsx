@@ -10,7 +10,6 @@ export default async function PresenterDashboard() {
 
   if (!user) redirect("/auth/login");
 
-  // 🔒 Role guard
   const role = user.user_metadata?.role;
   if (role !== "presenter") {
     redirect("/dashboard");
@@ -20,7 +19,7 @@ export default async function PresenterDashboard() {
   const { data: cases } = await supabase
     .from("cases")
     .select("*")
-    .eq("presenter_id", user.id)
+    .eq("user_id", user.id)
     .eq("status", "current")
     .order("created_at", { ascending: false });
 
