@@ -1,3 +1,4 @@
+import { revalidatePath } from "next/cache";
 import CaseActions from "@/components/CaseActions";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
@@ -198,6 +199,7 @@ export default async function PresenterDashboard({
               <CaseActions
                 tab={tab}
                 caseId={c.id}
+                isExpired={!!c.scheduled_at && new Date(c.scheduled_at).getTime() < Date.now()}
                 softDeleteCase={softDeleteCase}
                 restoreCase={restoreCase}
                 permanentDeleteCase={permanentDeleteCase}
