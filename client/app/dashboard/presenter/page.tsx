@@ -1,7 +1,15 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 
-export default async function PresenterDashboard() {
+type PresenterDashboardProps = {
+  searchParams?: Promise<{
+    tab?: string;
+  }>;
+};
+
+export default async function PresenterDashboard({
+  searchParams,
+}: PresenterDashboardProps) {
   const supabase = await createClient();
 
   const {
@@ -15,12 +23,17 @@ export default async function PresenterDashboard() {
     redirect("/dashboard");
   }
 
-  // Fetch current cases
+  const resolvedSearchParams = await searchParams;
+  const tab =
+    resolvedSearchParams?.tab === "previous"
+      ? "previous"
+      : "current";
+
   const { data: cases } = await supabase
     .from("cases")
     .select("*")
     .eq("user_id", user.id)
-    .eq("status", "current")
+    .eq("status", tab)
     .order("created_at", { ascending: false });
 
   return (
@@ -30,11 +43,25 @@ export default async function PresenterDashboard() {
         <h2 className="text-lg font-semibold">Presenter</h2>
 
         <nav className="space-y-2">
-          <a className="block font-medium">Current</a>
+          <a
+            href="/dashboard/presenter?tab=current"
+            className={`block font-medium ${
+              tab === "current" ? "underline" : ""
+            }`}
+          >
+            Current
+          </a>
+
           <a href="/dashboard/presenter/new" className="block">
             New
           </a>
-          <a href="/dashboard/presenter/previous" className="block">
+
+          <a
+            href="/dashboard/presenter?tab=previous"
+            className={`block ${
+              tab === "previous" ? "underline" : ""
+            }`}
+          >
             Previous
           </a>
         </nav>
@@ -43,21 +70,20 @@ export default async function PresenterDashboard() {
       {/* Content */}
       <section className="flex-1 px-8 py-10">
         <h1 className="text-2xl font-semibold mb-6">
-          Current Focus Groups
+          {tab === "current"
+            ? "Current Focus Groups"
+            : "Previous Focus Groups"}
         </h1>
 
         {!cases?.length && (
           <p className="text-muted-foreground">
-            No active focus groups.
+            No {tab} focus groups.
           </p>
         )}
 
         <ul className="space-y-4">
           {cases?.map((c) => (
-            <li
-              key={c.id}
-              className="border rounded-md p-4"
-            >
+            <li key={c.id} className="border rounded-md p-4">
               <h3 className="font-medium">{c.title}</h3>
               <p className="text-sm text-muted-foreground">
                 {c.description}
