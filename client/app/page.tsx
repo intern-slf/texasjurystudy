@@ -1,109 +1,127 @@
 "use client";
 
 import Link from "next/link";
-import { motion } from "framer-motion";
-import { ArrowRight, ShieldCheck, Zap } from "lucide-react";
+import { motion, Variants } from "framer-motion";
+// Removed 'Zap' to resolve ESLint '@typescript-eslint/no-unused-vars'
+import { ArrowRight, ShieldCheck } from "lucide-react"; 
 
-// Animation Variants
-const containerVariants = {
+// Section Imports
+import { WhyFocusGroup } from "@/components/sections/why-focus-group";
+import { HowItWorks } from "@/components/sections/how-it-works";
+import { CTAFinal } from "@/components/sections/cta-final"; 
+
+const containerVariants: Variants = {
   hidden: { opacity: 0 },
   visible: {
     opacity: 1,
-    transition: {
-      staggerChildren: 0.15,
-      delayChildren: 0.2,
-    },
+    transition: { staggerChildren: 0.15, delayChildren: 0.2 },
   },
 };
 
-const itemVariants = {
+const itemVariants: Variants = {
   hidden: { opacity: 0, y: 20 },
   visible: { 
     opacity: 1, 
     y: 0,
-    transition: { duration: 0.6, ease: [0.22, 1, 0.36, 1] } 
+    transition: { 
+      duration: 0.8, 
+      ease: [0.16, 1, 0.3, 1] as const 
+    } 
   },
 };
 
 export default function Home() {
   return (
-    <main className="min-h-screen relative flex flex-col items-center justify-center px-6 text-center overflow-hidden bg-background">
+    <main className="min-h-screen relative flex flex-col items-center text-center overflow-x-hidden bg-background">
+      
       {/* Visual Depth Background Orbs */}
       <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-accent/5 rounded-full blur-[120px] animate-pulse" />
-        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-primary/5 rounded-full blur-[120px]" />
+        <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-accent/5 rounded-full blur-[120px] animate-pulse" />
+        <div className="absolute bottom-1/4 right-1/4 w-[500px] h-[500px] bg-primary/5 rounded-full blur-[120px]" />
       </div>
 
+      {/* HERO SECTION */}
       <motion.div
         variants={containerVariants}
         initial="hidden"
         animate="visible"
-        className="relative z-10 flex flex-col items-center"
+        className="relative z-10 flex flex-col items-center min-h-[95vh] justify-center px-6 max-w-7xl mx-auto"
       >
-        {/* Badge Indicator */}
+        {/* Label: Professional Research Platform Style */}
         <motion.div 
           variants={itemVariants}
-          className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-secondary/50 border border-muted mb-8"
+          className="mb-8"
         >
-          <Zap className="h-3 w-3 text-accent" />
-          <span className="heading-elegant text-[10px] text-accent tracking-widest uppercase">
-            Texas Jury Research Platform
+          <span className="heading-elegant">
+            Professional Research Platform
           </span>
         </motion.div>
 
-        {/* Hero Title */}
+        {/* Heading: Serif 'Playfair Display' Style */}
         <motion.h1 
           variants={itemVariants}
-          className="text-5xl md:text-7xl font-light tracking-tight heading-display max-w-4xl leading-[1.1]"
+          className="text-6xl md:text-[85px] heading-display max-w-5xl mb-8 leading-[1.05]"
         >
-          Structured focus groups with the <span className="text-accent italic">right people.</span>
+          Elevate Your <span className="text-accent italic">Focus Group</span> Research
         </motion.h1>
 
-        {/* Hero Description */}
+        {/* Subtext: Sophisticated & Lightweight Typography */}
         <motion.p 
           variants={itemVariants}
-          className="mt-8 max-w-2xl text-lg md:text-xl text-muted-foreground font-light leading-relaxed"
+          className="max-w-3xl text-lg md:text-[20px] text-muted-foreground font-light leading-relaxed mb-12"
         >
-          Enable professional legal research through targeted demographic screening, 
-          real-time sentiment analysis, and structured pre-session questionnaires.
+          A sophisticated platform designed for legal professionals to conduct 
+          structured, demographic-driven focus group research with precision and elegance.
         </motion.p>
 
-        {/* High-Motion CTA Buttons */}
+        {/* Action Buttons: Custom 'Desert Gold' Classes */}
         <motion.div 
           variants={itemVariants}
-          className="mt-12 flex flex-col sm:flex-row gap-6"
+          className="flex flex-col sm:flex-row gap-6"
         >
-          <motion.div whileHover={{ y: -4 }} whileTap={{ scale: 0.98 }}>
-            <Link
-              href="/auth/signup?role=participant"
-              className="px-8 py-4 rounded-full bg-primary text-primary-foreground font-medium heading-elegant text-[11px] shadow-xl hover:shadow-accent/20 transition-all flex items-center gap-2"
-            >
-              Join as Participant
-              <ArrowRight className="h-4 w-4 text-accent" />
-            </Link>
-          </motion.div>
+          <Link
+            href="/auth/signup?role=presenter"
+            className="btn-gold"
+          >
+            Start as Presenter
+            <ArrowRight className="h-4 w-4" />
+          </Link>
 
-          <motion.div whileHover={{ y: -4 }} whileTap={{ scale: 0.98 }}>
-            <Link
-              href="/auth/signup?role=presenter"
-              className="px-8 py-4 rounded-full border border-muted bg-white/50 backdrop-blur-sm font-medium heading-elegant text-[11px] hover:bg-white hover:shadow-md transition-all flex items-center gap-2"
-            >
-              Run a Focus Group
-            </Link>
-          </motion.div>
+          <Link
+            href="/auth/signup?role=participant"
+            className="btn-outline-elegant"
+          >
+            Join as Participant
+          </Link>
         </motion.div>
 
-        {/* Trust Indicator */}
+        {/* Professional Trust Indicator */}
         <motion.div 
           variants={itemVariants}
-          className="mt-12 flex items-center gap-2 text-muted-foreground/60"
+          className="mt-16 flex items-center gap-3 text-muted-foreground/50"
         >
-          <ShieldCheck className="h-4 w-4" />
-          <p className="text-[10px] heading-elegant tracking-widest uppercase">
+          <ShieldCheck className="h-4 w-4 text-accent/60" />
+          <p className="text-[10px] uppercase tracking-[0.3em] font-medium">
             Encrypted • Secure • Professional
           </p>
         </motion.div>
       </motion.div>
+
+      {/* WHY FOCUS GROUP SECTION */}
+      <div className="w-full relative z-20">
+        <WhyFocusGroup />
+      </div>
+
+      {/* PROCESS SECTION */}
+      <div className="w-full relative z-20">
+        <HowItWorks />
+      </div>
+
+      {/* FINAL CTA SECTION */}
+      <div className="w-full relative z-20">
+         <CTAFinal />
+      </div>
+
     </main>
   );
 }

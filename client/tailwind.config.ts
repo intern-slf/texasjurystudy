@@ -1,4 +1,5 @@
 import type { Config } from "tailwindcss";
+import tailwindAnimate from "tailwindcss-animate";
 
 export default {
   darkMode: ["class"],
@@ -10,6 +11,12 @@ export default {
   ],
   theme: {
     extend: {
+      // 1. Precise Font Family Mapping - Prioritizing Inter for all stacks
+      fontFamily: {
+        display: ["Inter", "var(--font-sans)", "system-ui", "sans-serif"], 
+        sans: ["Inter", "var(--font-sans)", "system-ui", "sans-serif"],    
+      },
+      // 2. Exact Color Mapping (Linked to HSL variables in globals.css)
       colors: {
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
@@ -34,7 +41,7 @@ export default {
           foreground: "hsl(var(--muted-foreground))",
         },
         accent: {
-          DEFAULT: "hsl(var(--accent))",
+          DEFAULT: "hsl(var(--accent))", // Correctly maps to Desert Gold #CBAD62
           foreground: "hsl(var(--accent-foreground))",
         },
         destructive: {
@@ -52,6 +59,18 @@ export default {
           "5": "hsl(var(--chart-5))",
         },
       },
+      // 3. Spacing & Sizing (Synced with 72px Hero and 14px Label)
+      fontSize: {
+        'display-hero': ['72px', { 
+          lineHeight: '1.1', 
+          letterSpacing: '-0.02em',
+          fontWeight: '300', 
+        }],
+        'label': ['14px', { 
+          lineHeight: '20px', 
+          letterSpacing: '0.3em' 
+        }],
+      },
       borderRadius: {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
@@ -59,5 +78,5 @@ export default {
       },
     },
   },
-  plugins: [require("tailwindcss-animate")],
+  plugins: [tailwindAnimate],
 } satisfies Config;

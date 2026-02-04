@@ -4,9 +4,9 @@
 
 @layer base {
   :root {
-    /* Premium Warm Neutrals - Base for a professional look */
-    --background: 45 20% 98%; /* Warm White */
-    --foreground: 0 0% 11%;   /* Deep Charcoal */
+    /* Pure, High-Contrast Palette */
+    --background: 0 0% 100%;       /* Pure White background */
+    --foreground: 0 0% 11%;        /* Deep Onyx for text */
     
     --card: 0 0% 100%;
     --card-foreground: 0 0% 11%;
@@ -14,27 +14,28 @@
     --popover: 0 0% 100%;
     --popover-foreground: 0 0% 11%;
 
-    /* Primary - Professional Deep Gray */
-    --primary: 0 0% 11%;
-    --primary-foreground: 45 20% 98%;
+    /* Primary - Strong and Authoritative */
+    --primary: 0 0% 11%;           /* Dark Onyx secondary background */
+    --primary-foreground: 0 0% 100%;
 
-    /* Secondary - Soft Warm Gray */
-    --secondary: 40 15% 94%;
+    /* Secondary - Light subtle grays for section backgrounds */
+    --secondary: 0 0% 97%;
     --secondary-foreground: 0 0% 11%;
 
-    /* Muted - High-end stationery feel */
-    --muted: 40 10% 95%;
+    /* Muted - Professional gray for secondary text */
+    --muted: 0 0% 96%;
     --muted-foreground: 0 0% 45%;
 
-    /* Accent - The Signature Gold */
-    --accent: 43 50% 59%;
-    --accent-foreground: 45 20% 98%;
+    /* Accent - The Exact Desert Gold (#CBAD62) */
+    /* HSL 43 50% 59% matches the inspector data for the Get Started button */
+    --accent: 43 50% 59%; 
+    --accent-foreground: 0 0% 11%; /* Dark text on gold button for readability */
 
-    --destructive: 0 72% 51%;
+    --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 40 15% 89%;
-    --input: 40 15% 89%;
+    --border: 0 0% 90%;
+    --input: 0 0% 90%;
     --ring: 43 50% 59%;
 
     --radius: 0.5rem;
@@ -42,22 +43,14 @@
 
   .dark {
     --background: 0 0% 7%;
-    --foreground: 45 20% 95%;
+    --foreground: 0 0% 95%;
     --card: 0 0% 10%;
-    --card-foreground: 45 20% 95%;
-    --popover: 0 0% 10%;
-    --popover-foreground: 45 20% 95%;
-    --primary: 45 20% 95%;
-    --primary-foreground: 0 0% 11%;
-    --secondary: 0 0% 15%;
-    --secondary-foreground: 45 20% 95%;
-    --muted: 0 0% 15%;
-    --muted-foreground: 0 0% 60%;
+    --card-foreground: 0 0% 95%;
     --accent: 43 50% 59%;
     --accent-foreground: 0 0% 11%;
     --border: 0 0% 18%;
-    --input: 0 0% 18%;
-    --ring: 43 50% 59%;
+    --primary: 0 0% 95%;
+    --primary-foreground: 0 0% 11%;
   }
 }
 
@@ -67,46 +60,45 @@
   }
   body {
     @apply bg-background text-foreground antialiased;
-    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    /* Features optimized for high-end typography */
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11", "ss01";
   }
 }
 
 @layer components {
-  /* Elegant Form Elements */
-  .input-elegant {
-    @apply w-full rounded-md border border-input bg-background px-3 py-2 text-sm
-            outline-none transition-all focus:ring-2 focus:ring-ring focus:border-ring;
+  /* Premium button styling for 'Start as Presenter' */
+  .btn-gold {
+    @apply bg-accent text-accent-foreground px-10 py-4 rounded-md font-medium 
+           hover:bg-accent/90 transition-all duration-300 flex items-center justify-center gap-2;
   }
 
-  /* Lovable Layout Components */
-  .glass-card {
-    @apply bg-white/70 backdrop-blur-md border border-white/20 shadow-sm dark:bg-black/40;
+  /* Elegant Outline for 'Join as Participant' */
+  .btn-outline-elegant {
+    @apply border border-border bg-transparent px-10 py-4 rounded-md 
+           font-medium hover:bg-secondary transition-all duration-300;
   }
 }
 
 @layer utilities {
+  /* 14px size and 0.3em tracking from the reference image */
   .heading-elegant {
-    @apply font-normal tracking-wide uppercase text-sm;
-    /* Using direct variable to avoid apply-loops if needed */
-    color: hsl(var(--muted-foreground));
-    letter-spacing: 0.15em;
+    @apply font-sans font-medium uppercase;
+    color: hsl(var(--accent));
+    font-size: 14px;
+    letter-spacing: 0.3em;
   }
 
+  /* Large Serif headers for 'Elevate Your Research' */
   .heading-display {
-    @apply font-light tracking-tight;
+    @apply font-display font-light tracking-tight text-foreground;
+    line-height: 1.05;
   }
 }
 
-/* Custom Keyframes */
+/* Custom Keyframes for the 'Entrance Aura' */
 @keyframes slideUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes fadeIn {

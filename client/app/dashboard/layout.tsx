@@ -1,30 +1,32 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { motion, AnimatePresence } from "framer-motion"; // Required for premium motion
-import { Loader2 } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 
-export default function AppLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayoutClient({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const supabase = createClient();
 
-    // Since middleware handles redirects, this is a secondary safety check 
-    // and initialization step for the client state.
+    // Verification check
     supabase.auth.getUser().then(({ data }) => {
-      if (!data.user) {
+      // Public routes that don't need the secure initialization delay
+      const isPublicRoute = pathname === "/" || pathname.startsWith("/auth");
+
+      if (!data.user && !isPublicRoute) {
         router.replace("/auth/login");
       } else {
-        // Subtle delay to allow the "Entrance Aura" to be felt
+        // Maintain the high-end feel with a controlled entrance
         const timer = setTimeout(() => setLoading(false), 800);
         return () => clearTimeout(timer);
       }
     });
-  }, [router]);
+  }, [router, pathname]);
 
   return (
     <AnimatePresence mode="wait">
@@ -32,22 +34,22 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <motion.div
           key="loader"
           initial={{ opacity: 1 }}
-          exit={{ opacity: 0, scale: 1.05 }}
-          transition={{ duration: 0.5, ease: [0.4, 0, 0.2, 1] }}
-          className="min-h-screen flex flex-col items-center justify-center bg-background relative overflow-hidden"
+          exit={{ opacity: 0, scale: 1.05, filter: "blur(20px)" }}
+          transition={{ duration: 0.6, ease: [0.4, 0, 0.2, 1] }}
+          className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-background overflow-hidden"
         >
-          {/* Subtle background aura */}
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(180,149,85,0.05)_0%,transparent_70%)]" />
+          {/* Signature Gold background aura */}
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(180,149,85,0.08)_0%,transparent_70%)]" />
           
           <div className="z-10 flex flex-col items-center space-y-6">
             <div className="relative">
               <motion.div 
                 animate={{ rotate: 360 }}
-                transition={{ repeat: Infinity, duration: 2, ease: "linear" }}
-                className="h-12 w-12 rounded-full border-2 border-accent/20 border-t-accent"
+                transition={{ repeat: Infinity, duration: 1.5, ease: "linear" }}
+                className="h-12 w-12 rounded-full border-2 border-accent/10 border-t-accent shadow-[0_0_15px_rgba(180,149,85,0.1)]"
               />
               <div className="absolute inset-0 flex items-center justify-center">
-                <div className="h-2 w-2 rounded-full bg-accent animate-pulse" />
+                <div className="h-1.5 w-1.5 rounded-full bg-accent animate-pulse" />
               </div>
             </div>
 
@@ -57,17 +59,18 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               transition={{ delay: 0.2 }}
               className="text-center space-y-1"
             >
-              <p className="heading-elegant text-accent text-[10px] tracking-[0.3em]">FocusGroup</p>
-              <p className="text-sm font-light heading-display text-muted-foreground">Initializing Secure Session...</p>
+              <p className="heading-elegant text-accent text-[10px] tracking-[0.4em] uppercase font-bold">FocusGroup</p>
+              <p className="text-[11px] heading-display text-muted-foreground/60 tracking-widest uppercase">Initializing Secure Session</p>
             </motion.div>
           </div>
         </motion.div>
       ) : (
         <motion.div
           key="content"
-          initial={{ opacity: 0, filter: "blur(10px)" }}
-          animate={{ opacity: 1, filter: "blur(0px)" }}
-          transition={{ duration: 0.6, ease: "easeOut" }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.8, ease: "easeOut" }}
+          className="w-full"
         >
           {children}
         </motion.div>
