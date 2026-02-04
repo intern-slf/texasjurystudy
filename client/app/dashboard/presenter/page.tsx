@@ -1,3 +1,4 @@
+import CaseActions from "@/components/CaseActions";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 
@@ -44,6 +45,93 @@ export default async function PresenterDashboard({
     .eq("status", tab)
     .order("created_at", { ascending: false });
 
+  /* ===========================
+     SERVER ACTIONS
+     =========================== */
+
+  async function softDeleteCase(formData: FormData) {
+    "use server";
+
+    const caseId = formData.get("case_id") as string;
+    const supabase = await createClient();
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return;
+
+    await supabase
+      .from("cases")
+      .update({
+        status: "previous",
+        deleted_at: new Date().toISOString(),
+      })
+      .eq("id", caseId)
+      .eq("user_id", user.id);
+
+    await supabase.from("case_audit_logs").insert({
+      case_id: caseId,
+      user_id: user.id,
+      action: "soft_delete",
+    });
+  }
+
+  async function restoreCase(formData: FormData) {
+    "use server";
+
+    const caseId = formData.get("case_id") as string;
+    const supabase = await createClient();
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return;
+
+    await supabase
+      .from("cases")
+      .update({
+        status: "current",
+        deleted_at: null,
+      })
+      .eq("id", caseId)
+      .eq("user_id", user.id);
+
+    await supabase.from("case_audit_logs").insert({
+      case_id: caseId,
+      user_id: user.id,
+      action: "restore",
+    });
+  }
+
+  async function permanentDeleteCase(formData: FormData) {
+    "use server";
+
+    const caseId = formData.get("case_id") as string;
+    const supabase = await createClient();
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return;
+
+    await supabase
+      .from("cases")
+      .delete()
+      .eq("id", caseId)
+      .eq("user_id", user.id)
+      .eq("status", "previous");
+
+    await supabase.from("case_audit_logs").insert({
+      case_id: caseId,
+      user_id: user.id,
+      action: "permanent_delete",
+    });
+  }
+
+  /* ===========================
+     UI
+     =========================== */
+
   return (
     <main className="flex min-h-screen">
       {/* Sidebar */}
@@ -53,8 +141,8 @@ export default async function PresenterDashboard({
         <nav className="space-y-2">
           <a
             href="/dashboard/presenter?tab=current"
-            className={`block font-medium ${
-              tab === "current" ? "underline" : ""
+            className={`block ${
+              tab === "current" ? "font-medium underline" : ""
             }`}
           >
             Current
@@ -67,7 +155,7 @@ export default async function PresenterDashboard({
           <a
             href="/dashboard/presenter?tab=previous"
             className={`block ${
-              tab === "previous" ? "underline" : ""
+              tab === "previous" ? "font-medium underline" : ""
             }`}
           >
             Previous
@@ -91,7 +179,10 @@ export default async function PresenterDashboard({
 
         <ul className="space-y-4">
           {cases?.map((c) => (
-            <li key={c.id} className="border rounded-md p-4">
+            <li
+              key={c.id}
+              className="border rounded-md p-4"
+            >
               <h3 className="font-medium">{c.title}</h3>
               <p className="text-sm text-muted-foreground">
                 {c.description}
@@ -103,6 +194,14 @@ export default async function PresenterDashboard({
                   {new Date(c.scheduled_at).toLocaleString()}
                 </p>
               )}
+
+              <CaseActions
+                tab={tab}
+                caseId={c.id}
+                softDeleteCase={softDeleteCase}
+                restoreCase={restoreCase}
+                permanentDeleteCase={permanentDeleteCase}
+              />
             </li>
           ))}
         </ul>
