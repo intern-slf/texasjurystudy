@@ -1,162 +1,127 @@
+"use client";
+
 import { TutorialStep } from "./tutorial-step";
 import { CodeBlock } from "./code-block";
+import { Database, ShieldAlert, Code2, Rocket } from "lucide-react";
 
-const create = `create table notes (
-  id bigserial primary key,
-  title text
+// Updated SQL to reflect FocusGroup Domain (Research Data)
+const create = `
+-- Create a table for research observations
+create table observations (
+  id uuid default gen_random_uuid() primary key,
+  created_at timestamptz default now(),
+  participant_id uuid references auth.users(id),
+  content text not null,
+  sentiment_score float
 );
 
-insert into notes(title)
-values
-  ('Today I created a Supabase project.'),
-  ('I added some data and queried it from Next.js.'),
-  ('It was awesome!');
+-- Insert dummy data for testing
+insert into observations (content, sentiment_score)
+values 
+  ('Participant demonstrated high engagement during the opening argument.', 0.85),
+  ('Noticeable skepticism during the expert testimony phase.', -0.42),
+  ('Strong alignment with the defense strategy regarding liability.', 0.92);
 `.trim();
 
-const rls = `alter table notes enable row level security;
-create policy "Allow public read access" on notes
-for select
-using (true);`.trim();
+const rls = `
+-- Enable Row Level Security
+alter table observations enable row level security;
 
-const server = `import { createClient } from '@/lib/supabase/server'
+-- Create a policy to allow presenters to view all data
+create policy "Presenters can view all research data"
+on observations for select
+to authenticated
+using ( (select auth.jwt() ->> 'role') = 'presenter' );
+`.trim();
 
-export default async function Page() {
+const server = `
+import { createClient } from '@/lib/supabase/server'
+
+export default async function ResearchDataPage() {
   const supabase = await createClient()
-  const { data: notes } = await supabase.from('notes').select()
+  
+  // High-fidelity Server Fetch
+  const { data: observations } = await supabase
+    .from('observations')
+    .select('*')
+    .order('created_at', { ascending: false })
 
-  return <pre>{JSON.stringify(notes, null, 2)}</pre>
-}
-`.trim();
-
-const client = `'use client'
-
-import { createClient } from '@/lib/supabase/client'
-import { useEffect, useState } from 'react'
-
-export default function Page() {
-  const [notes, setNotes] = useState<any[] | null>(null)
-  const supabase = createClient()
-
-  useEffect(() => {
-    const getData = async () => {
-      const { data } = await supabase.from('notes').select()
-      setNotes(data)
-    }
-    getData()
-  }, [])
-
-  return <pre>{JSON.stringify(notes, null, 2)}</pre>
+  return (
+    <div className="p-8 space-y-4">
+      <h1 className="heading-display text-2xl">Live Feed</h1>
+      {observations?.map((obs) => (
+        <div key={obs.id} className="glass-card p-4 border border-muted/50 rounded-xl">
+          <p className="text-sm font-light leading-relaxed">{obs.content}</p>
+        </div>
+      ))}
+    </div>
+  )
 }
 `.trim();
 
 export function FetchDataSteps() {
   return (
-    <ol className="flex flex-col gap-6">
-      <TutorialStep title="Create some tables and insert some data">
-        <p>
-          Head over to the{" "}
-          <a
-            href="https://supabase.com/dashboard/project/_/editor"
-            className="font-bold hover:underline text-foreground/80"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Table Editor
-          </a>{" "}
-          for your Supabase project to create a table and insert some example
-          data. If you&apos;re stuck for creativity, you can copy and paste the
-          following into the{" "}
-          <a
-            href="https://supabase.com/dashboard/project/_/sql/new"
-            className="font-bold hover:underline text-foreground/80"
-            target="_blank"
-            rel="noreferrer"
-          >
-            SQL Editor
-          </a>{" "}
-          and click RUN!
-        </p>
-        <CodeBlock code={create} />
+    <ol className="flex flex-col gap-12">
+      <TutorialStep title="Provision Research Tables">
+        <div className="space-y-4">
+          <p className="text-muted-foreground font-light leading-relaxed">
+            Initialize your research schema within the{" "}
+            <a
+              href="https://supabase.com/dashboard/project/_/sql/new"
+              className="heading-elegant text-accent font-semibold hover:underline"
+              target="_blank"
+              rel="noreferrer"
+            >
+              SQL Editor
+            </a>. 
+            This script establishes a UUID-based observations table with sentiment metadata.
+          </p>
+          <CodeBlock code={create} label="Schema Definition" />
+        </div>
       </TutorialStep>
 
-      <TutorialStep title="Enable Row Level Security (RLS)">
-        <p>
-          Supabase enables Row Level Security (RLS) by default. To query data
-          from your <code>notes</code> table, you need to add a policy. You can
-          do this in the{" "}
-          <a
-            href="https://supabase.com/dashboard/project/_/editor"
-            className="font-bold hover:underline text-foreground/80"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Table Editor
-          </a>{" "}
-          or via the{" "}
-          <a
-            href="https://supabase.com/dashboard/project/_/sql/new"
-            className="font-bold hover:underline text-foreground/80"
-            target="_blank"
-            rel="noreferrer"
-          >
-            SQL Editor
-          </a>
-          .
-        </p>
-        <p>
-          For example, you can run the following SQL to allow public read
-          access:
-        </p>
-        <CodeBlock code={rls} />
-        <p>
-          You can learn more about RLS in the{" "}
-          <a
-            href="https://supabase.com/docs/guides/auth/row-level-security"
-            className="font-bold hover:underline text-foreground/80"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Supabase docs
-          </a>
-          .
-        </p>
+      <TutorialStep title="Apply Security Protocols (RLS)">
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 p-3 bg-accent/5 rounded-lg border border-accent/20">
+            <ShieldAlert className="h-4 w-4 text-accent" />
+            <p className="text-[10px] heading-elegant text-accent tracking-widest uppercase">
+              Mandatory Protection
+            </p>
+          </div>
+          <p className="text-muted-foreground font-light">
+            Secure the data pipeline by restricting visibility to authenticated Presenters. 
+            You can manage these policies in the{" "}
+            <a
+              href="https://supabase.com/dashboard/project/_/auth/policies"
+              className="text-accent hover:underline font-medium"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Auth Dashboard
+            </a>.
+          </p>
+          <CodeBlock code={rls} label="Security Policy" />
+        </div>
       </TutorialStep>
 
-      <TutorialStep title="Query Supabase data from Next.js">
-        <p>
-          To create a Supabase client and query data from an Async Server
-          Component, create a new page.tsx file at{" "}
-          <span className="relative rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-xs font-medium text-secondary-foreground border">
-            /app/notes/page.tsx
-          </span>{" "}
-          and add the following.
-        </p>
-        <CodeBlock code={server} />
-        <p>Alternatively, you can use a Client Component.</p>
-        <CodeBlock code={client} />
+      <TutorialStep title="Implement Server-Side Hydration">
+        <div className="space-y-4">
+          <p className="text-muted-foreground font-light">
+            Fetch high-integrity research data using Next.js **Server Components**. 
+            Create your view at <code className="text-accent text-[11px] font-mono">/app/research/page.tsx</code>.
+          </p>
+          <CodeBlock code={server} label="Server Implementation" />
+        </div>
       </TutorialStep>
 
-      <TutorialStep title="Explore the Supabase UI Library">
-        <p>
-          Head over to the{" "}
-          <a
-            href="https://supabase.com/ui"
-            className="font-bold hover:underline text-foreground/80"
-          >
-            Supabase UI library
-          </a>{" "}
-          and try installing some blocks. For example, you can install a
-          Realtime Chat block by running:
-        </p>
-        <CodeBlock
-          code={
-            "npx shadcn@latest add https://supabase.com/ui/r/realtime-chat-nextjs.json"
-          }
-        />
-      </TutorialStep>
-
-      <TutorialStep title="Build in a weekend and scale to millions!">
-        <p>You&apos;re ready to launch your product to the world! 🚀</p>
+      <TutorialStep title="Ready for Deployment">
+        <div className="p-6 border border-accent/30 bg-accent/5 rounded-2xl flex items-center justify-between">
+          <div className="space-y-1">
+            <h4 className="heading-display text-lg">System Synchronized</h4>
+            <p className="text-xs text-muted-foreground">Your research infrastructure is now active and secure.</p>
+          </div>
+          <Rocket className="h-8 w-8 text-accent opacity-50" />
+        </div>
       </TutorialStep>
     </ol>
   );

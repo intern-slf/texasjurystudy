@@ -1,7 +1,7 @@
 import "./globals.css";
-// Import your components (you'll need to create these files)
 import Navbar from "@/components/Navbar"; 
 import Footer from "@/components/Footer";
+import RootLayoutClient from "./layout-client"; // The motion wrapper we'll create
 
 export const metadata = {
   title: "FocusGroup",
@@ -17,11 +17,12 @@ export default function RootLayout({
     <html lang="en">
       <body
         suppressHydrationWarning
-        className="min-h-screen flex flex-col bg-background text-foreground"
+        className="min-h-screen flex flex-col bg-background text-foreground antialiased"
       >
         <Navbar />
         <main className="flex-grow">
-          {children}
+          {/* We wrap the inner content in our Client Motion component */}
+          <RootLayoutClient>{children}</RootLayoutClient>
         </main>
         <Footer />
       </body>

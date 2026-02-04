@@ -1,61 +1,76 @@
 "use client";
 
 import { useState } from "react";
-import { Button } from "../ui/button";
+import { Button } from "@/components/ui/button";
+import { motion, AnimatePresence } from "framer-motion";
+import { Copy, Check, Terminal } from "lucide-react";
+import { cn } from "@/lib/utils";
 
-const CopyIcon = () => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width="20"
-    height="20"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-  </svg>
-);
-
-const CheckIcon = () => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width="20"
-    height="20"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <polyline points="20 6 9 17 4 12"></polyline>
-  </svg>
-);
-
-export function CodeBlock({ code }: { code: string }) {
-  const [icon, setIcon] = useState(CopyIcon);
+export function CodeBlock({ code, label = "Terminal" }: { code: string; label?: string }) {
+  const [hasCopied, setHasCopied] = useState(false);
 
   const copy = async () => {
     await navigator?.clipboard?.writeText(code);
-    setIcon(CheckIcon);
-    setTimeout(() => setIcon(CopyIcon), 2000);
+    setHasCopied(true);
+    setTimeout(() => setHasCopied(false), 2000);
   };
 
   return (
-    <pre className="bg-muted rounded-md p-6 my-6 relative">
-      <Button
-        size="icon"
-        onClick={copy}
-        variant={"outline"}
-        className="absolute right-2 top-2"
-      >
-        {icon}
-      </Button>
-      <code className="text-xs p-3">{code}</code>
-    </pre>
+    <motion.div 
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="my-8 overflow-hidden rounded-xl border border-muted/40 bg-card shadow-2xl"
+    >
+      {/* Header / Tab Bar */}
+      <div className="flex items-center justify-between bg-muted/30 px-4 py-2 border-b border-muted/40">
+        <div className="flex items-center gap-2">
+          <Terminal className="h-3 w-3 text-accent" />
+          <span className="heading-elegant text-[10px] tracking-[0.2em] text-muted-foreground uppercase font-semibold">
+            {label}
+          </span>
+        </div>
+        
+        <Button
+          size="icon"
+          onClick={copy}
+          variant="ghost"
+          className="h-7 w-7 rounded-md hover:bg-accent/10 hover:text-accent transition-all"
+        >
+          <AnimatePresence mode="wait">
+            {hasCopied ? (
+              <motion.div
+                key="check"
+                initial={{ scale: 0.5, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.5, opacity: 0 }}
+              >
+                <Check className="h-3.5 w-3.5" />
+              </motion.div>
+            ) : (
+              <motion.div
+                key="copy"
+                initial={{ scale: 0.5, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.5, opacity: 0 }}
+              >
+                <Copy className="h-3.5 w-3.5" />
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </Button>
+      </div>
+
+      {/* Code Area */}
+      <div className="relative group">
+        <pre className="p-6 overflow-x-auto bg-primary/[0.02] backdrop-blur-sm scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent">
+          <code className="text-[13px] font-mono leading-relaxed text-foreground/90 block">
+            {code}
+          </code>
+        </pre>
+        
+        {/* Subtle Decorative Aura */}
+        <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_top_right,rgba(180,149,85,0.03)_0%,transparent_50%)]" />
+      </div>
+    </motion.div>
   );
 }

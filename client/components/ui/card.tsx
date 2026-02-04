@@ -1,16 +1,23 @@
-import * as React from "react";
+"use client";
 
+import * as React from "react";
+import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 
 const Card = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
 >(({ className, ...props }, ref) => (
-  <div
+  <motion.div
     ref={ref}
+    initial={{ opacity: 0, y: 15 }}
+    whileInView={{ opacity: 1, y: 0 }}
+    viewport={{ once: true }}
+    whileHover={{ y: -4, transition: { duration: 0.2 } }}
+    transition={{ duration: 0.4, ease: "easeOut" }}
     className={cn(
-      "rounded-xl border bg-card text-card-foreground shadow",
-      className,
+      "rounded-xl border bg-card text-card-foreground shadow-sm transition-shadow hover:shadow-md glass-card",
+      className
     )}
     {...props}
   />
@@ -35,7 +42,7 @@ const CardTitle = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <div
     ref={ref}
-    className={cn("font-semibold leading-none tracking-tight", className)}
+    className={cn("font-semibold leading-none tracking-tight heading-display text-lg", className)}
     {...props}
   />
 ));
