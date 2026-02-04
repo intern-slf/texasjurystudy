@@ -75,6 +75,7 @@ export default async function PresenterDashboard({
       user_id: user.id,
       action: "soft_delete",
     });
+    revalidatePath("/dashboard/presenter");
   }
 
   async function restoreCase(formData: FormData) {
@@ -102,6 +103,7 @@ export default async function PresenterDashboard({
       user_id: user.id,
       action: "restore",
     });
+    revalidatePath("/dashboard/presenter");
   }
 
   async function permanentDeleteCase(formData: FormData) {
@@ -127,6 +129,7 @@ export default async function PresenterDashboard({
       user_id: user.id,
       action: "permanent_delete",
     });
+    revalidatePath("/dashboard/presenter");
   }
 
   /* ===========================

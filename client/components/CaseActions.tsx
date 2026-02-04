@@ -29,11 +29,7 @@ export default function CaseActions({
             }
           }}
         >
-          <input
-            type="hidden"
-            name="case_id"
-            value={caseId}
-          />
+          <input type="hidden" name="case_id" value={caseId} />
           <button className="text-sm underline">
             Archive
           </button>
@@ -43,18 +39,14 @@ export default function CaseActions({
       {/* PREVIOUS → Restore (ONLY if not expired) */}
       {tab === "previous" && !isExpired && (
         <form action={restoreCase}>
-          <input
-            type="hidden"
-            name="case_id"
-            value={caseId}
-          />
+          <input type="hidden" name="case_id" value={caseId} />
           <button className="text-sm underline">
             Restore
           </button>
         </form>
       )}
 
-      {/* PREVIOUS → Permanent delete (always allowed) */}
+      {/* PREVIOUS → Permanent delete */}
       {tab === "previous" && (
         <form
           action={permanentDeleteCase}
@@ -68,11 +60,7 @@ export default function CaseActions({
             }
           }}
         >
-          <input
-            type="hidden"
-            name="case_id"
-            value={caseId}
-          />
+          <input type="hidden" name="case_id" value={caseId} />
           <button className="text-sm text-destructive underline">
             Delete Permanently
           </button>
