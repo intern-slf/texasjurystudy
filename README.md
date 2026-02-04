@@ -34,17 +34,25 @@ Participant
 
 Presenter
 
--> Completes mandatory onboarding.
+-> Completes a mandatory confidentiality acknowledgement.
 
--> Creates focus groups.
+-> After acknowledgement, lands on /dashboard/presenter.
 
--> Defines demographic filters and screening questions.
+-> Sees a dashboard with a sidebar containing three sections:
 
--> Reviews participant responses.
+Presenter Dashboard Sections
 
--> Selects participants.
+Current
 
--> Conducts live sessions using external meeting links such as Google Meet.
+-> Displays currently active focus group cases.
+
+-> Default selected view on dashboard load.
+
+Previous
+-> Displays completed or archived focus group cases.
+
+New
+-> Opens a case creation form.
 
 Admin
 
@@ -94,6 +102,62 @@ This design avoids race conditions with email confirmation, avoids RLS conflicts
 
 Roles cannot be changed by users after signup in the current design.
 
+Acknowledgement Gate
+
+The dashboard first presents a mandatory confidentiality acknowledgement form.
+
+Users cannot access any dashboard functionality until the acknowledgement is completed.
+
+The acknowledgement is stored separately for participants and presenters.
+
+Once acknowledged, users are redirected to their role-specific dashboard.
+
+The acknowledgement page is shown only once per user.
+
+Case Creation (Presenter – New)
+
+When a presenter selects New, a case creation form is displayed.
+
+The form collects:
+
+-> title
+-> description
+-> number_of_attendees (default: 10)
+-> documentation_type (dropdown)
+
+Participant Filter Configuration
+
+The presenter defines participant filters.
+
+All filters are stored as a single JSON object rather than individual database columns.
+
+Filter fields include:
+
+-> age
+-> gender
+-> race
+-> county
+-> availability_weekdays
+-> availability_weekends
+-> city
+-> state
+-> zip_code
+-> country
+-> served_on_jury
+-> convicted_felon
+-> us_citizen
+-> has_children
+-> served_armed_forces
+-> currently_employed
+-> internet_access
+-> marital_status
+-> political_affiliation
+-> education_level
+-> industry
+-> family_income
+
+These filters are evaluated against data from public.jury_participants.
+
 Database Design
 
 Roles Table
@@ -111,6 +175,24 @@ Purpose of the roles table:
 -> Used for routing, permissions, and access control.
 
 -> Enforces exactly one role per user.
+
+Cases Table
+
+A new table named cases stores presenter-created focus group cases.
+
+The table includes:
+
+-> presenter_id (UUID, foreign key to auth.users.id)
+-> title
+-> description
+-> number_of_attendees
+-> documentation_type
+-> filters (JSON)
+-> status (new, current, previous)
+-> created_at
+-> updated_at
+
+All demographic and eligibility filters are stored inside the JSON filters column.
 
 Role Assignment Trigger
 
@@ -151,28 +233,23 @@ Project Structure
 Application structure follows a role-based routing model.
 
 -> Home page provides a static entry point.
-
--> Dashboard acts as a role router.
-
+-> Dashboard acts as a role router after acknowledgement.
 -> Participant dashboard shows waiting and notification state.
-
--> Presenter onboarding is mandatory before accessing focus group tools.
-
+-> Presenter dashboard provides case management via sidebar navigation.
 -> Authentication routes handle login, signup, and password updates.
 
 -> Supabase clients are separated for browser and server usage.
 
 Routing Logic
 
-The dashboard route acts as a role-based router.
+The dashboard route acts as a role-based router after acknowledgement.
 
 -> Participants are routed to the participant dashboard.
-
--> Presenters are routed to presenter onboarding until onboarding is completed.
+-> Presenters are routed to the presenter dashboard.
 
 Participants do not see focus groups unless they are selected.
 
-Presenters must complete onboarding before creating or managing focus groups.
+Presenters cannot create or manage focus groups until acknowledgement is completed.
 
 Security Principles
 
@@ -180,6 +257,7 @@ Security Principles
 
 -> The frontend never inserts or updates role data.
 
+-> Presenters have read-only access to participant demographic data.
 -> No elevated or service keys are exposed to the browser.
 
 -> Sensitive logic is handled using database triggers, server components, and middleware.
