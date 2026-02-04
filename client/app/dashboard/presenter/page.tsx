@@ -23,6 +23,14 @@ export default async function PresenterDashboard({
     redirect("/dashboard");
   }
 
+  /*  AUTO-MOVE EXPIRED CASES */
+  await supabase
+    .from("cases")
+    .update({ status: "previous" })
+    .eq("user_id", user.id)
+    .eq("status", "current")
+    .lt("scheduled_at", new Date().toISOString());
+
   const resolvedSearchParams = await searchParams;
   const tab =
     resolvedSearchParams?.tab === "previous"
@@ -88,6 +96,13 @@ export default async function PresenterDashboard({
               <p className="text-sm text-muted-foreground">
                 {c.description}
               </p>
+
+              {c.scheduled_at && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Scheduled for{" "}
+                  {new Date(c.scheduled_at).toLocaleString()}
+                </p>
+              )}
             </li>
           ))}
         </ul>

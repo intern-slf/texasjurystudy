@@ -14,6 +14,7 @@ export default function NewCasePage() {
     number_of_attendees: 10,
     documentation_type: "",
     filters: {},
+    scheduled_at: "",
   });
 
   async function submit() {
@@ -31,6 +32,9 @@ export default function NewCasePage() {
       documentation_type: form.documentation_type,
       filters: form.filters,
       status: "current",
+      scheduled_at: form.scheduled_at
+        ? new Date(form.scheduled_at).toISOString()
+        : null,
     });
 
     router.replace("/dashboard/presenter");
@@ -87,7 +91,18 @@ export default function NewCasePage() {
         <option value="consent">Consent</option>
       </select>
 
-      {/* Filters JSON placeholder */}
+      {/* Schedule Date & Time */}
+      <input
+        type="datetime-local"
+        className="input mt-4"
+        onChange={(e) =>
+          setForm({
+            ...form,
+            scheduled_at: e.target.value,
+          })
+        }
+      />
+
       <button
         onClick={submit}
         className="mt-6 px-6 py-3 bg-primary text-primary-foreground rounded"
