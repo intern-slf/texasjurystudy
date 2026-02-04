@@ -76,7 +76,7 @@ export default function DashboardPage() {
       if (data?.agreed) {
         router.replace(
           userRole === "presenter"
-            ? "/dashboard/presenter/onboarding"
+            ? "/dashboard/presenter"
             : "/dashboard/participant"
         );
         return;
@@ -150,7 +150,7 @@ export default function DashboardPage() {
 
     router.replace(
       role === "presenter"
-        ? "/dashboard/presenter/onboarding"
+        ? "/dashboard/presenter"
         : "/dashboard/participant"
     );
   }
