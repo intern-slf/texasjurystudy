@@ -69,7 +69,7 @@ export default function ParticipantForm({ userId }: Props) {
     setLoading(true);
     setError(null);
 
-    // Comprehensive validation for all Select fields
+    // Comprehensive validation
     if (
       !gender || !race || !state || !maritalStatus || !politicalAffiliation || 
       !educationLevel || !currentlyEmployed || !familyIncome || !referralSource ||
@@ -81,6 +81,7 @@ export default function ParticipantForm({ userId }: Props) {
     }
 
     const form = new FormData(e.currentTarget);
+    const isEmployed = currentlyEmployed === "Yes" || currentlyEmployed === "Self-employed";
 
     const payload = {
       user_id: userId,
@@ -90,22 +91,16 @@ export default function ParticipantForm({ userId }: Props) {
       gender,
       race,
       county: form.get("county"),
-      
-      // Availability (Checkbox -> Text)
       availability_weekdays: form.get("availability_weekdays") ? "Yes" : "No",
       availability_weekends: form.get("availability_weekends") ? "Yes" : "No",
-      
       email: form.get("email"),
       phone: form.get("phone"),
-
       street_address: form.get("street_address"),
       address_line_2: form.get("address_line_2"),
       city: form.get("city"),
       state,
       zip_code: form.get("zip_code"),
       country: "USA",
-      
-      // Eligibility & Yes/No (Text storage)
       served_on_jury: servedOnJury,
       convicted_felon: convictedFelon,
       us_citizen: usCitizen,
@@ -113,15 +108,13 @@ export default function ParticipantForm({ userId }: Props) {
       served_armed_forces: servedArmedForces,
       currently_employed: currentlyEmployed,
       internet_access: internetAccess,
-      
-      // Details (Select Strings)
       marital_status: maritalStatus, 
       political_affiliation: politicalAffiliation,
       education_level: educationLevel,
-      industry: form.get("industry"),
+      // Fixed logic for industry field
+      industry: isEmployed ? form.get("industry") : "N/A",
       family_income: familyIncome, 
       heard_about_us: referralSource,
-
       entry_date: new Date().toISOString(),
       date_updated: new Date().toISOString(),
     };
@@ -170,7 +163,7 @@ export default function ParticipantForm({ userId }: Props) {
         </div>
       </div>
 
-      {/* CONTACT */}
+      {/* RACE & CONTACT */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-t pt-4">
         <div className="space-y-2">
           <Label>Race</Label>
@@ -178,9 +171,12 @@ export default function ParticipantForm({ userId }: Props) {
             <SelectTrigger><SelectValue placeholder="Select race" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="Caucasian">Caucasian</SelectItem>
-              <SelectItem value="Asian">Asian</SelectItem>
               <SelectItem value="African American">African American</SelectItem>
-              <SelectItem value="Hispanic">Hispanic</SelectItem>
+              <SelectItem value="Asian">Asian</SelectItem>
+              <SelectItem value="Native American">Native American</SelectItem>
+              <SelectItem value="Middle Eastern">Middle Eastern</SelectItem>
+              <SelectItem value="Latino/Hispanic">Latino/Hispanic</SelectItem>
+              <SelectItem value="Multi-racial">Multi-racial</SelectItem>
               <SelectItem value="Other">Other</SelectItem>
             </SelectContent>
           </Select>
@@ -244,7 +240,7 @@ export default function ParticipantForm({ userId }: Props) {
         </div>
       </div>
 
-      {/* YES/NO SECTION */}
+      {/* YES/NO SECTION & EMPLOYMENT LOGIC */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 border-t pt-4">
         {yesNoFields.map(({ label, value, setter }) => (
           <div key={label} className="space-y-2">
@@ -258,7 +254,8 @@ export default function ParticipantForm({ userId }: Props) {
             </Select>
           </div>
         ))}
-        {/* Employment Dropdown Added Here */}
+        
+        {/* Employment Question */}
         <div className="space-y-2">
           <Label>Are you currently employed?</Label>
           <Select value={currentlyEmployed} onValueChange={setCurrentlyEmployed} required>
@@ -270,6 +267,19 @@ export default function ParticipantForm({ userId }: Props) {
             </SelectContent>
           </Select>
         </div>
+
+        {/* Conditional Industry Field - Fixed TS2367 */}
+        {(currentlyEmployed === "Yes" || currentlyEmployed === "Self-employed") && (
+          <div className="space-y-2 animate-in fade-in duration-300">
+            <Label htmlFor="industry">Industry / Field</Label>
+            <Input 
+              id="industry"
+              name="industry" 
+              placeholder="e.g. Healthcare, Tech" 
+              required 
+            />
+          </div>
+        )}
       </div>
 
       {/* ADDITIONAL DETAILS */}
@@ -313,11 +323,6 @@ export default function ParticipantForm({ userId }: Props) {
               <SelectItem value="Other">Other</SelectItem>
             </SelectContent>
           </Select>
-        </div>
-
-        <div className="space-y-2">
-          <Label>Industry / Field</Label>
-          <Input name="industry" placeholder="e.g. Healthcare, Tech" />
         </div>
 
         <div className="space-y-2">
