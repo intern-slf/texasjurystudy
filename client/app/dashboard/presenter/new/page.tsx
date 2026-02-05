@@ -17,20 +17,17 @@ export default function NewCasePage() {
   });
 
   /* ===========================
-     FILTER STATE (JSON)
+      FILTER STATE (JSON)
      =========================== */
   const [filters, setFilters] = useState({
     age: { min: "", max: "" },
-
     gender: [] as string[],
     race: [] as string[],
-
     location: {
       city: [] as string[],
       county: [] as string[],
       state: [] as string[],
     },
-
     eligibility: {
       served_on_jury: "",
       convicted_felon: "",
@@ -40,14 +37,12 @@ export default function NewCasePage() {
       currently_employed: "",
       internet_access: "",
     },
-
     socioeconomic: {
       marital_status: [] as string[],
       education_level: [] as string[],
       industry: "",
       family_income: [] as string[],
     },
-
     political_affiliation: [] as string[],
   });
 
@@ -55,7 +50,7 @@ export default function NewCasePage() {
   const [loading, setLoading] = useState(false);
 
   /* ===========================
-     CREATE CASE
+      CREATE CASE
      =========================== */
   async function createCaseAndUpload() {
     if (!form.title.trim()) {
@@ -85,7 +80,6 @@ export default function NewCasePage() {
           ? new Date(form.scheduled_at).toISOString()
           : null,
 
-        /* 🔐 FILTER JSON */
         filters: {
           age: {
             min: filters.age.min ? Number(filters.age.min) : null,
@@ -129,7 +123,7 @@ export default function NewCasePage() {
   }
 
   /* ===========================
-     UI HELPERS
+      UI HELPERS
      =========================== */
   function YesNoSelect({
     label,
@@ -141,16 +135,16 @@ export default function NewCasePage() {
     onChange: (v: string) => void;
   }) {
     return (
-      <div>
-        <label className="text-sm text-muted-foreground">{label}</label>
+      <div className="flex flex-col space-y-1">
+        <label className="text-sm font-medium text-foreground">{label}</label>
         <select
           className="input mt-1"
           value={value}
           onChange={(e) => onChange(e.target.value)}
         >
           <option value="">Any</option>
-          <option value="yes">Yes</option>
-          <option value="no">No</option>
+          <option value="Yes">Yes</option>
+          <option value="No">No</option>
         </select>
       </div>
     );
@@ -168,11 +162,11 @@ export default function NewCasePage() {
     onChange: (v: string[]) => void;
   }) {
     return (
-      <div>
-        <p className="text-sm text-muted-foreground mb-1">{label}</p>
+      <div className="space-y-2">
+        <p className="text-sm font-medium text-foreground">{label}</p>
         <div className="flex flex-wrap gap-4">
           {options.map((opt) => (
-            <label key={opt} className="flex items-center gap-2">
+            <label key={opt} className="flex items-center gap-2 text-sm cursor-pointer">
               <input
                 type="checkbox"
                 checked={values.includes(opt)}
@@ -192,9 +186,6 @@ export default function NewCasePage() {
     );
   }
 
-  /* ===========================
-     RENDER
-     =========================== */
   return (
     <main className="flex min-h-screen">
       <PresenterSidebar />
@@ -222,37 +213,46 @@ export default function NewCasePage() {
               }
             />
 
-            {/* AGE */}
-            <div className="flex gap-4">
-              <input
-                type="number"
-                className="input"
-                placeholder="Min age"
-                value={filters.age.min}
-                onChange={(e) =>
-                  setFilters({
-                    ...filters,
-                    age: { ...filters.age, min: e.target.value },
-                  })
-                }
-              />
-              <input
-                type="number"
-                className="input"
-                placeholder="Max age"
-                value={filters.age.max}
-                onChange={(e) =>
-                  setFilters({
-                    ...filters,
-                    age: { ...filters.age, max: e.target.value },
-                  })
-                }
-              />
+            {/* PREFERENCE ORDER HEADER */}
+            <div className="pt-4 border-t">
+              <h2 className="text-xl font-bold text-foreground">Preference Order</h2>
+              <p className="text-sm text-muted-foreground mb-6">Define Juror Demographic Preferences</p>
+            </div>
+
+            {/* AGE SECTION */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Age Range</label>
+              <div className="flex gap-4">
+                <input
+                  type="number"
+                  className="input flex-1"
+                  placeholder="Min age"
+                  value={filters.age.min}
+                  onChange={(e) =>
+                    setFilters({
+                      ...filters,
+                      age: { ...filters.age, min: e.target.value },
+                    })
+                  }
+                />
+                <input
+                  type="number"
+                  className="input flex-1"
+                  placeholder="Max age"
+                  value={filters.age.max}
+                  onChange={(e) =>
+                    setFilters({
+                      ...filters,
+                      age: { ...filters.age, max: e.target.value },
+                    })
+                  }
+                />
+              </div>
             </div>
 
             <MultiCheckbox
               label="Gender"
-              options={["Male", "Female", "Non-binary"]}
+              options={["Male", "Female", "Other"]}
               values={filters.gender}
               onChange={(v) =>
                 setFilters({ ...filters, gender: v })
@@ -261,17 +261,32 @@ export default function NewCasePage() {
 
             <MultiCheckbox
               label="Race"
-              options={["White", "Black", "Asian", "Hispanic", "Other"]}
+              options={[
+                "Caucasian",
+                "African American",
+                "Asian",
+                "Native American",
+                "Middle Eastern",
+                "Latino/Hispanic",
+                "Multi-racial",
+                "Other"
+              ]}
               values={filters.race}
               onChange={(v) =>
                 setFilters({ ...filters, race: v })
               }
             />
 
-            {/* LOCATION */}
             <MultiCheckbox
               label="State"
-              options={["Texas"]}
+              options={["Alabama","Alaska","Arizona","Arkansas","California","Colorado","Connecticut",
+                        "Delaware","Florida","Georgia","Hawaii","Idaho","Illinois","Indiana","Iowa",
+                        "Kansas","Kentucky","Louisiana","Maine","Maryland","Massachusetts","Michigan",
+                        "Minnesota","Mississippi","Missouri","Montana","Nebraska","Nevada",
+                        "New Hampshire","New Jersey","New Mexico","New York","North Carolina",
+                        "North Dakota","Ohio","Oklahoma","Oregon","Pennsylvania","Rhode Island",
+                        "South Carolina","South Dakota","Tennessee","Texas","Utah","Vermont",
+                        "Virginia","Washington","West Virginia","Wisconsin","Wyoming",]}
               values={filters.location.state}
               onChange={(v) =>
                 setFilters({
@@ -282,31 +297,39 @@ export default function NewCasePage() {
             />
 
             {/* ELIGIBILITY */}
-            <YesNoSelect label="Served on a jury?" value={filters.eligibility.served_on_jury}
-              onChange={(v) => setFilters({ ...filters, eligibility: { ...filters.eligibility, served_on_jury: v } })} />
+            <div className="space-y-4">
+              <YesNoSelect label="Served on a jury?" value={filters.eligibility.served_on_jury}
+                onChange={(v) => setFilters({ ...filters, eligibility: { ...filters.eligibility, served_on_jury: v } })} />
 
-            <YesNoSelect label="Convicted felon?" value={filters.eligibility.convicted_felon}
-              onChange={(v) => setFilters({ ...filters, eligibility: { ...filters.eligibility, convicted_felon: v } })} />
+              <YesNoSelect label="Convicted felon?" value={filters.eligibility.convicted_felon}
+                onChange={(v) => setFilters({ ...filters, eligibility: { ...filters.eligibility, convicted_felon: v } })} />
 
-            <YesNoSelect label="U.S. Citizen?" value={filters.eligibility.us_citizen}
-              onChange={(v) => setFilters({ ...filters, eligibility: { ...filters.eligibility, us_citizen: v } })} />
+              <YesNoSelect label="U.S. Citizen?" value={filters.eligibility.us_citizen}
+                onChange={(v) => setFilters({ ...filters, eligibility: { ...filters.eligibility, us_citizen: v } })} />
 
-            <YesNoSelect label="Has children?" value={filters.eligibility.has_children}
-              onChange={(v) => setFilters({ ...filters, eligibility: { ...filters.eligibility, has_children: v } })} />
+              <YesNoSelect label="Has children?" value={filters.eligibility.has_children}
+                onChange={(v) => setFilters({ ...filters, eligibility: { ...filters.eligibility, has_children: v } })} />
 
-            <YesNoSelect label="Served in armed forces?" value={filters.eligibility.served_armed_forces}
-              onChange={(v) => setFilters({ ...filters, eligibility: { ...filters.eligibility, served_armed_forces: v } })} />
+              <YesNoSelect label="Served in armed forces?" value={filters.eligibility.served_armed_forces}
+                onChange={(v) => setFilters({ ...filters, eligibility: { ...filters.eligibility, served_armed_forces: v } })} />
 
-            <YesNoSelect label="Currently employed?" value={filters.eligibility.currently_employed}
-              onChange={(v) => setFilters({ ...filters, eligibility: { ...filters.eligibility, currently_employed: v } })} />
+              <YesNoSelect label="Currently employed?" value={filters.eligibility.currently_employed}
+                onChange={(v) => setFilters({ ...filters, eligibility: { ...filters.eligibility, currently_employed: v } })} />
 
-            <YesNoSelect label="Internet access?" value={filters.eligibility.internet_access}
-              onChange={(v) => setFilters({ ...filters, eligibility: { ...filters.eligibility, internet_access: v } })} />
+              <YesNoSelect label="Internet access?" value={filters.eligibility.internet_access}
+                onChange={(v) => setFilters({ ...filters, eligibility: { ...filters.eligibility, internet_access: v } })} />
+            </div>
 
             {/* SOCIOECONOMIC */}
             <MultiCheckbox
               label="Marital Status"
-              options={["Single", "Married", "Divorced", "Widowed"]}
+              options={[
+                "Single / Never Married",
+                "Married",
+                "Divorced",
+                "Separated",
+                "Widowed"
+              ]}
               values={filters.socioeconomic.marital_status}
               onChange={(v) =>
                 setFilters({
@@ -318,15 +341,15 @@ export default function NewCasePage() {
                 })
               }
             />
-
             <MultiCheckbox
               label="Education Level"
               options={[
-                "High School",
-                "Associate",
-                "Bachelor",
-                "Master",
-                "Doctorate",
+                "Less than High School",
+                "High School or GED",
+                "Associate's or Technical Degree",
+                "Some College",
+                "Bachelor Degree",
+                "Graduate Degree",
               ]}
               values={filters.socioeconomic.education_level}
               onChange={(v) =>
@@ -343,10 +366,11 @@ export default function NewCasePage() {
             <MultiCheckbox
               label="Family Income"
               options={[
-                "<$25k",
-                "$25k–$50k",
-                "$50k–$100k",
-                "$100k+",
+                "less than $40K",
+                "$41-75K",
+                "$75-100K",
+                "$101-$150K",
+                "$150K+"
               ]}
               values={filters.socioeconomic.family_income}
               onChange={(v) =>
@@ -365,7 +389,6 @@ export default function NewCasePage() {
               options={[
                 "Democrat",
                 "Republican",
-                "Independent",
                 "Other",
               ]}
               values={filters.political_affiliation}
@@ -380,7 +403,7 @@ export default function NewCasePage() {
             <button
               onClick={createCaseAndUpload}
               disabled={loading}
-              className="px-6 py-3 bg-primary text-primary-foreground rounded"
+              className="px-6 py-3 bg-primary text-primary-foreground rounded font-bold hover:opacity-90 transition-opacity"
             >
               {loading ? "Preparing..." : "Upload documents"}
             </button>
