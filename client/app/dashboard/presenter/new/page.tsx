@@ -258,17 +258,27 @@ export default function NewCasePage() {
               }
             />
 
-            {/* ELIGIBILITY */}
-            <YesNoSelect
-              label="U.S. Citizen?"
-              value={filters.eligibility.us_citizen}
+            {/* LOCATION */}
+            <MultiCheckbox
+              label="State"
+              options={["Texas"]}
+              values={filters.location.state}
               onChange={(v) =>
                 setFilters({
                   ...filters,
-                  eligibility: {
-                    ...filters.eligibility,
-                    us_citizen: v,
-                  },
+                  location: { ...filters.location, state: v },
+                })
+              }
+            />
+
+            {/* ELIGIBILITY */}
+            <YesNoSelect
+              label="Served on a jury?"
+              value={filters.eligibility.served_on_jury}
+              onChange={(v) =>
+                setFilters({
+                  ...filters,
+                  eligibility: { ...filters.eligibility, served_on_jury: v },
                 })
               }
             />
@@ -282,6 +292,44 @@ export default function NewCasePage() {
                   eligibility: {
                     ...filters.eligibility,
                     convicted_felon: v,
+                    },
+                })
+              }
+            />
+
+            <YesNoSelect
+              label="U.S. Citizen?"
+              value={filters.eligibility.us_citizen}
+              onChange={(v) =>
+                setFilters({
+                  ...filters,
+                  eligibility: { ...filters.eligibility, us_citizen: v },
+                })
+              }
+            />
+
+            <YesNoSelect
+              label="Internet access?"
+              value={filters.eligibility.internet_access}
+              onChange={(v) =>
+                setFilters({
+                  ...filters,
+                  eligibility: { ...filters.eligibility, internet_access: v },
+                })
+              }
+            />
+
+            {/* SOCIOECONOMIC */}
+            <MultiCheckbox
+              label="Marital Status"
+              options={["Single", "Married", "Divorced", "Widowed"]}
+              values={filters.socioeconomic.marital_status}
+              onChange={(v) =>
+                setFilters({
+                  ...filters,
+                  socioeconomic: {
+                    ...filters.socioeconomic,
+                    marital_status: v,
                   },
                 })
               }
@@ -304,6 +352,43 @@ export default function NewCasePage() {
                     ...filters.socioeconomic,
                     education_level: v,
                   },
+                })
+              }
+            />
+
+            <MultiCheckbox
+              label="Family Income"
+              options={[
+                "<$25k",
+                "$25k–$50k",
+                "$50k–$100k",
+                "$100k+",
+              ]}
+              values={filters.socioeconomic.family_income}
+              onChange={(v) =>
+                setFilters({
+                  ...filters,
+                  socioeconomic: {
+                    ...filters.socioeconomic,
+                    family_income: v,
+                  },
+                })
+              }
+            />
+
+            <MultiCheckbox
+              label="Political Affiliation"
+              options={[
+                "Democrat",
+                "Republican",
+                "Independent",
+                "Other",
+              ]}
+              values={filters.political_affiliation}
+              onChange={(v) =>
+                setFilters({
+                  ...filters,
+                  political_affiliation: v,
                 })
               }
             />
