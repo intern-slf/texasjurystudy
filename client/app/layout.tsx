@@ -9,7 +9,7 @@ export const metadata: Metadata = {
   description: "Structured focus groups with the right people",
   icons: {
     // Adding a version query (?v=1) tells the browser this is a new file
-    icon: "/icon.png?v=1", 
+    icon: "/cropped-tjs-fav@2x-8-32x32.png", 
     shortcut: "/icon.png?v=1",
     apple: "/icon.png?v=1",
   },
