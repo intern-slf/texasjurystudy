@@ -94,10 +94,20 @@ export default function NewCasePage() {
           gender: filters.gender,
           race: filters.race,
           location: filters.location,
-          eligibility: filters.eligibility,
+          eligibility: {
+            served_on_jury: filters.eligibility.served_on_jury || null,
+            convicted_felon: filters.eligibility.convicted_felon || null,
+            us_citizen: filters.eligibility.us_citizen || null,
+            has_children: filters.eligibility.has_children || null,
+            served_armed_forces: filters.eligibility.served_armed_forces || null,
+            currently_employed: filters.eligibility.currently_employed || null,
+            internet_access: filters.eligibility.internet_access || null,
+          },
           socioeconomic: {
-            ...filters.socioeconomic,
+            marital_status: filters.socioeconomic.marital_status,
+            education_level: filters.socioeconomic.education_level,
             industry: filters.socioeconomic.industry || null,
+            family_income: filters.socioeconomic.family_income,
           },
           political_affiliation:
             filters.political_affiliation.length
@@ -272,52 +282,26 @@ export default function NewCasePage() {
             />
 
             {/* ELIGIBILITY */}
-            <YesNoSelect
-              label="Served on a jury?"
-              value={filters.eligibility.served_on_jury}
-              onChange={(v) =>
-                setFilters({
-                  ...filters,
-                  eligibility: { ...filters.eligibility, served_on_jury: v },
-                })
-              }
-            />
+            <YesNoSelect label="Served on a jury?" value={filters.eligibility.served_on_jury}
+              onChange={(v) => setFilters({ ...filters, eligibility: { ...filters.eligibility, served_on_jury: v } })} />
 
-            <YesNoSelect
-              label="Convicted felon?"
-              value={filters.eligibility.convicted_felon}
-              onChange={(v) =>
-                setFilters({
-                  ...filters,
-                  eligibility: {
-                    ...filters.eligibility,
-                    convicted_felon: v,
-                    },
-                })
-              }
-            />
+            <YesNoSelect label="Convicted felon?" value={filters.eligibility.convicted_felon}
+              onChange={(v) => setFilters({ ...filters, eligibility: { ...filters.eligibility, convicted_felon: v } })} />
 
-            <YesNoSelect
-              label="U.S. Citizen?"
-              value={filters.eligibility.us_citizen}
-              onChange={(v) =>
-                setFilters({
-                  ...filters,
-                  eligibility: { ...filters.eligibility, us_citizen: v },
-                })
-              }
-            />
+            <YesNoSelect label="U.S. Citizen?" value={filters.eligibility.us_citizen}
+              onChange={(v) => setFilters({ ...filters, eligibility: { ...filters.eligibility, us_citizen: v } })} />
 
-            <YesNoSelect
-              label="Internet access?"
-              value={filters.eligibility.internet_access}
-              onChange={(v) =>
-                setFilters({
-                  ...filters,
-                  eligibility: { ...filters.eligibility, internet_access: v },
-                })
-              }
-            />
+            <YesNoSelect label="Has children?" value={filters.eligibility.has_children}
+              onChange={(v) => setFilters({ ...filters, eligibility: { ...filters.eligibility, has_children: v } })} />
+
+            <YesNoSelect label="Served in armed forces?" value={filters.eligibility.served_armed_forces}
+              onChange={(v) => setFilters({ ...filters, eligibility: { ...filters.eligibility, served_armed_forces: v } })} />
+
+            <YesNoSelect label="Currently employed?" value={filters.eligibility.currently_employed}
+              onChange={(v) => setFilters({ ...filters, eligibility: { ...filters.eligibility, currently_employed: v } })} />
+
+            <YesNoSelect label="Internet access?" value={filters.eligibility.internet_access}
+              onChange={(v) => setFilters({ ...filters, eligibility: { ...filters.eligibility, internet_access: v } })} />
 
             {/* SOCIOECONOMIC */}
             <MultiCheckbox
