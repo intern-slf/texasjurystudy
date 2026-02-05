@@ -82,7 +82,7 @@ export default function NewCasePage() {
   }
 
   function finishAndGoToDashboard() {
-    router.replace("/dashboard/presenter");
+    window.location.href = "/dashboard/presenter";
   }
 
   return (

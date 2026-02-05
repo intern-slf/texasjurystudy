@@ -52,3 +52,28 @@ export async function uploadCaseDocument(
 
   revalidatePath(`/dashboard/presenter`);
 }
+
+export async function deleteCaseDocument(documentId: string, storagePath: string) {
+  const supabase = await createClient();
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Unauthorized");
+
+  // 1️⃣ Delete from storage
+  const { error: storageError } = await supabase.storage
+    .from("case-documents")
+    .remove([storagePath]);
+
+  if (storageError) throw storageError;
+
+  // 2️⃣ Delete metadata
+  const { error: dbError } = await supabase
+    .from("case_documents")
+    .delete()
+    .eq("id", documentId)
+    .eq("uploaded_by", user.id);
+
+  if (dbError) throw dbError;
+
+  revalidatePath("/dashboard/presenter");
+}
