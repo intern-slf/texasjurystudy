@@ -16,7 +16,9 @@ export default function NewCasePage() {
     scheduled_at: "",
   });
 
-  /* 🔽 NEW: FILTER STATE */
+  /* ===========================
+     FILTER STATE (JSON)
+     =========================== */
   const [filters, setFilters] = useState({
     age: { min: "", max: "" },
 
@@ -83,7 +85,7 @@ export default function NewCasePage() {
           ? new Date(form.scheduled_at).toISOString()
           : null,
 
-        /* ✅ FILTER JSON STORED HERE */
+        /* 🔐 FILTER JSON */
         filters: {
           age: {
             min: filters.age.min ? Number(filters.age.min) : null,
@@ -119,7 +121,6 @@ export default function NewCasePage() {
   /* ===========================
      UI HELPERS
      =========================== */
-
   function YesNoSelect({
     label,
     value,
@@ -184,7 +185,6 @@ export default function NewCasePage() {
   /* ===========================
      RENDER
      =========================== */
-
   return (
     <main className="flex min-h-screen">
       <PresenterSidebar />
@@ -194,7 +194,6 @@ export default function NewCasePage() {
 
         {!caseId ? (
           <>
-            {/* BASIC INFO */}
             <input
               className="input"
               placeholder="Title"
@@ -213,7 +212,7 @@ export default function NewCasePage() {
               }
             />
 
-            {/* AGE FILTER */}
+            {/* AGE */}
             <div className="flex gap-4">
               <input
                 type="number"
@@ -241,7 +240,6 @@ export default function NewCasePage() {
               />
             </div>
 
-            {/* MULTI SELECT */}
             <MultiCheckbox
               label="Gender"
               options={["Male", "Female", "Non-binary"]}
@@ -251,7 +249,16 @@ export default function NewCasePage() {
               }
             />
 
-            {/* YES / NO */}
+            <MultiCheckbox
+              label="Race"
+              options={["White", "Black", "Asian", "Hispanic", "Other"]}
+              values={filters.race}
+              onChange={(v) =>
+                setFilters({ ...filters, race: v })
+              }
+            />
+
+            {/* ELIGIBILITY */}
             <YesNoSelect
               label="U.S. Citizen?"
               value={filters.eligibility.us_citizen}
@@ -261,6 +268,41 @@ export default function NewCasePage() {
                   eligibility: {
                     ...filters.eligibility,
                     us_citizen: v,
+                  },
+                })
+              }
+            />
+
+            <YesNoSelect
+              label="Convicted felon?"
+              value={filters.eligibility.convicted_felon}
+              onChange={(v) =>
+                setFilters({
+                  ...filters,
+                  eligibility: {
+                    ...filters.eligibility,
+                    convicted_felon: v,
+                  },
+                })
+              }
+            />
+
+            <MultiCheckbox
+              label="Education Level"
+              options={[
+                "High School",
+                "Associate",
+                "Bachelor",
+                "Master",
+                "Doctorate",
+              ]}
+              values={filters.socioeconomic.education_level}
+              onChange={(v) =>
+                setFilters({
+                  ...filters,
+                  socioeconomic: {
+                    ...filters.socioeconomic,
+                    education_level: v,
                   },
                 })
               }
