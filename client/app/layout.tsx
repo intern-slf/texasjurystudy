@@ -8,8 +8,10 @@ export const metadata: Metadata = {
   title: "FocusGroup",
   description: "Structured focus groups with the right people",
   icons: {
-    icon: "/icon.png", // Path to your logo in the /public folder
-    apple: "/apple-icon.png", // Optional: for iOS home screens
+    // Adding a version query (?v=1) tells the browser this is a new file
+    icon: "/icon.png?v=1", 
+    shortcut: "/icon.png?v=1",
+    apple: "/icon.png?v=1",
   },
 };
 
@@ -21,15 +23,10 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className="flex min-h-screen flex-col bg-background text-foreground">
-        {/* Navbar */}
         <Navbar />
-
-        {/* Main Content */}
         <main className="mx-auto w-full max-w-7xl flex-1 px-6 py-6">
           {children}
         </main>
-
-        {/* Footer */}
         <Footer />
       </body>
     </html>
