@@ -1,168 +1,294 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import PresenterSidebar from "@/components/PresenterSidebar";
 import CaseDocumentUploader from "@/components/CaseDocumentUploader";
 
 export default function NewCasePage() {
   const supabase = createClient();
-  const router = useRouter();
 
   const [form, setForm] = useState({
     title: "",
     description: "",
     number_of_attendees: 10,
     documentation_type: "",
-    filters: {},
     scheduled_at: "",
+  });
+
+  /* 🔽 NEW: FILTER STATE */
+  const [filters, setFilters] = useState({
+    age: { min: "", max: "" },
+
+    gender: [] as string[],
+    race: [] as string[],
+
+    location: {
+      city: [] as string[],
+      county: [] as string[],
+      state: [] as string[],
+    },
+
+    eligibility: {
+      served_on_jury: "",
+      convicted_felon: "",
+      us_citizen: "",
+      has_children: "",
+      served_armed_forces: "",
+      currently_employed: "",
+      internet_access: "",
+    },
+
+    socioeconomic: {
+      marital_status: [] as string[],
+      education_level: [] as string[],
+      industry: "",
+      family_income: [] as string[],
+    },
+
+    political_affiliation: [] as string[],
   });
 
   const [caseId, setCaseId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  /* ===========================
+     CREATE CASE
+     =========================== */
   async function createCaseAndUpload() {
-    // 1. Basic Validation
     if (!form.title.trim()) {
-      alert("Please provide a title for the case.");
+      alert("Please provide a title.");
       return;
     }
 
     setLoading(true);
 
-    try {
-      // 2. Auth Check
-      const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-      if (authError || !user) {
-        alert("Session expired. Please log in again.");
-        setLoading(false);
-        return;
-      }
-
-      // 3. Database Insert
-      const { data, error } = await supabase
-        .from("cases")
-        .insert({
-          user_id: user.id,
-          title: form.title,
-          description: form.description,
-          number_of_attendees: form.number_of_attendees,
-          documentation_type: form.documentation_type,
-          filters: form.filters,
-          status: "current",
-          scheduled_at: form.scheduled_at
-            ? new Date(form.scheduled_at).toISOString()
-            : null,
-        })
-        .select()
-        .single();
-
-      // 4. Detailed Error Handling
-      if (error) {
-        // This solves the {} console error by targeting specific properties
-        console.error("Supabase Error:", error.message, "| Details:", error.details);
-        alert(`Failed to create case: ${error.message}`);
-        setLoading(false);
-        return;
-      }
-
-      // 5. Success State
-      if (data?.id) {
-        setCaseId(data.id);
-      }
-      
-    } catch (err) {
-      console.error("Unexpected Application Error:", err);
-      alert("An unexpected error occurred. Please try again.");
-    } finally {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      alert("Session expired.");
       setLoading(false);
+      return;
     }
+
+    const { data, error } = await supabase
+      .from("cases")
+      .insert({
+        user_id: user.id,
+        title: form.title,
+        description: form.description,
+        number_of_attendees: form.number_of_attendees,
+        documentation_type: form.documentation_type,
+        status: "current",
+        scheduled_at: form.scheduled_at
+          ? new Date(form.scheduled_at).toISOString()
+          : null,
+
+        /* ✅ FILTER JSON STORED HERE */
+        filters: {
+          age: {
+            min: filters.age.min ? Number(filters.age.min) : null,
+            max: filters.age.max ? Number(filters.age.max) : null,
+          },
+          gender: filters.gender,
+          race: filters.race,
+          location: filters.location,
+          eligibility: filters.eligibility,
+          socioeconomic: {
+            ...filters.socioeconomic,
+            industry: filters.socioeconomic.industry || null,
+          },
+          political_affiliation:
+            filters.political_affiliation.length
+              ? filters.political_affiliation
+              : null,
+        },
+      })
+      .select()
+      .single();
+
+    if (error) {
+      alert(error.message);
+      setLoading(false);
+      return;
+    }
+
+    setCaseId(data.id);
+    setLoading(false);
   }
 
-  function finishAndGoToDashboard() {
-    window.location.href = "/dashboard/presenter";
+  /* ===========================
+     UI HELPERS
+     =========================== */
+
+  function YesNoSelect({
+    label,
+    value,
+    onChange,
+  }: {
+    label: string;
+    value: string;
+    onChange: (v: string) => void;
+  }) {
+    return (
+      <div>
+        <label className="text-sm text-muted-foreground">{label}</label>
+        <select
+          className="input mt-1"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+        >
+          <option value="">Any</option>
+          <option value="yes">Yes</option>
+          <option value="no">No</option>
+        </select>
+      </div>
+    );
   }
+
+  function MultiCheckbox({
+    label,
+    options,
+    values,
+    onChange,
+  }: {
+    label: string;
+    options: string[];
+    values: string[];
+    onChange: (v: string[]) => void;
+  }) {
+    return (
+      <div>
+        <p className="text-sm text-muted-foreground mb-1">{label}</p>
+        <div className="flex flex-wrap gap-4">
+          {options.map((opt) => (
+            <label key={opt} className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={values.includes(opt)}
+                onChange={() =>
+                  onChange(
+                    values.includes(opt)
+                      ? values.filter((v) => v !== opt)
+                      : [...values, opt]
+                  )
+                }
+              />
+              {opt}
+            </label>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  /* ===========================
+     RENDER
+     =========================== */
 
   return (
     <main className="flex min-h-screen">
       <PresenterSidebar />
 
-      <section className="flex-1 max-w-3xl px-8 py-20">
-        <h1 className="text-2xl font-semibold mb-6">New Case</h1>
+      <section className="flex-1 max-w-3xl px-8 py-20 space-y-6">
+        <h1 className="text-2xl font-semibold">New Case</h1>
 
         {!caseId ? (
-          <div className="flex flex-col gap-4">
+          <>
+            {/* BASIC INFO */}
             <input
               className="input"
               placeholder="Title"
               value={form.title}
-              onChange={(e) => setForm({ ...form, title: e.target.value })}
+              onChange={(e) =>
+                setForm({ ...form, title: e.target.value })
+              }
             />
 
             <textarea
               className="input"
               placeholder="Description"
               value={form.description}
-              onChange={(e) => setForm({ ...form, description: e.target.value })}
+              onChange={(e) =>
+                setForm({ ...form, description: e.target.value })
+              }
             />
 
-            <div className="flex flex-col">
-              <label className="text-sm text-gray-500 mb-1">Attendees</label>
+            {/* AGE FILTER */}
+            <div className="flex gap-4">
               <input
                 type="number"
                 className="input"
-                value={form.number_of_attendees}
-                min={1}
+                placeholder="Min age"
+                value={filters.age.min}
                 onChange={(e) =>
-                  setForm({ ...form, number_of_attendees: Number(e.target.value) })
+                  setFilters({
+                    ...filters,
+                    age: { ...filters.age, min: e.target.value },
+                  })
+                }
+              />
+              <input
+                type="number"
+                className="input"
+                placeholder="Max age"
+                value={filters.age.max}
+                onChange={(e) =>
+                  setFilters({
+                    ...filters,
+                    age: { ...filters.age, max: e.target.value },
+                  })
                 }
               />
             </div>
 
-            <select
-              className="input"
-              value={form.documentation_type}
-              onChange={(e) =>
-                setForm({ ...form, documentation_type: e.target.value })
+            {/* MULTI SELECT */}
+            <MultiCheckbox
+              label="Gender"
+              options={["Male", "Female", "Non-binary"]}
+              values={filters.gender}
+              onChange={(v) =>
+                setFilters({ ...filters, gender: v })
               }
-            >
-              <option value="">Select documentation</option>
-              <option value="nda">NDA</option>
-              <option value="consent">Consent</option>
-            </select>
+            />
 
-            <input
-              type="datetime-local"
-              className="input"
-              value={form.scheduled_at}
-              onChange={(e) => setForm({ ...form, scheduled_at: e.target.value })}
+            {/* YES / NO */}
+            <YesNoSelect
+              label="U.S. Citizen?"
+              value={filters.eligibility.us_citizen}
+              onChange={(v) =>
+                setFilters({
+                  ...filters,
+                  eligibility: {
+                    ...filters.eligibility,
+                    us_citizen: v,
+                  },
+                })
+              }
             />
 
             <button
               onClick={createCaseAndUpload}
               disabled={loading}
-              className="mt-6 px-6 py-3 bg-primary text-primary-foreground rounded disabled:opacity-50"
+              className="px-6 py-3 bg-primary text-primary-foreground rounded"
             >
               {loading ? "Preparing..." : "Upload documents"}
             </button>
-          </div>
+          </>
         ) : (
-          <div className="animate-in fade-in duration-500">
-            <h2 className="text-xl font-medium mt-10 mb-4">
+          <>
+            <h2 className="text-xl font-medium">
               Upload Case Documents
             </h2>
-
             <CaseDocumentUploader caseId={caseId} />
-
             <button
-              onClick={finishAndGoToDashboard}
-              className="mt-8 px-4 py-2 text-sm underline opacity-70 hover:opacity-100"
+              onClick={() =>
+                (window.location.href = "/dashboard/presenter")
+              }
+              className="text-sm underline opacity-70"
             >
               Finish & go to dashboard
             </button>
-          </div>
+          </>
         )}
       </section>
     </main>
