@@ -7,6 +7,10 @@ import Footer from "@/components/Footer-temp";
 export const metadata: Metadata = {
   title: "FocusGroup",
   description: "Structured focus groups with the right people",
+  icons: {
+    icon: "/icon.png", // Path to your logo in the /public folder
+    apple: "/apple-icon.png", // Optional: for iOS home screens
+  },
 };
 
 export default function RootLayout({
