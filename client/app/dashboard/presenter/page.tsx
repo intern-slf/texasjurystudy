@@ -1,3 +1,5 @@
+import CaseFiles from "@/components/CaseFiles";
+import CaseDocumentUploader from "@/components/CaseDocumentUploader";
 import { revalidatePath } from "next/cache";
 import CaseActions from "@/components/CaseActions";
 import { redirect } from "next/navigation";
@@ -42,7 +44,7 @@ export default async function PresenterDashboard({
 
   const { data: cases } = await supabase
     .from("cases")
-    .select("*")
+    .select(`*,case_documents (id)`)
     .eq("user_id", user.id)
     .eq("status", tab)
     .order("created_at", { ascending: false });
@@ -170,6 +172,31 @@ export default async function PresenterDashboard({
                   Scheduled for{" "}
                   {new Date(c.scheduled_at).toLocaleString()}
                 </p>
+              )}
+              {c.case_documents?.length > 0 && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  {c.case_documents.length} document(s) attached
+                </p>
+              )}
+              {/* 🔽 DROP / UPLOAD SECTION */}
+              {tab === "current" && (
+                <div className="mt-4">
+                  <CaseDocumentUploader caseId={c.id} />
+                </div>
+              )}
+              <h2 className="text-xl font-medium">
+                Upload Case Documents
+              </h2>
+
+              {c.id ? (
+                <CaseDocumentUploader caseId={c.id} />
+              ) : (
+                <div className="border-2 border-dashed rounded-md p-6 text-center opacity-50">
+                  <p className="font-medium">Create the case first</p>
+                  <p className="text-sm text-muted-foreground">
+                    Documents can be uploaded after saving the case
+                  </p>
+                </div>
               )}
 
               <CaseActions

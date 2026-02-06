@@ -77,3 +77,21 @@ export async function deleteCaseDocument(documentId: string, storagePath: string
 
   revalidatePath("/dashboard/presenter");
 }
+
+/* =========================
+   READ / DOWNLOAD DOCUMENT
+   ========================= */
+export async function getCaseDocumentUrl(storagePath: string) {
+  const supabase = await createClient();
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Unauthorized");
+
+  const { data, error } = await supabase.storage
+    .from("case-documents")
+    .createSignedUrl(storagePath, 60 * 5); // 5 minutes
+
+  if (error) throw error;
+
+  return data.signedUrl;
+}

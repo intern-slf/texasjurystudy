@@ -1,5 +1,6 @@
 "use client";
 
+import { getCaseDocumentUrl } from "@/app/dashboard/presenter/actions/caseDocuments";
 import { useEffect, useState, useTransition } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { uploadCaseDocument } from "@/app/dashboard/presenter/actions/caseDocuments";
@@ -54,6 +55,12 @@ export default function CaseDocumentUploader({ caseId }: Props) {
     await fetchDocuments();
   }
 
+  async function open(doc: CaseDocument) {
+    const url = await getCaseDocumentUrl(doc.storage_path);
+    window.open(url, "_blank");
+  }
+
+
   return (
     <div className="space-y-4">
       {/* Upload Area */}
@@ -96,18 +103,27 @@ export default function CaseDocumentUploader({ caseId }: Props) {
           {docs.map((doc) => (
             <li
               key={doc.id}
-              className="flex items-center justify-between border rounded px-3 py-2"
+              className="flex items-center justify-between gap-4 border rounded px-3 py-2"
             >
-              <span className="text-sm truncate">
+              <span className="text-sm truncate flex-1">
                 {doc.original_name}
               </span>
 
-              <button
-                onClick={() => remove(doc)}
-                className="text-sm text-destructive underline"
-              >
-                Delete
-              </button>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => open(doc)}
+                  className="text-sm underline"
+                >
+                  View
+                </button>
+
+                <button
+                  onClick={() => remove(doc)}
+                  className="text-sm text-destructive underline"
+                >
+                  Delete
+                </button>
+              </div>
             </li>
           ))}
         </ul>

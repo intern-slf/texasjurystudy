@@ -218,6 +218,19 @@ export default function NewCasePage() {
               <h2 className="text-xl font-bold text-foreground">Preference Order</h2>
               <p className="text-sm text-muted-foreground mb-6">Define Juror Demographic Preferences</p>
             </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">
+                Scheduled Date & Time
+              </label>
+              <input
+                type="datetime-local"
+                className="input"
+                value={form.scheduled_at}
+                onChange={(e) =>
+                  setForm({ ...form, scheduled_at: e.target.value })
+                }
+              />
+            </div>   
 
             {/* AGE SECTION */}
             <div className="space-y-2">
