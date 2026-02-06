@@ -53,6 +53,43 @@ export default async function PresenterDashboard({
      SERVER ACTIONS
      =========================== */
 
+  async function updateCase(formData: FormData) {
+    "use server";
+
+    const caseId = formData.get("case_id") as string;
+    const title = formData.get("title") as string;
+    const description = formData.get("description") as string;
+    const scheduledAt = formData.get("scheduled_at") as string;
+
+    const supabase = await createClient();
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return;
+
+    await supabase
+      .from("cases")
+      .update({
+        title,
+        description,
+        scheduled_at: scheduledAt
+          ? new Date(scheduledAt).toISOString()
+          : null,
+      })
+      .eq("id", caseId)
+      .eq("user_id", user.id);
+
+    await supabase.from("case_audit_logs").insert({
+      case_id: caseId,
+      user_id: user.id,
+      action: "update_case",
+    });
+
+    revalidatePath("/dashboard/presenter");
+  }
+
+
   async function softDeleteCase(formData: FormData) {
     "use server";
 
@@ -179,11 +216,6 @@ export default async function PresenterDashboard({
                 </p>
               )}
               {/* 🔽 DROP / UPLOAD SECTION */}
-              {tab === "current" && (
-                <div className="mt-4">
-                  <CaseDocumentUploader caseId={c.id} />
-                </div>
-              )}
               <h2 className="text-xl font-medium">
                 Upload Case Documents
               </h2>
@@ -198,6 +230,55 @@ export default async function PresenterDashboard({
                   </p>
                 </div>
               )}
+              <details className="mt-4">
+                <summary className="cursor-pointer text-sm underline">
+                  Edit case details
+                </summary>
+
+                <form action={updateCase} className="mt-3 space-y-3">
+                  <input type="hidden" name="case_id" value={c.id} />
+
+                  <div className="space-y-1">
+                    <label className="text-sm font-medium">Title</label>
+                    <input
+                      name="title"
+                      defaultValue={c.title}
+                      className="input w-full"
+                      required
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-sm font-medium">Description</label>
+                    <textarea
+                      name="description"
+                      defaultValue={c.description}
+                      className="input w-full"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-sm font-medium">Scheduled at</label>
+                    <input
+                      type="datetime-local"
+                      name="scheduled_at"
+                      defaultValue={
+                        c.scheduled_at
+                          ? new Date(c.scheduled_at).toISOString().slice(0, 16)
+                          : ""
+                      }
+                      className="input"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-primary text-primary-foreground rounded text-sm font-medium"
+                  >
+                    Save changes
+                  </button>
+                </form>
+              </details>
 
               <CaseActions
                 tab={tab}
