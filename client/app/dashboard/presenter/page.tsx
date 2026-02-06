@@ -1,4 +1,3 @@
-import CaseFiles from "@/components/CaseFiles";
 import CaseDocumentUploader from "@/components/CaseDocumentUploader";
 import { revalidatePath } from "next/cache";
 import CaseActions from "@/components/CaseActions";
@@ -28,13 +27,21 @@ export default async function PresenterDashboard({
     redirect("/dashboard");
   }
 
-  /*  AUTO-MOVE EXPIRED CASES */
+/* ===========================
+   AUTO-MOVE EXPIRED CASES
+   (scheduled_at + 60 minutes)
+   =========================== */
+
+const sixtyMinutesAgo = new Date(
+  Date.now() - 60 * 60 * 1000
+).toISOString();
+
   await supabase
     .from("cases")
     .update({ status: "previous" })
     .eq("user_id", user.id)
     .eq("status", "current")
-    .lt("scheduled_at", new Date().toISOString());
+    .lte("scheduled_at", sixtyMinutesAgo);
 
   const resolvedSearchParams = await searchParams;
   const tab: "current" | "previous" =
@@ -264,7 +271,10 @@ export default async function PresenterDashboard({
                       name="scheduled_at"
                       defaultValue={
                         c.scheduled_at
-                          ? new Date(c.scheduled_at).toISOString().slice(0, 16)
+                          ? new Date(
+                              new Date(c.scheduled_at).getTime()
+                              - new Date().getTimezoneOffset() * 60000
+                            ).toISOString().slice(0, 16)
                           : ""
                       }
                       className="input"
