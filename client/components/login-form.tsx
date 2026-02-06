@@ -33,13 +33,35 @@ export function LoginForm({
     setError(null);
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      // 1. Authenticate the user
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
-      if (error) throw error;
-      // Update this route to redirect to an authenticated route. The user already has an active session.
-      router.push("/dashboard");
+      
+      if (authError) throw authError;
+
+      // 2. Fetch the user's role from the roles table
+      const { data: roleData, error: roleError } = await supabase
+        .from("roles")
+        .select("role")
+        .eq("user_id", authData.user.id)
+        .single();
+
+      if (roleError) {
+        console.error("Role fetch error:", roleError.message);
+        // Default redirect if role check fails
+        router.push("/dashboard");
+        return;
+      }
+
+      // 3. Conditional redirection based on role
+      if (roleData?.role === "admin") {
+        router.push("/dashboard/Admin");
+      } else {
+        router.push("/dashboard");
+      }
+
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : "An error occurred");
     } finally {
@@ -88,8 +110,8 @@ export function LoginForm({
                   onChange={(e) => setPassword(e.target.value)}
                 />
               </div>
-              {error && <p className="text-sm text-red-500">{error}</p>}
-              <Button type="submit" className="w-full" disabled={isLoading}>
+              {error && <p className="text-sm text-red-500 font-medium">{error}</p>}
+              <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700" disabled={isLoading}>
                 {isLoading ? "Logging in..." : "Login"}
               </Button>
             </div>
@@ -97,7 +119,7 @@ export function LoginForm({
               Don&apos;t have an account?{" "}
               <Link
                 href="/auth/signup"
-                className="underline underline-offset-4"
+                className="underline underline-offset-4 font-medium"
               >
                 Sign up
               </Link>
