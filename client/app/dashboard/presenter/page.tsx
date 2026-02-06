@@ -214,7 +214,7 @@ const sixtyMinutesAgo = new Date(
               {c.scheduled_at && (
                 <p className="text-xs text-muted-foreground mt-1">
                   Scheduled for{" "}
-                  {new Date(c.scheduled_at).toLocaleString()}
+                  {new Date(c.scheduled_at).toLocaleString("en-GB")}
                 </p>
               )}
               {c.case_documents?.length > 0 && (
