@@ -2,147 +2,142 @@ FocusGroup
 
 FocusGroup is a role-based web platform designed to enable structured, demographic-driven focus group research.
 
-The platform allows presenters to conduct controlled focus group sessions with carefully selected participants, while ensuring participants only engage through invitation-based access rather than open browsing.
+The platform prioritizes selection over discovery, ensuring participants are chosen deliberately based on defined criteria rather than self-applying, thereby preserving research quality and reducing bias.
 
 Core Concept
 
 FocusGroup operates on selection rather than discovery.
 
--> Participants do not browse or apply to focus groups.
+-> Participants do not browse or apply to focus groups
+-> Participants submit demographic information and wait to be shortlisted
+-> Presenters define requirements and create cases
+-> Participants wait in a “Waiting for selection” state
+-> Access is granted only after explicit selection
+-> Unselected cases are never visible to participants
 
--> Participants submit demographic information and wait to be shortlisted.
-
--> Presenters define requirements and explicitly select participants.
-
--> Access to live sessions is granted only after selection.
-
-This approach preserves research quality and avoids self-selection bias.
+This model avoids self-selection bias and supports controlled research workflows.
 
 User Roles
-
 Participant
 
--> Completes demographic and screening forms using multiple-choice questions.
-
--> Cannot browse focus groups.
-
--> Waits to be selected for relevant sessions.
-
--> Gains access to a session only after invitation.
-
--> Sees profile status and selection notifications only.
+-> Completes a structured demographic and screening form
+-> Cannot browse, search, or apply to focus groups
+-> Sees a default “Waiting for selection” state
+-> Gains access only after being selected into a case
+-> Does not see unselected or rejected cases
 
 Presenter
 
--> Completes a mandatory confidentiality acknowledgement.
-
--> After acknowledgement, lands on /dashboard/presenter.
-
--> Sees a dashboard with a sidebar containing three sections:
+-> Completes a mandatory confidentiality acknowledgement
+-> Is redirected to /dashboard/presenter after acknowledgement
+-> Manages focus group cases via a sidebar-based dashboard
+-> Defines participant requirements and uploads case documents
+-> Can manually archive cases
 
 Presenter Dashboard Sections
 
 Current
 
--> Displays currently active focus group cases.
-
--> Default selected view on dashboard load.
+-> Displays active focus group cases
+-> Includes scheduled and unscheduled cases
+-> Default dashboard view
 
 Previous
--> Displays completed or archived focus group cases.
+
+-> Displays expired, completed, or archived cases
+-> Includes cases automatically moved after schedule expiry
+-> Includes cases manually archived by presenter or admin
 
 New
--> Opens a case creation form.
+
+-> Opens the case creation flow
 
 Admin
 
--> Internal system role.
-
--> Not exposed in the user interface.
-
--> Manages moderation, role integrity, and platform health.
-
--> Cannot be selected during signup.
+-> Not exposed in the UI
+-> Handles moderation, screening, and lifecycle overrides
+-> Selects participants into cases
+-> Can select participants outside presenter-defined filters
+-> Cannot edit presenter-defined filters
+-> Can archive and restore cases
+-> Cannot impersonate presenters
+-> Cannot be selected during signup
 
 Authentication and Role Model
 
 Authentication is handled using Supabase Auth.
 
--> Email confirmation is enabled.
-
--> Password reset is handled through a secure recovery flow.
-
--> No service role keys are exposed to the client.
-
-Role Selection and Role Assignment
+-> Email confirmation enabled
+-> Secure password recovery supported
+-> No service-role or elevated keys exposed to the client
 
 Role Selection (Before Signup)
 
--> Users choose either Participant or Presenter before signing up.
-
--> The selected role is passed through the signup URL, for example using a role query parameter.
-
--> This selection represents user intent only, not authority.
+-> User selects Participant or Presenter before signup
+-> Role is passed via signup URL (intent only)
 
 Role Assignment (After Signup)
 
-Roles are not written directly from the frontend.
+-> Role is stored in auth.users raw metadata
+-> PostgreSQL trigger runs on user creation
+-> Trigger inserts authoritative role into public.roles
 
-Instead, the following process is used:
+the following process is used:
 
 -> The selected role is stored in auth.users raw user metadata during signup.
-
 -> A PostgreSQL trigger runs after the user is created.
-
 -> The trigger reads the role from metadata.
-
 -> The trigger inserts a permanent role record into the roles table.
 
-This design avoids race conditions with email confirmation, avoids RLS conflicts, prevents role spoofing, and keeps role authority strictly on the backend.
-
-Roles cannot be changed by users after signup in the current design.
+Roles cannot be changed after signup.
 
 Acknowledgement Gate
 
-The dashboard first presents a mandatory confidentiality acknowledgement form.
-
-Users cannot access any dashboard functionality until the acknowledgement is completed.
-
-The acknowledgement is stored separately for participants and presenters.
-
-Once acknowledged, users are redirected to their role-specific dashboard.
-
-The acknowledgement page is shown only once per user.
+-> Mandatory confidentiality acknowledgement
+-> Blocks dashboard access until accepted
+-> Explicit “I agree” action required
+-> Stored separately per role
+-> Shown only once per user
+-> Cannot be reset by admin
 
 Case Creation (Presenter – New)
 
 When a presenter selects New, a case creation form is displayed.
 
-The form collects:
+Collected fields:
 
 -> title
 -> description
 -> number_of_attendees (default: 10)
--> documentation_type (dropdown)
+-> scheduled_at (optional)
+
+Notes:
+
+-> Cases may exist without a schedule
+-> Unscheduled cases remain current indefinitely
+-> Presenters may add scheduled_at later
+-> Removing scheduled_at reverts the case to unscheduled
+-> Scheduled time represents intended session time
 
 Participant Filter Configuration
 
-The presenter defines participant filters.
+Presenters define participant requirements.
 
-All filters are stored as a single JSON object rather than individual database columns.
+-> All filters are stored as a single structured JSON object
+-> Stored in cases.filters (JSONB)
 
 Filter fields include:
 
 -> age
 -> gender
 -> race
--> county
--> availability_weekdays
--> availability_weekends
 -> city
+-> county
 -> state
 -> zip_code
 -> country
+-> availability_weekdays
+-> availability_weekends
 -> served_on_jury
 -> convicted_felon
 -> us_citizen
@@ -156,39 +151,85 @@ Filter fields include:
 -> industry
 -> family_income
 
-These filters are evaluated against data from public.jury_participants.
+Filter semantics:
+
+-> Some filters act as hard requirements
+-> Partial matches remain visible but ranked lower (admin view)
+
+Case Lifecycle
+
+Cases exist in one of two states:
+
+-> current
+-> previous
+
+Lifecycle transitions are system-governed, not client-controlled.
+
+Lifecycle Rules
+
+-> Unscheduled cases remain current indefinitely
+-> Scheduled cases remain current until expiry
+-> Scheduled cases automatically move to previous 60 minutes after scheduled_at
+-> Expiry is calculated using UTC stored time only
+-> Presenter can manually archive a case
+-> Admin can archive or restore cases
+
+Important clarification:
+
+-> A case’s database status may remain current
+-> UI may still display the case under “Previous”
+-> This UI-level interpretation is intentional and long-term
+
+Documents & Storage
+
+-> Case-specific documents are supported
+-> Stored under case-documents/{case_id}/{uuid}.{ext}
+-> Presenters can upload, delete, and replace documents freely
+-> Download-only access
+-> Participant access is future-scoped
+
+Future behavior (not implemented):
+
+-> Documents will be frozen once a case moves to previous
+-> Admins will have write access to case documents
+
+Participant Visibility (Future)
+
+Not yet implemented.
+
+Planned behavior:
+
+-> Participants see a list of all cases they were selected for historically
+-> Case details include name, description, and schedule
+-> Documents are not visible to participants
+-> Deselected cases disappear entirely from participant dashboard
 
 Database Design
+Roles Table (public.roles)
 
-Roles Table
+-> user_id (UUID, PK, FK to auth.users)
+-> role (participant | presenter | admin)
+-> created_at
 
--> user_id: UUID, primary key, foreign key to auth.users.id
+Purpose:
 
--> role: text value (participant, presenter, or admin)
+-> Single source of truth for roles
+-> Enforces exactly one role per user
 
--> created_at: timestamp
+Cases Table (public.cases)
 
-Purpose of the roles table:
+Stores presenter-created focus group cases.
 
--> Stores the authoritative role for each user.
+Includes:
 
--> Used for routing, permissions, and access control.
-
--> Enforces exactly one role per user.
-
-Cases Table
-
-A new table named cases stores presenter-created focus group cases.
-
-The table includes:
-
--> presenter_id (UUID, foreign key to auth.users.id)
+-> user_id (presenter)
 -> title
 -> description
 -> number_of_attendees
 -> documentation_type
--> filters (JSON)
--> status (new, current, previous)
+-> filters (JSONB)
+-> scheduled_at
+-> status (current, previous)
 -> created_at
 -> updated_at
 
@@ -197,27 +238,19 @@ All demographic and eligibility filters are stored inside the JSON filters colum
 Role Assignment Trigger
 
 -> Trigger runs on auth.users insert.
-
 -> Reads role from raw user metadata.
-
 -> Defaults to participant if no role is provided.
-
 -> Inserts the role into the public roles table.
 
-This ensures role assignment is secure, atomic, and not controlled by the frontend.
+This ensures role assignment is secure, atomic, and not frontend-controlled.
 
 Tech Stack
-
 Frontend
 
--> Next.js 16 using the App Router
-
+-> Next.js 16 (App Router)
 -> TypeScript
-
 -> Tailwind CSS
-
 -> Server Components
-
 -> Turbopack
 
 Backend
@@ -228,58 +261,61 @@ Deployment
 
 -> Vercel
 
-Project Structure
-
-Application structure follows a role-based routing model.
-
--> Home page provides a static entry point.
--> Dashboard acts as a role router after acknowledgement.
--> Participant dashboard shows waiting and notification state.
--> Presenter dashboard provides case management via sidebar navigation.
--> Authentication routes handle login, signup, and password updates.
-
--> Supabase clients are separated for browser and server usage.
-
 Routing Logic
 
-The dashboard route acts as a role-based router after acknowledgement.
+-> Home page is a static entry point
+-> Dashboard acts as a role-based router
+-> Acknowledgement gate enforced before routing
 
--> Participants are routed to the participant dashboard.
--> Presenters are routed to the presenter dashboard.
+Routing behavior:
 
-Participants do not see focus groups unless they are selected.
+-> Participants routed to participant dashboard
+-> Presenters routed to presenter dashboard
 
-Presenters cannot create or manage focus groups until acknowledgement is completed.
+Participants never see focus groups unless selected.
 
 Security Principles
 
--> Row Level Security is enabled on all public tables.
-
--> The frontend never inserts or updates role data.
-
--> Presenters have read-only access to participant demographic data.
--> No elevated or service keys are exposed to the browser.
-
--> Sensitive logic is handled using database triggers, server components, and middleware.
+-> Row Level Security enabled on all public tables
+-> Frontend never inserts or updates roles
+-> Presenters have read-only access to participant demographics
+-> Lifecycle transitions handled server-side
+-> No elevated keys exposed to browser
+-> Sensitive logic handled via triggers, server actions, and middleware
 
 Email and Password Management
 
--> Email confirmation is required during signup.
-
--> Password reset is handled through Supabase recovery emails.
-
--> A custom password update page is used with recovery sessions.
+-> Email confirmation required
+-> Password reset via Supabase recovery
+-> Custom password update page supported
 
 Development Setup
 
-Install dependencies using npm install.
+Install dependencies using:
 
-Create a .env.local file inside the client directory and define the following environment variables:
+npm install
+
+Create .env.local inside the client directory:
 
 NEXT_PUBLIC_SUPABASE_URL
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
 
-Run the development server from the client directory using npm run dev.
+Run development server:
+
+cd client
+npm run dev
+
+Future Features (Not Yet Implemented)
+
+-> Participant sees selected case details (name, description, schedule)
+-> Soft-preference ranking instead of hard filters
+-> Admin-driven screening and ranking pipeline
+-> Presenter reordering and swapping participants
+-> Waitlists and backup participants
+-> Participant profile editing (affects future cases only)
+-> Email + dashboard notifications
+-> Document access for participants post-selection
+-> Legally binding acknowledgement language
 
 License
 
