@@ -1,124 +1,193 @@
 import { createClient } from "../../../lib/supabase/server";
-import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
 } from "../../../components/ui/table";
 import { AdminScheduleModal } from "../../../components/AdminScheduleModal";
 import Link from "next/link";
 
-// 1. Corrected interface to match all used properties
+/* =========================
+   TYPES
+   ========================= */
+
 interface CaseDocument {
   id: string;
-  file_name: string;
-  file_url: string;
+  original_name: string;
+  storage_path: string;
+  signedUrl: string | null;
 }
 
 interface JuryCase {
   id: string;
   title: string;
-  status: string;
-  description: string;
+  status: "current" | "previous";
   number_of_attendees: number;
   case_documents: CaseDocument[];
 }
 
+/* =========================
+   PAGE
+   ========================= */
+
 export default async function AdminDashboardPage() {
   const supabase = await createClient();
-  
-  const { data: cases } = await supabase
+
+  /* =========================
+     FETCH CASES + DOCUMENTS
+     ========================= */
+
+  const { data: rawCases } = await supabase
     .from("cases")
     .select(`
-      *,
+      id,
+      title,
+      status,
+      number_of_attendees,
       case_documents (
         id,
-        file_name,
-        file_url
+        original_name,
+        storage_path
       )
     `)
-    .is("deleted_at", null)
     .order("created_at", { ascending: false });
+
+  /* =========================
+     CREATE SIGNED URLs
+     ========================= */
+
+  const cases: JuryCase[] = await Promise.all(
+    (rawCases ?? []).map(async (c) => {
+      const docsWithUrls = await Promise.all(
+        (c.case_documents ?? []).map(async (doc) => {
+          const { data } = await supabase.storage
+            .from("case-documents")
+            .createSignedUrl(doc.storage_path, 60 * 10); // 10 minutes
+
+          return {
+            ...doc,
+            signedUrl: data?.signedUrl ?? null,
+          };
+        })
+      );
+
+      return {
+        ...c,
+        case_documents: docsWithUrls,
+      };
+    })
+  );
+
+  /* =========================
+     UI
+     ========================= */
 
   return (
     <div className="space-y-8 p-6">
       <section>
         <div className="flex justify-between items-center mb-6 px-2">
           <h2 className="text-2xl font-bold text-slate-800 border-l-4 border-blue-600 pl-4">
-            Presenter Cases & Evidence
+            Presenter Cases & Documents
           </h2>
         </div>
-        
+
         <div className="rounded-md border border-slate-200 bg-white shadow-sm overflow-hidden">
           <Table>
             <TableHeader className="bg-slate-50">
               <TableRow>
-                <TableHead className="font-bold text-slate-700">Case Title</TableHead>
-                <TableHead className="font-bold text-slate-700">Status</TableHead>
-                <TableHead className="font-bold text-slate-700">Attendees</TableHead>
-                <TableHead className="font-bold text-slate-700">Case Documents</TableHead>
-                <TableHead className="text-right font-bold text-slate-700">Manage</TableHead>
+                <TableHead>Case Title</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Attendees</TableHead>
+                <TableHead>Respective Documents</TableHead>
+                <TableHead className="text-right">Manage</TableHead>
               </TableRow>
             </TableHeader>
+
             <TableBody>
-              {/* 2. Fixed: Applied JuryCase type to 'c' to resolve ESLint errors */}
-              {cases?.map((c: JuryCase) => (
-                <TableRow key={c.id} className="hover:bg-slate-50/50 transition-colors">
+              {cases.map((c) => (
+                <TableRow key={c.id}>
+                  {/* CASE TITLE */}
                   <TableCell className="font-medium">
-                    <Link 
-                      href={`/dashboard/Admin/${c.id}`} 
-                      className="text-blue-600 hover:text-blue-800 font-semibold"
+                    <Link
+                      href={`/dashboard/Admin/${c.id}`}
+                      className="text-blue-600 hover:underline font-semibold"
                     >
                       {c.title}
                     </Link>
                   </TableCell>
-                  
+
+                  {/* STATUS */}
                   <TableCell>
-                    <span className={`capitalize px-2.5 py-0.5 rounded-full text-xs font-medium border ${
-                      c.status === 'active' 
-                        ? 'bg-green-50 text-green-700 border-green-200' 
-                        : 'bg-slate-50 text-slate-700 border-slate-200'
-                    }`}>
+                    <span
+                      className={`capitalize px-2 py-0.5 rounded-full text-xs font-medium border ${
+                        c.status === "current"
+                          ? "bg-green-50 text-green-700 border-green-200"
+                          : "bg-slate-50 text-slate-700 border-slate-200"
+                      }`}
+                    >
                       {c.status}
                     </span>
                   </TableCell>
-                  
-                  <TableCell className="text-slate-600 font-medium">
-                    {c.number_of_attendees}
-                  </TableCell>
 
+                  {/* ATTENDEES */}
+                  <TableCell>{c.number_of_attendees}</TableCell>
+
+                  {/* DOCUMENTS */}
                   <TableCell>
-                    <div className="flex flex-col gap-1">
-                      {c.case_documents && c.case_documents.length > 0 ? (
-                        c.case_documents.map((doc: CaseDocument) => (
-                          <a 
-                            key={doc.id}
-                            href={doc.file_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-xs font-bold text-blue-500 hover:underline flex items-center gap-1"
-                          >
-                            <span className="text-slate-400">📄</span> {doc.file_name}
-                          </a>
-                        ))
+                    <div className="flex flex-col gap-1 max-w-[220px]">
+                      {c.case_documents.length ? (
+                        c.case_documents.map((doc) =>
+                          doc.signedUrl ? (
+                            <a
+                              key={doc.id}
+                              href={doc.signedUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs text-blue-600 hover:underline truncate"
+                              title={doc.original_name}
+                            >
+                              📄 {doc.original_name}
+                            </a>
+                          ) : (
+                            <span
+                              key={doc.id}
+                              className="text-xs text-red-400 italic"
+                            >
+                              Unable to load document
+                            </span>
+                          )
+                        )
                       ) : (
-                        <span className="text-xs text-slate-400 italic">No documents</span>
+                        <span className="text-xs italic text-slate-400">
+                          No documents uploaded
+                        </span>
                       )}
                     </div>
                   </TableCell>
 
+                  {/* MANAGE */}
                   <TableCell className="text-right">
-                    <div className="flex justify-end gap-2">
-                      <AdminScheduleModal 
-                        caseId={c.id} 
-                        currentTitle={c.title} 
-                      />
-                    </div>
+                    <AdminScheduleModal
+                      caseId={c.id}
+                      currentTitle={c.title}
+                    />
                   </TableCell>
                 </TableRow>
               ))}
+
+              {!cases.length && (
+                <TableRow>
+                  <TableCell
+                    colSpan={5}
+                    className="text-center py-20 text-slate-400 italic"
+                  >
+                    No cases found.
+                  </TableCell>
+                </TableRow>
+              )}
             </TableBody>
           </Table>
         </div>
