@@ -19,8 +19,7 @@ export default function Navbar() {
         {/* Logo */}
         <Link href="/" className="flex items-center">
           <Image
-            src="/logo.png" 
-
+            src="/logo.png"
             alt="FocusGroup logo"
             width={120}
             height={32}
@@ -28,13 +27,13 @@ export default function Navbar() {
           />
         </Link>
 
-        {/* Nav */}
+        {/* Navigation */}
         <div className="flex gap-6">
           {navItems.map((item) => (
             <Link
               key={item.href}
               href={item.href}
-              className={`text-sm font-medium ${
+              className={`text-sm font-medium transition-colors ${
                 pathname === item.href
                   ? "text-blue-600"
                   : "text-gray-600 hover:text-blue-500"
