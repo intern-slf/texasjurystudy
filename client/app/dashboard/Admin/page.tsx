@@ -10,61 +10,71 @@ import {
 import { AdminScheduleModal } from "../../../components/AdminScheduleModal";
 import Link from "next/link";
 
-interface JuryCase {
-  id: string;
-  title: string;
-  status: string;
-  number_of_attendees: number;
-  scheduled_at: string | null;
-}
-
+// 1. Corrected interface to match all used properties
 interface CaseDocument {
   id: string;
   file_name: string;
   file_url: string;
-  case_id: string;
+}
+
+interface JuryCase {
+  id: string;
+  title: string;
+  status: string;
+  description: string;
+  number_of_attendees: number;
+  case_documents: CaseDocument[];
 }
 
 export default async function AdminDashboardPage() {
   const supabase = await createClient();
   
-  // Fetch cases and documents from database
   const { data: cases } = await supabase
     .from("cases")
-    .select("*")
+    .select(`
+      *,
+      case_documents (
+        id,
+        file_name,
+        file_url
+      )
+    `)
     .is("deleted_at", null)
     .order("created_at", { ascending: false });
 
-  const { data: documents } = await supabase
-    .from("case_documents")
-    .select("*");
-
   return (
-    <div className="space-y-12">
-      {/* SECTION: CASES */}
+    <div className="space-y-8 p-6">
       <section>
-        <h2 className="text-xl font-bold text-slate-800 mb-4 px-2 border-l-4 border-blue-600">Active Study Cases</h2>
-        <div className="rounded-md border border-slate-200 bg-white">
+        <div className="flex justify-between items-center mb-6 px-2">
+          <h2 className="text-2xl font-bold text-slate-800 border-l-4 border-blue-600 pl-4">
+            Presenter Cases & Evidence
+          </h2>
+        </div>
+        
+        <div className="rounded-md border border-slate-200 bg-white shadow-sm overflow-hidden">
           <Table>
             <TableHeader className="bg-slate-50">
               <TableRow>
                 <TableHead className="font-bold text-slate-700">Case Title</TableHead>
                 <TableHead className="font-bold text-slate-700">Status</TableHead>
                 <TableHead className="font-bold text-slate-700">Attendees</TableHead>
+                <TableHead className="font-bold text-slate-700">Case Documents</TableHead>
                 <TableHead className="text-right font-bold text-slate-700">Manage</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
+              {/* 2. Fixed: Applied JuryCase type to 'c' to resolve ESLint errors */}
               {cases?.map((c: JuryCase) => (
-                <TableRow key={c.id} className="hover:bg-slate-50/50">
+                <TableRow key={c.id} className="hover:bg-slate-50/50 transition-colors">
                   <TableCell className="font-medium">
                     <Link 
                       href={`/dashboard/Admin/${c.id}`} 
-                      className="text-blue-600 hover:text-blue-800 transition-colors font-semibold"
+                      className="text-blue-600 hover:text-blue-800 font-semibold"
                     >
                       {c.title}
                     </Link>
                   </TableCell>
+                  
                   <TableCell>
                     <span className={`capitalize px-2.5 py-0.5 rounded-full text-xs font-medium border ${
                       c.status === 'active' 
@@ -74,55 +84,41 @@ export default async function AdminDashboardPage() {
                       {c.status}
                     </span>
                   </TableCell>
+                  
                   <TableCell className="text-slate-600 font-medium">
                     {c.number_of_attendees}
                   </TableCell>
-                  <TableCell className="text-right">
-                    <AdminScheduleModal 
-                      caseId={c.id} 
-                      currentTitle={c.title} 
-                    />
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      </section>
 
-      {/* SECTION: DOCUMENTS */}
-      <section>
-        <h2 className="text-xl font-bold text-slate-800 mb-4 px-2 border-l-4 border-slate-600">Global Document Repository</h2>
-        <div className="rounded-md border border-slate-200 bg-white">
-          <Table>
-            <TableHeader className="bg-slate-50">
-              <TableRow>
-                <TableHead className="font-bold text-slate-700">Document Name</TableHead>
-                <TableHead className="text-right font-bold text-slate-700">Options</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {documents?.map((doc: CaseDocument) => (
-                <TableRow key={doc.id}>
-                  <TableCell className="text-slate-700 font-medium">{doc.file_name}</TableCell>
+                  <TableCell>
+                    <div className="flex flex-col gap-1">
+                      {c.case_documents && c.case_documents.length > 0 ? (
+                        c.case_documents.map((doc: CaseDocument) => (
+                          <a 
+                            key={doc.id}
+                            href={doc.file_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs font-bold text-blue-500 hover:underline flex items-center gap-1"
+                          >
+                            <span className="text-slate-400">📄</span> {doc.file_name}
+                          </a>
+                        ))
+                      ) : (
+                        <span className="text-xs text-slate-400 italic">No documents</span>
+                      )}
+                    </div>
+                  </TableCell>
+
                   <TableCell className="text-right">
-                    <a 
-                      href={doc.file_url} 
-                      target="_blank" 
-                      className="text-sm font-bold text-blue-600 hover:underline"
-                    >
-                      View Document
-                    </a>
+                    <div className="flex justify-end gap-2">
+                      <AdminScheduleModal 
+                        caseId={c.id} 
+                        currentTitle={c.title} 
+                      />
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
-              {(!documents || documents.length === 0) && (
-                <TableRow>
-                  <TableCell colSpan={2} className="text-center py-10 text-slate-400">
-                    No documents uploaded yet.
-                  </TableCell>
-                </TableRow>
-              )}
             </TableBody>
           </Table>
         </div>
