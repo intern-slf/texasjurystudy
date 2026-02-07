@@ -10,20 +10,31 @@ export default function Footer() {
   }, []);
 
   return (
-    <footer className="w-full border-t bg-white">
-      <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 px-6 py-6 md:flex-row">
-        <p className="text-sm text-gray-500">
-          © {year ?? "—"} FocusGroup. All rights reserved.
+    <footer className="w-full border-t bg-white/80 backdrop-blur">
+      <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-6 px-6 py-8 md:flex-row">
+        {/* Copyright */}
+        <p className="text-sm text-muted-foreground">
+          © {year ?? "—"} Texas Jury Study. All rights reserved.
         </p>
 
-        <div className="flex gap-6 text-sm text-gray-600">
-          <a href="/privacy" className="hover:text-blue-500">
+        {/* Links */}
+        <div className="flex items-center gap-8 text-sm">
+          <a
+            href="/privacy"
+            className="transition-colors text-muted-foreground hover:text-primary"
+          >
             Privacy Policy
           </a>
-          <a href="/terms" className="hover:text-blue-500">
+          <a
+            href="/terms"
+            className="transition-colors text-muted-foreground hover:text-primary"
+          >
             Terms of Service
           </a>
-          <a href="/contact" className="hover:text-blue-500">
+          <a
+            href="/contact"
+            className="transition-colors text-muted-foreground hover:text-primary"
+          >
             Contact
           </a>
         </div>

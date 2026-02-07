@@ -14,34 +14,44 @@ export default function Navbar() {
   const pathname = usePathname();
 
   return (
-    <header className="w-full border-b bg-white">
+    <header className="sticky top-0 z-50 w-full border-b bg-white/80 backdrop-blur">
       <nav className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
         {/* Logo */}
-        <Link href="/" className="flex items-center">
+        <Link href="/" className="flex items-center gap-2">
           <Image
             src="/logo.png"
-            alt="FocusGroup logo"
-            width={120}
-            height={32}
+            alt="Texas Jury Study logo"
+            width={140}
+            height={36}
             priority
+            className="object-contain"
           />
         </Link>
 
         {/* Navigation */}
-        <div className="flex gap-6">
-          {navItems.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`text-sm font-medium transition-colors ${
-                pathname === item.href
-                  ? "text-blue-600"
-                  : "text-gray-600 hover:text-blue-500"
-              }`}
-            >
-              {item.label}
-            </Link>
-          ))}
+        <div className="flex items-center gap-8">
+          {navItems.map((item) => {
+            const isActive = pathname === item.href;
+
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`relative text-sm font-medium transition-colors ${
+                  isActive
+                    ? "text-primary"
+                    : "text-muted-foreground hover:text-primary"
+                }`}
+              >
+                {item.label}
+
+                {/* Active underline */}
+                {isActive && (
+                  <span className="absolute -bottom-1 left-0 h-[2px] w-full rounded-full bg-primary" />
+                )}
+              </Link>
+            );
+          })}
         </div>
       </nav>
     </header>
