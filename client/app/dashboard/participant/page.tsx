@@ -1,58 +1,123 @@
-import { redirect } from "next/navigation";
-import ParticipantForm from "@/components/ParticipantForm";
-import { createClient } from "@/lib/supabase/server";
+import { getParticipantProfile } from "@/lib/participant/getParticipantProfile";
+import Link from "next/link";
 
-export default async function ParticipantDashboard() {
-  // ✅ IMPORTANT: await the client
-  const supabase = await createClient();
+export default async function ParticipantProfilePage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ participantId: string }>;
+  searchParams?: Promise<{ from?: string; caseId?: string }>;
+}) {
+  try {
+    /* =========================
+       UNWRAP ASYNC PARAMS
+       ========================= */
+    const { participantId } = await params;
+    const sp = searchParams ? await searchParams : undefined;
 
-  // 1️⃣ Auth check
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+    const { participant, role } = await getParticipantProfile(
+      participantId,
+      {
+        from: sp?.from,
+        caseId: sp?.caseId,
+      }
+    );
 
-  if (!user) {
-    redirect("/auth/login");
-  }
+    const fromCase =
+      sp?.from === "case" && sp?.caseId;
 
-  // 2️⃣ ROLE GATE — presenters must never see this page
-  const role = user.user_metadata?.role;
-
-  if (role === "presenter") {
-    redirect("/dashboard/presenter");
-  }
-
-  // 3️⃣ Check if participant already submitted form
-  const { data: submission } = await supabase
-    .from("jury_participants")
-    .select("id")
-    .eq("user_id", user.id)
-    .maybeSingle();
-
-  // 4️⃣ If submitted → confirmation UI
-  if (submission) {
     return (
-      <main className="max-w-3xl mx-auto px-6 py-20">
-        <h1 className="text-2xl font-semibold">
-          Participant Dashboard
-        </h1>
+      <div className="max-w-5xl mx-auto p-8 space-y-8">
+        {/* BACK LINK */}
+        {fromCase && role !== "participant" && (
+          <Link
+            href={`/admin/cases/${sp?.caseId}`}
+            className="text-blue-600 underline"
+          >
+            ← Back to Case
+          </Link>
+        )}
 
-        <p className="mt-4 text-muted-foreground">
-          Your profile has been submitted. You will be notified if you
-          are selected for a focus group session.
-        </p>
-      </main>
+        {/* HEADER */}
+        <div className="bg-white border rounded-xl p-6 shadow-sm">
+          <h1 className="text-3xl font-bold">
+            {participant.first_name} {participant.last_name}
+          </h1>
+          <p className="text-slate-500 mt-1">
+            {participant.city}, {participant.state}
+          </p>
+        </div>
+
+        {/* PARTICIPANT DASHBOARD BUTTON */}
+        {role === "participant" && (
+          <div>
+            <Link
+              href="/dashboard/participant"
+              className="inline-block bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+            >
+              Go to My Dashboard
+            </Link>
+          </div>
+        )}
+
+        {/* DEMOGRAPHICS */}
+        <section className="bg-white border rounded-xl p-6">
+          <h2 className="font-bold text-lg mb-4">Demographics</h2>
+          <div className="grid grid-cols-2 gap-3">
+            <p>Age: {participant.age}</p>
+            <p>Gender: {participant.gender}</p>
+            <p>Race: {participant.race}</p>
+            <p>Marital Status: {participant.marital_status}</p>
+            <p>Has Children: {participant.has_children}</p>
+          </div>
+        </section>
+
+        {/* CIVIC */}
+        <section className="bg-white border rounded-xl p-6">
+          <h2 className="font-bold text-lg mb-4">Civic / Legal</h2>
+          <div className="grid grid-cols-2 gap-3">
+            <p>U.S. Citizen: {participant.us_citizen}</p>
+            <p>Served on Jury: {participant.served_on_jury}</p>
+            <p>Convicted Felon: {participant.convicted_felon}</p>
+          </div>
+        </section>
+
+        {/* SOCIOECONOMIC */}
+        <section className="bg-white border rounded-xl p-6">
+          <h2 className="font-bold text-lg mb-4">Socioeconomic</h2>
+          <div className="grid grid-cols-2 gap-3">
+            <p>Education: {participant.education_level}</p>
+            <p>Family Income: {participant.family_income}</p>
+            <p>Currently Employed: {participant.currently_employed}</p>
+            <p>Internet Access: {participant.internet_access}</p>
+          </div>
+        </section>
+
+        {/* BACKGROUND */}
+        <section className="bg-white border rounded-xl p-6">
+          <h2 className="font-bold text-lg mb-4">Background</h2>
+          <div className="grid grid-cols-2 gap-3">
+            <p>Armed Forces: {participant.served_armed_forces}</p>
+            <p>Political Affiliation: {participant.political_affiliation}</p>
+          </div>
+        </section>
+
+        {/* FUTURE */}
+        {role !== "participant" && (
+          <section className="bg-slate-50 border rounded-xl p-6">
+            <h2 className="font-bold text-lg mb-2">Admin / Presenter Area</h2>
+            <p className="text-slate-500 text-sm">
+              Actions will appear here later.
+            </p>
+          </section>
+        )}
+      </div>
+    );
+  } catch (err: any) {
+    return (
+      <p className="text-center text-red-500 mt-20">
+        {err.message || "Something went wrong"}
+      </p>
     );
   }
-
-  // 5️⃣ Otherwise → show the participant form
-  return (
-    <main className="max-w-3xl mx-auto px-6 py-20">
-      <h1 className="text-2xl font-semibold mb-6">
-        Juror Information Form
-      </h1>
-
-      <ParticipantForm userId={user.id} />
-    </main>
-  );
 }
