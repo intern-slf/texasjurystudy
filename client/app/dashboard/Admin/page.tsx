@@ -38,6 +38,20 @@ type AdminTab = "all" | "approved" | "submitted";
    SERVER ACTIONS
    ========================= */
 
+async function unapproveCase(formData: FormData) {
+  "use server";
+
+  const caseId = formData.get("caseId") as string;
+  const supabase = await createClient();
+
+  await supabase
+    .from("cases")
+    .update({ admin_status: "all" })
+    .eq("id", caseId);
+
+  revalidatePath("/dashboard/Admin");
+}
+
 async function approveCase(formData: FormData) {
   "use server";
   const caseId = formData.get("caseId") as string;
@@ -64,19 +78,6 @@ async function approveCase(formData: FormData) {
       await sendApprovalEmail(profile.email, updatedCase.title);
     }
   }
-
-  revalidatePath("/dashboard/Admin");
-}
-
-async function submitCase(formData: FormData) {
-  "use server";
-  const caseId = formData.get("caseId") as string;
-  const supabase = await createClient();
-
-  await supabase
-    .from("cases")
-    .update({ admin_status: "submitted" })
-    .eq("id", caseId);
 
   revalidatePath("/dashboard/Admin");
 }
@@ -144,6 +145,7 @@ export default async function AdminDashboardPage({
 
   return (
     <div className="space-y-8">
+      {/* ================= HEADER ================= */}
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold">
           {tab === "all" && "All Cases"}
@@ -151,21 +153,31 @@ export default async function AdminDashboardPage({
           {tab === "submitted" && "Submitted Cases"}
         </h2>
 
-        {/* ✨ NEW */}
+        {/* ✅ Standalone form for building session */}
         {tab === "approved" && (
-          <Link
-            href="/dashboard/Admin/sessions/new"
-            className="bg-black text-white px-4 py-2 rounded"
+          <form
+            id="buildSessionForm"
+            action="/dashboard/Admin/sessions/new"
+            method="GET"
           >
-            Build Session
-          </Link>
+            <button
+              type="submit"
+              className="bg-black text-white px-4 py-2 rounded"
+            >
+              Build Session
+            </button>
+          </form>
         )}
       </div>
 
+      {/* ================= TABLE ================= */}
       <div className="rounded-md border bg-white shadow-sm overflow-hidden">
         <Table>
           <TableHeader>
             <TableRow>
+              {/* Checkbox column */}
+              {tab === "approved" && <TableHead className="w-10"></TableHead>}
+
               <TableHead>Case Title</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Attendees</TableHead>
@@ -177,6 +189,19 @@ export default async function AdminDashboardPage({
           <TableBody>
             {cases.map((c) => (
               <TableRow key={c.id}>
+                {/* ✅ Checkbox */}
+                {tab === "approved" && (
+                  <TableCell>
+                    <input
+                      type="checkbox"
+                      name="selectedCases"
+                      value={c.id}
+                      form="buildSessionForm"
+                      className="h-4 w-4"
+                    />
+                  </TableCell>
+                )}
+
                 <TableCell className="font-medium text-slate-900">
                   <Link
                     href={`/dashboard/Admin/${c.id}`}
@@ -230,12 +255,12 @@ export default async function AdminDashboardPage({
                     )}
 
                     {tab === "approved" && (
-                      <form action={submitCase}>
+                      <form action={unapproveCase}>
                         <input type="hidden" name="caseId" value={c.id} />
                         <AdminActionButton
-                          label="Submit"
-                          activeColor="bg-blue-600"
-                          hoverColor="hover:bg-blue-700"
+                          label="Unapprove"
+                          activeColor="bg-red-600"
+                          hoverColor="hover:bg-red-700"
                         />
                       </form>
                     )}
@@ -253,7 +278,7 @@ export default async function AdminDashboardPage({
             {!cases.length && (
               <TableRow>
                 <TableCell
-                  colSpan={5}
+                  colSpan={tab === "approved" ? 6 : 5}
                   className="text-center py-16 text-slate-400 italic"
                 >
                   No cases found in this section.
