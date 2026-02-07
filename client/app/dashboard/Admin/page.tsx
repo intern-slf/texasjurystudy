@@ -91,7 +91,7 @@ export default async function AdminDashboardPage({
   searchParams: Promise<{ tab?: AdminTab }>;
 }) {
   const supabase = await createClient();
-  
+
   const resolvedParams = await searchParams;
   const tab: AdminTab = resolvedParams?.tab ?? "all";
 
@@ -144,11 +144,23 @@ export default async function AdminDashboardPage({
 
   return (
     <div className="space-y-8">
-      <h2 className="text-2xl font-bold">
-        {tab === "all" && "All Cases"}
-        {tab === "approved" && "Approved Cases"}
-        {tab === "submitted" && "Submitted Cases"}
-      </h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl font-bold">
+          {tab === "all" && "All Cases"}
+          {tab === "approved" && "Approved Cases"}
+          {tab === "submitted" && "Submitted Cases"}
+        </h2>
+
+        {/* ✨ NEW */}
+        {tab === "approved" && (
+          <Link
+            href="/dashboard/Admin/sessions/new"
+            className="bg-black text-white px-4 py-2 rounded"
+          >
+            Build Session
+          </Link>
+        )}
+      </div>
 
       <div className="rounded-md border bg-white shadow-sm overflow-hidden">
         <Table>
@@ -209,10 +221,10 @@ export default async function AdminDashboardPage({
                     {tab === "all" && (
                       <form action={approveCase}>
                         <input type="hidden" name="caseId" value={c.id} />
-                        <AdminActionButton 
-                          label="Approve" 
-                          activeColor="bg-green-600" 
-                          hoverColor="hover:bg-green-700" 
+                        <AdminActionButton
+                          label="Approve"
+                          activeColor="bg-green-600"
+                          hoverColor="hover:bg-green-700"
                         />
                       </form>
                     )}
@@ -220,10 +232,10 @@ export default async function AdminDashboardPage({
                     {tab === "approved" && (
                       <form action={submitCase}>
                         <input type="hidden" name="caseId" value={c.id} />
-                        <AdminActionButton 
-                          label="Submit" 
-                          activeColor="bg-blue-600" 
-                          hoverColor="hover:bg-blue-700" 
+                        <AdminActionButton
+                          label="Submit"
+                          activeColor="bg-blue-600"
+                          hoverColor="hover:bg-blue-700"
                         />
                       </form>
                     )}
