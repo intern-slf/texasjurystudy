@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
-// Relative path from app/dashboard/Admin/ to lib/supabase/server
 import { createClient } from "../../../lib/supabase/server";
+import AdminSidebar from "@/components/AdminSidebar";
 
 export default async function AdminLayout({
   children,
@@ -8,60 +8,108 @@ export default async function AdminLayout({
   children: React.ReactNode;
 }) {
   const supabase = await createClient();
-  
-  // 1. Authenticate the user session on the server
+
+  /* =========================
+      AUTH CHECK
+     ========================= */
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Redirect to login if no active session exists
   if (!user) {
     redirect("/login");
   }
 
-  // 2. Verify the 'admin' role from the roles table
+  /* =========================
+      ROLE CHECK
+     ========================= */
   const { data: roleData } = await supabase
     .from("roles")
     .select("role")
     .eq("user_id", user.id)
     .single();
 
-  // If the user is authenticated but not an admin, send them to the user dashboard
   if (roleData?.role !== "admin") {
     redirect("/dashboard");
   }
 
+  /* =========================
+      FETCH COUNTS FOR SIDEBAR
+     ========================= */
+  // We fetch only the admin_status column to minimize data transfer
+  const { data: allCases } = await supabase
+    .from("cases")
+    .select("admin_status");
+
+  // Calculate counts for each status badge accurately
+  const counts = {
+    all: allCases?.filter((c) => c.admin_status === "all").length || 0,
+    approved: allCases?.filter((c) => c.admin_status === "approved").length || 0,
+    submitted: allCases?.filter((c) => c.admin_status === "submitted").length || 0,
+  };
+
   return (
-    <div className="flex flex-col min-h-screen bg-slate-50/30">
-      {/* Admin Header */}
-      <header className="sticky top-0 z-10 border-b bg-white px-8 py-4 shadow-sm">
-        <div className="flex items-center justify-between">
-          <div className="flex flex-col">
-            <h1 className="text-xl font-bold text-slate-900">Texas Jury Study</h1>
-            <span className="text-xs font-semibold uppercase tracking-wider text-blue-600">
-              Administrator Portal
-            </span>
+    <div className="flex min-h-screen bg-slate-50/30 font-sans">
+      {/* SIDEBAR 
+          Note: 'active' is a fallback; the sidebar component uses 
+          useSearchParams to highlight the correct tab dynamically.
+      */}
+      <AdminSidebar active="all" counts={counts} />
+
+      {/* MAIN AREA */}
+      <div className="flex flex-col flex-1 overflow-hidden">
+        {/* HEADER */}
+        <header className="sticky top-0 z-20 border-b bg-white/80 backdrop-blur-md px-8 py-4 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div className="flex flex-col">
+              <h1 className="text-xl font-extrabold text-slate-900 tracking-tight">
+                Texas Jury Study
+              </h1>
+              <div className="flex items-center gap-2">
+                <span className="h-2 w-2 rounded-full bg-blue-600 animate-pulse" />
+                <span className="text-[10px] font-bold uppercase tracking-widest text-blue-600">
+                  Administrator Portal
+                </span>
+              </div>
+            </div>
+
+            <nav className="flex items-center gap-6">
+              <div className="flex flex-col items-end">
+                <span className="text-[10px] uppercase font-bold text-slate-400">
+                  Current User
+                </span>
+                <span className="text-sm font-semibold text-slate-700">
+                  {user.email}
+                </span>
+              </div>
+              <div className="h-9 w-9 rounded-full bg-gradient-to-tr from-slate-200 to-slate-100 border border-slate-300 flex items-center justify-center text-xs font-bold text-slate-600 shadow-sm">
+                {user.email?.charAt(0).toUpperCase()}
+              </div>
+            </nav>
           </div>
-          
-          {/* You can add a logout button or profile dropdown here later */}
-          <nav className="flex items-center gap-4">
-            <span className="text-sm text-slate-500">
-              Logged in as: <span className="font-medium text-slate-700">{user.email}</span>
-            </span>
-          </nav>
-        </div>
-      </header>
+        </header>
 
-      {/* Admin Content Area */}
-      <main className="flex-1 p-8">
-        <div className="mx-auto max-w-7xl">
-          {children}
-        </div>
-      </main>
+        {/* CONTENT AREA */}
+        <main className="flex-1 overflow-y-auto p-8 custom-scrollbar">
+          <div className="mx-auto max-w-7xl animate-in fade-in slide-in-from-bottom-4 duration-500">
+            {children}
+          </div>
+        </main>
 
-      <footer className="border-t py-4 text-center text-xs text-slate-400">
-        &copy; 2026 Texas Jury Study. Confidential Admin Access.
-      </footer>
+        {/* FOOTER */}
+        <footer className="border-t bg-white px-8 py-4 flex justify-between items-center text-[10px] font-medium text-slate-400 uppercase tracking-widest">
+          <div className="flex items-center gap-4">
+            <span>&copy; 2026 Texas Jury Study</span>
+            <span className="h-3 w-[1px] bg-slate-200" />
+            <span className="text-slate-300">v1.0.4</span>
+          </div>
+          <span className="flex items-center gap-2">
+            <span className="h-1 w-1 rounded-full bg-slate-300" />
+            Confidential Admin Access
+            <span className="h-1 w-1 rounded-full bg-slate-300" />
+          </span>
+        </footer>
+      </div>
     </div>
   );
 }

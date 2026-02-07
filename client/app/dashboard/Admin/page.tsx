@@ -1,4 +1,4 @@
-import { createClient } from "../../../lib/supabase/server";
+import { createClient } from "@/lib/supabase/server";
 import {
   Table,
   TableBody,
@@ -6,9 +6,11 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "../../../components/ui/table";
-import { AdminScheduleModal } from "../../../components/AdminScheduleModal";
+} from "@/components/ui/table";
 import Link from "next/link";
+import { revalidatePath } from "next/cache";
+import { sendApprovalEmail } from "@/lib/mail";
+import { AdminActionButton } from "@/components/AdminActionButton";
 
 /* =========================
    TYPES
@@ -25,19 +27,76 @@ interface JuryCase {
   id: string;
   title: string;
   status: "current" | "previous";
+  admin_status: "all" | "approved" | "submitted";
   number_of_attendees: number;
   case_documents: CaseDocument[];
+}
+
+type AdminTab = "all" | "approved" | "submitted";
+
+/* =========================
+   SERVER ACTIONS
+   ========================= */
+
+async function approveCase(formData: FormData) {
+  "use server";
+  const caseId = formData.get("caseId") as string;
+  const supabase = await createClient();
+
+  // 1. Update status and fetch case/presenter details
+  const { data: updatedCase } = await supabase
+    .from("cases")
+    .update({ admin_status: "approved" })
+    .eq("id", caseId)
+    .select('title, user_id')
+    .single();
+
+  if (updatedCase) {
+    // 2. Fetch presenter email from profiles
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("email")
+      .eq("id", updatedCase.user_id)
+      .single();
+
+    if (profile?.email) {
+      // 3. Trigger notification
+      await sendApprovalEmail(profile.email, updatedCase.title);
+    }
+  }
+
+  revalidatePath("/dashboard/Admin");
+}
+
+async function submitCase(formData: FormData) {
+  "use server";
+  const caseId = formData.get("caseId") as string;
+  const supabase = await createClient();
+
+  await supabase
+    .from("cases")
+    .update({ admin_status: "submitted" })
+    .eq("id", caseId);
+
+  revalidatePath("/dashboard/Admin");
 }
 
 /* =========================
    PAGE
    ========================= */
 
-export default async function AdminDashboardPage() {
+export default async function AdminDashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: AdminTab }>;
+}) {
   const supabase = await createClient();
+  
+  const resolvedParams = await searchParams;
+  const tab: AdminTab = resolvedParams?.tab ?? "all";
 
   /* =========================
-     FETCH CASES + DOCUMENTS
+      FETCH CASES BY TAB
      ========================= */
 
   const { data: rawCases } = await supabase
@@ -46,6 +105,7 @@ export default async function AdminDashboardPage() {
       id,
       title,
       status,
+      admin_status,
       number_of_attendees,
       case_documents (
         id,
@@ -53,10 +113,11 @@ export default async function AdminDashboardPage() {
         storage_path
       )
     `)
+    .eq("admin_status", tab)
     .order("created_at", { ascending: false });
 
   /* =========================
-     CREATE SIGNED URLs
+      SIGNED URLS
      ========================= */
 
   const cases: JuryCase[] = await Promise.all(
@@ -65,7 +126,7 @@ export default async function AdminDashboardPage() {
         (c.case_documents ?? []).map(async (doc) => {
           const { data } = await supabase.storage
             .from("case-documents")
-            .createSignedUrl(doc.storage_path, 60 * 10); // 10 minutes
+            .createSignedUrl(doc.storage_path, 600);
 
           return {
             ...doc,
@@ -81,117 +142,115 @@ export default async function AdminDashboardPage() {
     })
   );
 
-  /* =========================
-     UI
-     ========================= */
-
   return (
-    <div className="space-y-8 p-6">
-      <section>
-        <div className="flex justify-between items-center mb-6 px-2">
-          <h2 className="text-2xl font-bold text-slate-800 border-l-4 border-blue-600 pl-4">
-            Presenter Cases & Documents
-          </h2>
-        </div>
+    <div className="space-y-8">
+      <h2 className="text-2xl font-bold">
+        {tab === "all" && "All Cases"}
+        {tab === "approved" && "Approved Cases"}
+        {tab === "submitted" && "Submitted Cases"}
+      </h2>
 
-        <div className="rounded-md border border-slate-200 bg-white shadow-sm overflow-hidden">
-          <Table>
-            <TableHeader className="bg-slate-50">
-              <TableRow>
-                <TableHead>Case Title</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Attendees</TableHead>
-                <TableHead>Respective Documents</TableHead>
-                <TableHead className="text-right">Manage</TableHead>
-              </TableRow>
-            </TableHeader>
+      <div className="rounded-md border bg-white shadow-sm overflow-hidden">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Case Title</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Attendees</TableHead>
+              <TableHead>Documents</TableHead>
+              <TableHead className="text-right">Action</TableHead>
+            </TableRow>
+          </TableHeader>
 
-            <TableBody>
-              {cases.map((c) => (
-                <TableRow key={c.id}>
-                  {/* CASE TITLE */}
-                  <TableCell className="font-medium">
-                    <Link
-                      href={`/dashboard/Admin/${c.id}`}
-                      className="text-blue-600 hover:underline font-semibold"
-                    >
-                      {c.title}
-                    </Link>
-                  </TableCell>
-
-                  {/* STATUS */}
-                  <TableCell>
-                    <span
-                      className={`capitalize px-2 py-0.5 rounded-full text-xs font-medium border ${
-                        c.status === "current"
-                          ? "bg-green-50 text-green-700 border-green-200"
-                          : "bg-slate-50 text-slate-700 border-slate-200"
-                      }`}
-                    >
-                      {c.status}
-                    </span>
-                  </TableCell>
-
-                  {/* ATTENDEES */}
-                  <TableCell>{c.number_of_attendees}</TableCell>
-
-                  {/* DOCUMENTS */}
-                  <TableCell>
-                    <div className="flex flex-col gap-1 max-w-[220px]">
-                      {c.case_documents.length ? (
-                        c.case_documents.map((doc) =>
-                          doc.signedUrl ? (
-                            <a
-                              key={doc.id}
-                              href={doc.signedUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-xs text-blue-600 hover:underline truncate"
-                              title={doc.original_name}
-                            >
-                              📄 {doc.original_name}
-                            </a>
-                          ) : (
-                            <span
-                              key={doc.id}
-                              className="text-xs text-red-400 italic"
-                            >
-                              Unable to load document
-                            </span>
-                          )
-                        )
-                      ) : (
-                        <span className="text-xs italic text-slate-400">
-                          No documents uploaded
-                        </span>
-                      )}
-                    </div>
-                  </TableCell>
-
-                  {/* MANAGE */}
-                  <TableCell className="text-right">
-                    <AdminScheduleModal
-                      caseId={c.id}
-                      currentTitle={c.title}
-                    />
-                  </TableCell>
-                </TableRow>
-              ))}
-
-              {!cases.length && (
-                <TableRow>
-                  <TableCell
-                    colSpan={5}
-                    className="text-center py-20 text-slate-400 italic"
+          <TableBody>
+            {cases.map((c) => (
+              <TableRow key={c.id}>
+                <TableCell className="font-medium text-slate-900">
+                  <Link
+                    href={`/dashboard/Admin/${c.id}`}
+                    className="text-blue-600 hover:underline"
                   >
-                    No cases found.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </div>
-      </section>
+                    {c.title}
+                  </Link>
+                </TableCell>
+
+                <TableCell>
+                  <span className="capitalize text-xs font-semibold px-2 py-1 bg-slate-100 rounded">
+                    {c.status}
+                  </span>
+                </TableCell>
+
+                <TableCell className="text-slate-600">{c.number_of_attendees}</TableCell>
+
+                <TableCell>
+                  {c.case_documents.length ? (
+                    c.case_documents.map((doc) =>
+                      doc.signedUrl ? (
+                        <a
+                          key={doc.id}
+                          href={doc.signedUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block text-xs text-blue-600 hover:underline truncate max-w-[200px]"
+                        >
+                          📄 {doc.original_name}
+                        </a>
+                      ) : null
+                    )
+                  ) : (
+                    <span className="text-xs text-slate-400 italic">
+                      No documents
+                    </span>
+                  )}
+                </TableCell>
+
+                <TableCell className="text-right">
+                  <div className="flex justify-end">
+                    {tab === "all" && (
+                      <form action={approveCase}>
+                        <input type="hidden" name="caseId" value={c.id} />
+                        <AdminActionButton 
+                          label="Approve" 
+                          activeColor="bg-green-600" 
+                          hoverColor="hover:bg-green-700" 
+                        />
+                      </form>
+                    )}
+
+                    {tab === "approved" && (
+                      <form action={submitCase}>
+                        <input type="hidden" name="caseId" value={c.id} />
+                        <AdminActionButton 
+                          label="Submit" 
+                          activeColor="bg-blue-600" 
+                          hoverColor="hover:bg-blue-700" 
+                        />
+                      </form>
+                    )}
+
+                    {tab === "submitted" && (
+                      <span className="text-xs text-slate-400 font-medium italic bg-slate-50 px-2 py-1 rounded">
+                        Finalized
+                      </span>
+                    )}
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))}
+
+            {!cases.length && (
+              <TableRow>
+                <TableCell
+                  colSpan={5}
+                  className="text-center py-16 text-slate-400 italic"
+                >
+                  No cases found in this section.
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
     </div>
   );
 }
