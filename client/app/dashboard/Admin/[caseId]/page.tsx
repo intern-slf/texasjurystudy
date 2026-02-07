@@ -205,9 +205,16 @@ export default async function AdminCaseDetailPage({
             <TableBody>
               {participants?.length ? (
                 participants.map((p: JuryParticipant) => (
-                  <TableRow key={p.id}>
+                  <TableRow key={p.id} className="hover:bg-slate-50">
                     <TableCell>
-                      {p.first_name} {p.last_name}
+                      <a
+                        href={`/dashboard/participant/${p.id}?from=case&caseId=${caseId}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-medium text-blue-600 hover:underline"
+                      >
+                        {p.first_name} {p.last_name}
+                      </a>
                     </TableCell>
                     <TableCell>
                       {p.city}, {p.state}
