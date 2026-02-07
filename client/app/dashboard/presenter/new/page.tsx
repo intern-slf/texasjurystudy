@@ -16,9 +16,6 @@ export default function NewCasePage() {
     scheduled_at: "",
   });
 
-  /* ===========================
-      FILTER STATE (JSON)
-     =========================== */
   const [filters, setFilters] = useState({
     age: { min: "", max: "" },
     gender: [] as string[],
@@ -50,7 +47,7 @@ export default function NewCasePage() {
   const [loading, setLoading] = useState(false);
 
   /* ===========================
-      CREATE CASE
+      CREATE CASE (SOFT FILTER READY)
      =========================== */
   async function createCaseAndUpload() {
     if (!form.title.trim()) {
@@ -67,6 +64,37 @@ export default function NewCasePage() {
       return;
     }
 
+    // SANITIZE: Ensure arrays are present and values are typed for the SQL ranking function
+    const softFilterPayload = {
+      age: {
+        min: filters.age.min ? Number(filters.age.min) : 18,
+        max: filters.age.max ? Number(filters.age.max) : 100,
+      },
+      gender: filters.gender || [],
+      race: filters.race || [],
+      location: {
+        city: filters.location.city || [],
+        county: filters.location.county || [],
+        state: filters.location.state || [],
+      },
+      eligibility: {
+        served_on_jury: filters.eligibility.served_on_jury || "Any",
+        convicted_felon: filters.eligibility.convicted_felon || "Any",
+        us_citizen: filters.eligibility.us_citizen || "Any",
+        has_children: filters.eligibility.has_children || "Any",
+        served_armed_forces: filters.eligibility.served_armed_forces || "Any",
+        currently_employed: filters.eligibility.currently_employed || "Any",
+        internet_access: filters.eligibility.internet_access || "Any",
+      },
+      socioeconomic: {
+        marital_status: filters.socioeconomic.marital_status || [],
+        education_level: filters.socioeconomic.education_level || [],
+        industry: filters.socioeconomic.industry || "",
+        family_income: filters.socioeconomic.family_income || [],
+      },
+      political_affiliation: filters.political_affiliation || [],
+    };
+
     const { data, error } = await supabase
       .from("cases")
       .insert({
@@ -76,38 +104,8 @@ export default function NewCasePage() {
         number_of_attendees: form.number_of_attendees,
         documentation_type: form.documentation_type,
         status: "current",
-        scheduled_at: form.scheduled_at
-          ? new Date(form.scheduled_at).toISOString()
-          : null,
-
-        filters: {
-          age: {
-            min: filters.age.min ? Number(filters.age.min) : null,
-            max: filters.age.max ? Number(filters.age.max) : null,
-          },
-          gender: filters.gender,
-          race: filters.race,
-          location: filters.location,
-          eligibility: {
-            served_on_jury: filters.eligibility.served_on_jury || null,
-            convicted_felon: filters.eligibility.convicted_felon || null,
-            us_citizen: filters.eligibility.us_citizen || null,
-            has_children: filters.eligibility.has_children || null,
-            served_armed_forces: filters.eligibility.served_armed_forces || null,
-            currently_employed: filters.eligibility.currently_employed || null,
-            internet_access: filters.eligibility.internet_access || null,
-          },
-          socioeconomic: {
-            marital_status: filters.socioeconomic.marital_status,
-            education_level: filters.socioeconomic.education_level,
-            industry: filters.socioeconomic.industry || null,
-            family_income: filters.socioeconomic.family_income,
-          },
-          political_affiliation:
-            filters.political_affiliation.length
-              ? filters.political_affiliation
-              : null,
-        },
+        scheduled_at: form.scheduled_at ? new Date(form.scheduled_at).toISOString() : null,
+        filters: softFilterPayload, // This JSON is now ready for RPC ranking
       })
       .select()
       .single();
@@ -125,24 +123,12 @@ export default function NewCasePage() {
   /* ===========================
       UI HELPERS
      =========================== */
-  function YesNoSelect({
-    label,
-    value,
-    onChange,
-  }: {
-    label: string;
-    value: string;
-    onChange: (v: string) => void;
-  }) {
+  function YesNoSelect({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void; }) {
     return (
       <div className="flex flex-col space-y-1">
         <label className="text-sm font-medium text-foreground">{label}</label>
-        <select
-          className="input mt-1"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-        >
-          <option value="">Any</option>
+        <select className="input mt-1" value={value} onChange={(e) => onChange(e.target.value)}>
+          <option value="">Any (No weight)</option>
           <option value="Yes">Yes</option>
           <option value="No">No</option>
         </select>
@@ -150,33 +136,18 @@ export default function NewCasePage() {
     );
   }
 
-  function MultiCheckbox({
-    label,
-    options,
-    values,
-    onChange,
-  }: {
-    label: string;
-    options: string[];
-    values: string[];
-    onChange: (v: string[]) => void;
-  }) {
+  function MultiCheckbox({ label, options, values, onChange }: { label: string; options: string[]; values: string[]; onChange: (v: string[]) => void; }) {
     return (
       <div className="space-y-2">
         <p className="text-sm font-medium text-foreground">{label}</p>
         <div className="flex flex-wrap gap-4">
           {options.map((opt) => (
-            <label key={opt} className="flex items-center gap-2 text-sm cursor-pointer">
+            <label key={opt} className="flex items-center gap-2 text-sm cursor-pointer hover:text-primary transition-colors">
               <input
                 type="checkbox"
                 checked={values.includes(opt)}
-                onChange={() =>
-                  onChange(
-                    values.includes(opt)
-                      ? values.filter((v) => v !== opt)
-                      : [...values, opt]
-                  )
-                }
+                onChange={() => onChange(values.includes(opt) ? values.filter((v) => v !== opt) : [...values, opt])}
+                className="rounded border-gray-300 text-primary focus:ring-primary"
               />
               {opt}
             </label>
@@ -187,255 +158,93 @@ export default function NewCasePage() {
   }
 
   return (
-    <main className="flex min-h-screen">
+    <main className="flex min-h-screen bg-background">
       <PresenterSidebar />
 
-      <section className="flex-1 max-w-3xl px-8 py-20 space-y-6">
-        <h1 className="text-2xl font-semibold">New Case</h1>
+      <section className="flex-1 max-w-4xl px-8 py-12 space-y-8 overflow-y-auto">
+        <header>
+          <h1 className="text-3xl font-bold tracking-tight">Create New Case</h1>
+          <p className="text-muted-foreground mt-2">Set up your case details and define juror preferences for ranking.</p>
+        </header>
 
         {!caseId ? (
-          <>
-            <input
-              className="input"
-              placeholder="Title"
-              value={form.title}
-              onChange={(e) =>
-                setForm({ ...form, title: e.target.value })
-              }
-            />
-
-            <textarea
-              className="input"
-              placeholder="Description"
-              value={form.description}
-              onChange={(e) =>
-                setForm({ ...form, description: e.target.value })
-              }
-            />
-
-            {/* PREFERENCE ORDER HEADER */}
-            <div className="pt-4 border-t">
-              <h2 className="text-xl font-bold text-foreground">Preference Order</h2>
-              <p className="text-sm text-muted-foreground mb-6">Define Juror Demographic Preferences</p>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">
-                Scheduled Date & Time
-              </label>
+          <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            {/* CORE INFO */}
+            <div className="grid gap-4">
               <input
-                type="datetime-local"
-                className="input"
-                value={form.scheduled_at}
-                onChange={(e) =>
-                  setForm({ ...form, scheduled_at: e.target.value })
-                }
+                className="input text-lg font-medium"
+                placeholder="Case Title"
+                value={form.title}
+                onChange={(e) => setForm({ ...form, title: e.target.value })}
               />
-            </div>   
+              <textarea
+                className="input min-h-[120px]"
+                placeholder="Briefly describe the case and target audience..."
+                value={form.description}
+                onChange={(e) => setForm({ ...form, description: e.target.value })}
+              />
+            </div>
 
-            {/* AGE SECTION */}
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Age Range</label>
-              <div className="flex gap-4">
-                <input
-                  type="number"
-                  className="input flex-1"
-                  placeholder="Min age"
-                  value={filters.age.min}
-                  onChange={(e) =>
-                    setFilters({
-                      ...filters,
-                      age: { ...filters.age, min: e.target.value },
-                    })
-                  }
-                />
-                <input
-                  type="number"
-                  className="input flex-1"
-                  placeholder="Max age"
-                  value={filters.age.max}
-                  onChange={(e) =>
-                    setFilters({
-                      ...filters,
-                      age: { ...filters.age, max: e.target.value },
-                    })
-                  }
-                />
+            <div className="pt-6 border-t">
+              <h2 className="text-xl font-bold flex items-center gap-2">
+                Preference Order <span className="text-xs font-normal bg-secondary px-2 py-1 rounded text-secondary-foreground">Soft Filter Mode</span>
+              </h2>
+              <p className="text-sm text-muted-foreground mb-6">Participants meeting these criteria will appear at the top of your list.</p>
+            </div>
+
+            {/* PREFERENCES GRID */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div className="space-y-6">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Scheduled Date & Time</label>
+                  <input type="datetime-local" className="input" value={form.scheduled_at} onChange={(e) => setForm({ ...form, scheduled_at: e.target.value })} />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Preferred Age Range</label>
+                  <div className="flex gap-4">
+                    <input type="number" className="input flex-1" placeholder="Min" value={filters.age.min} onChange={(e) => setFilters({ ...filters, age: { ...filters.age, min: e.target.value } })} />
+                    <input type="number" className="input flex-1" placeholder="Max" value={filters.age.max} onChange={(e) => setFilters({ ...filters, age: { ...filters.age, max: e.target.value } })} />
+                  </div>
+                </div>
+
+                <MultiCheckbox label="Gender Preference" options={["Male", "Female", "Other"]} values={filters.gender} onChange={(v) => setFilters({ ...filters, gender: v })} />
+                <MultiCheckbox label="Race / Ethnicity" options={["Caucasian", "African American", "Asian", "Latino/Hispanic", "Other"]} values={filters.race} onChange={(v) => setFilters({ ...filters, race: v })} />
+              </div>
+
+              <div className="space-y-6">
+                <div className="bg-secondary/20 p-4 rounded-lg space-y-4">
+                  <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Legal & Eligibility</p>
+                  <YesNoSelect label="U.S. Citizen?" value={filters.eligibility.us_citizen} onChange={(v) => setFilters({ ...filters, eligibility: { ...filters.eligibility, us_citizen: v } })} />
+                  <YesNoSelect label="Convicted felon?" value={filters.eligibility.convicted_felon} onChange={(v) => setFilters({ ...filters, eligibility: { ...filters.eligibility, convicted_felon: v } })} />
+                  <YesNoSelect label="Served on a jury?" value={filters.eligibility.served_on_jury} onChange={(v) => setFilters({ ...filters, eligibility: { ...filters.eligibility, served_on_jury: v } })} />
+                </div>
+                
+                <MultiCheckbox label="Political Affiliation" options={["Democrat", "Republican", "Independent", "Other"]} values={filters.political_affiliation} onChange={(v) => setFilters({ ...filters, political_affiliation: v })} />
               </div>
             </div>
-
-            <MultiCheckbox
-              label="Gender"
-              options={["Male", "Female", "Other"]}
-              values={filters.gender}
-              onChange={(v) =>
-                setFilters({ ...filters, gender: v })
-              }
-            />
-
-            <MultiCheckbox
-              label="Race"
-              options={[
-                "Caucasian",
-                "African American",
-                "Asian",
-                "Native American",
-                "Middle Eastern",
-                "Latino/Hispanic",
-                "Multi-racial",
-                "Other"
-              ]}
-              values={filters.race}
-              onChange={(v) =>
-                setFilters({ ...filters, race: v })
-              }
-            />
-
-            <MultiCheckbox
-              label="State"
-              options={["Alabama","Alaska","Arizona","Arkansas","California","Colorado","Connecticut",
-                        "Delaware","Florida","Georgia","Hawaii","Idaho","Illinois","Indiana","Iowa",
-                        "Kansas","Kentucky","Louisiana","Maine","Maryland","Massachusetts","Michigan",
-                        "Minnesota","Mississippi","Missouri","Montana","Nebraska","Nevada",
-                        "New Hampshire","New Jersey","New Mexico","New York","North Carolina",
-                        "North Dakota","Ohio","Oklahoma","Oregon","Pennsylvania","Rhode Island",
-                        "South Carolina","South Dakota","Tennessee","Texas","Utah","Vermont",
-                        "Virginia","Washington","West Virginia","Wisconsin","Wyoming",]}
-              values={filters.location.state}
-              onChange={(v) =>
-                setFilters({
-                  ...filters,
-                  location: { ...filters.location, state: v },
-                })
-              }
-            />
-
-            {/* ELIGIBILITY */}
-            <div className="space-y-4">
-              <YesNoSelect label="Served on a jury?" value={filters.eligibility.served_on_jury}
-                onChange={(v) => setFilters({ ...filters, eligibility: { ...filters.eligibility, served_on_jury: v } })} />
-
-              <YesNoSelect label="Convicted felon?" value={filters.eligibility.convicted_felon}
-                onChange={(v) => setFilters({ ...filters, eligibility: { ...filters.eligibility, convicted_felon: v } })} />
-
-              <YesNoSelect label="U.S. Citizen?" value={filters.eligibility.us_citizen}
-                onChange={(v) => setFilters({ ...filters, eligibility: { ...filters.eligibility, us_citizen: v } })} />
-
-              <YesNoSelect label="Has children?" value={filters.eligibility.has_children}
-                onChange={(v) => setFilters({ ...filters, eligibility: { ...filters.eligibility, has_children: v } })} />
-
-              <YesNoSelect label="Served in armed forces?" value={filters.eligibility.served_armed_forces}
-                onChange={(v) => setFilters({ ...filters, eligibility: { ...filters.eligibility, served_armed_forces: v } })} />
-
-              <YesNoSelect label="Currently employed?" value={filters.eligibility.currently_employed}
-                onChange={(v) => setFilters({ ...filters, eligibility: { ...filters.eligibility, currently_employed: v } })} />
-
-              <YesNoSelect label="Internet access?" value={filters.eligibility.internet_access}
-                onChange={(v) => setFilters({ ...filters, eligibility: { ...filters.eligibility, internet_access: v } })} />
-            </div>
-
-            {/* SOCIOECONOMIC */}
-            <MultiCheckbox
-              label="Marital Status"
-              options={[
-                "Single / Never Married",
-                "Married",
-                "Divorced",
-                "Separated",
-                "Widowed"
-              ]}
-              values={filters.socioeconomic.marital_status}
-              onChange={(v) =>
-                setFilters({
-                  ...filters,
-                  socioeconomic: {
-                    ...filters.socioeconomic,
-                    marital_status: v,
-                  },
-                })
-              }
-            />
-            <MultiCheckbox
-              label="Education Level"
-              options={[
-                "Less than High School",
-                "High School or GED",
-                "Associate's or Technical Degree",
-                "Some College",
-                "Bachelor Degree",
-                "Graduate Degree",
-              ]}
-              values={filters.socioeconomic.education_level}
-              onChange={(v) =>
-                setFilters({
-                  ...filters,
-                  socioeconomic: {
-                    ...filters.socioeconomic,
-                    education_level: v,
-                  },
-                })
-              }
-            />
-
-            <MultiCheckbox
-              label="Family Income"
-              options={[
-                "less than $40K",
-                "$41-75K",
-                "$75-100K",
-                "$101-$150K",
-                "$150K+"
-              ]}
-              values={filters.socioeconomic.family_income}
-              onChange={(v) =>
-                setFilters({
-                  ...filters,
-                  socioeconomic: {
-                    ...filters.socioeconomic,
-                    family_income: v,
-                  },
-                })
-              }
-            />
-
-            <MultiCheckbox
-              label="Political Affiliation"
-              options={[
-                "Democrat",
-                "Republican",
-                "Other",
-              ]}
-              values={filters.political_affiliation}
-              onChange={(v) =>
-                setFilters({
-                  ...filters,
-                  political_affiliation: v,
-                })
-              }
-            />
 
             <button
               onClick={createCaseAndUpload}
               disabled={loading}
-              className="px-6 py-3 bg-primary text-primary-foreground rounded font-bold hover:opacity-90 transition-opacity"
+              className="w-full md:w-auto px-10 py-4 bg-primary text-primary-foreground rounded-lg font-bold hover:shadow-lg transition-all disabled:opacity-50"
             >
-              {loading ? "Preparing..." : "Upload documents"}
+              {loading ? "Creating Case..." : "Save Case & Upload Documents"}
             </button>
-          </>
+          </div>
         ) : (
-          <>
-            <h2 className="text-xl font-medium">
-              Upload Case Documents
-            </h2>
+          <div className="animate-in zoom-in-95 duration-300">
+            <div className="bg-primary/5 border border-primary/20 p-6 rounded-xl mb-8">
+              <h2 className="text-xl font-bold text-primary mb-2">Case Created Successfully!</h2>
+              <p className="text-sm">Your Filter is now active. Upload your case documents below to proceed.</p>
+            </div>
             <CaseDocumentUploader caseId={caseId} />
-            <button
-              onClick={() =>
-                (window.location.href = "/dashboard/presenter")
-              }
-              className="text-sm underline opacity-70"
-            >
-              Finish & go to dashboard
-            </button>
-          </>
+            <div className="mt-8 flex items-center justify-between">
+              <button onClick={() => (window.location.href = "/dashboard/presenter")} className="text-sm font-medium hover:underline text-muted-foreground">
+                Skip for now and go to dashboard
+              </button>
+            </div>
+          </div>
         )}
       </section>
     </main>
