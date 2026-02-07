@@ -113,10 +113,13 @@ export default async function ParticipantProfilePage({
         )}
       </div>
     );
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const message =
+      err instanceof Error ? err.message : "Something went wrong";
+
     return (
       <p className="text-center text-red-500 mt-20">
-        {err.message || "Something went wrong"}
+        {message}
       </p>
     );
   }
