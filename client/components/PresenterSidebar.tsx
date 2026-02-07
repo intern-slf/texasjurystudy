@@ -1,29 +1,40 @@
 import Link from "next/link";
-import { PlusCircle, PlayCircle, History } from "lucide-react"; // Optional: lucide-react icons
+import {
+  PlusCircle,
+  PlayCircle,
+  History,
+  CheckCircle2,
+} from "lucide-react";
 
 type Props = {
-  activeTab?: "current" | "previous" | "new";
+  activeTab?: "current" | "approved" | "previous" | "new";
 };
 
 export default function PresenterSidebar({ activeTab }: Props) {
   const navItems = [
-    { 
-      label: "Current Cases", 
-      href: "/dashboard/presenter?tab=current", 
+    {
+      label: "Current Cases",
+      href: "/dashboard/presenter?tab=current",
       id: "current",
-      icon: <PlayCircle className="w-4 h-4" /> 
+      icon: <PlayCircle className="w-4 h-4" />,
     },
-    { 
-      label: "Create New Case", 
-      href: "/dashboard/presenter/new", 
+    {
+      label: "Approved Cases",
+      href: "/dashboard/presenter?tab=approved",
+      id: "approved",
+      icon: <CheckCircle2 className="w-4 h-4 text-green-600" />,
+    },
+    {
+      label: "Create New Case",
+      href: "/dashboard/presenter/new",
       id: "new",
-      icon: <PlusCircle className="w-4 h-4" /> 
+      icon: <PlusCircle className="w-4 h-4" />,
     },
-    { 
-      label: "Previous Cases", 
-      href: "/dashboard/presenter?tab=previous", 
+    {
+      label: "Previous Cases",
+      href: "/dashboard/presenter?tab=previous",
       id: "previous",
-      icon: <History className="w-4 h-4" /> 
+      icon: <History className="w-4 h-4" />,
     },
   ];
 
@@ -35,10 +46,10 @@ export default function PresenterSidebar({ activeTab }: Props) {
         </h2>
       </div>
 
-      <nav className="space-y-1">
+      <nav className="space-y-1 flex-1">
         {navItems.map((item) => {
           const isActive = activeTab === item.id;
-          
+
           return (
             <Link
               key={item.id}
@@ -56,9 +67,10 @@ export default function PresenterSidebar({ activeTab }: Props) {
         })}
       </nav>
 
-      {/* Optional: User section or footer at bottom */}
       <div className="mt-auto pt-4 border-t border-slate-200">
-        <p className="text-[10px] text-center text-slate-400">Texas Jury Study v1.0</p>
+        <p className="text-[10px] text-center text-slate-400">
+          Texas Jury Study v1.0
+        </p>
       </div>
     </aside>
   );
