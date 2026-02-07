@@ -8,10 +8,22 @@ import { revalidatePath } from "next/cache";
 ========================= */
 export async function createSession(sessionDate: string) {
   const supabase = await createClient();
+  // who is creating
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    throw new Error("Unauthorized");
+  }
 
   const { data, error } = await supabase
     .from("sessions")
-    .insert({ session_date: sessionDate })
+    .insert({
+      session_date: sessionDate,
+      created_by: user.id,   // ✅ THE FIX
+    })
     .select()
     .single();
 
