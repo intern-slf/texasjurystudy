@@ -30,6 +30,8 @@ interface JuryCase {
   admin_status: "all" | "approved" | "submitted";
   number_of_attendees: number;
   case_documents: CaseDocument[];
+  scheduled_at: string | null;
+  schedule_status: string | null;
 }
 
 type AdminTab = "all" | "approved" | "submitted";
@@ -38,6 +40,24 @@ type AdminTab = "all" | "approved" | "submitted";
    SERVER ACTIONS
    ========================= */
 
+async function proposeSchedule(formData: FormData) {
+  "use server";
+
+  const caseId = formData.get("caseId") as string;
+  const date = formData.get("scheduled_at") as string;
+
+  const supabase = await createClient();
+
+  await supabase
+    .from("cases")
+    .update({
+      scheduled_at: date,
+      schedule_status: "pending",
+    })
+    .eq("id", caseId);
+
+  revalidatePath("/dashboard/Admin");
+}
 async function unapproveCase(formData: FormData) {
   "use server";
 
@@ -108,6 +128,8 @@ export default async function AdminDashboardPage({
       status,
       admin_status,
       number_of_attendees,
+      scheduled_at,
+      schedule_status,
       case_documents (
         id,
         original_name,
@@ -191,15 +213,17 @@ export default async function AdminDashboardPage({
               <TableHead>Case Title</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Attendees</TableHead>
+              <TableHead>Schedule</TableHead>
+              <TableHead>Confirmation</TableHead>
               <TableHead>Documents</TableHead>
-              <TableHead className="text-right">Action</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
 
           <TableBody>
             {cases.map((c) => (
               <TableRow key={c.id}>
-                {/* ✅ Checkbox */}
+                {/* SELECT */}
                 {tab === "approved" && (
                   <TableCell>
                     <input
@@ -212,6 +236,7 @@ export default async function AdminDashboardPage({
                   </TableCell>
                 )}
 
+                {/* TITLE */}
                 <TableCell className="font-medium text-slate-900">
                   <Link
                     href={`/dashboard/Admin/${c.id}`}
@@ -221,14 +246,43 @@ export default async function AdminDashboardPage({
                   </Link>
                 </TableCell>
 
+                {/* STATUS */}
                 <TableCell>
-                  <span className="capitalize text-xs font-semibold px-2 py-1 bg-slate-100 rounded">
-                    {c.status}
-                  </span>
+                  {(!c.schedule_status || c.schedule_status === "pending") && (
+                    <span className="text-yellow-700 bg-yellow-50 border border-yellow-200 px-2 py-1 rounded text-xs font-semibold">
+                      🟡 Pending
+                    </span>
+                  )}
+
+                  {c.schedule_status === "accepted" && (
+                    <span className="text-green-700 bg-green-50 border border-green-200 px-2 py-1 rounded text-xs font-semibold">
+                      🟢 Accepted
+                    </span>
+                  )}
+
+                  {c.schedule_status === "rejected" && (
+                    <span className="text-red-700 bg-red-50 border border-red-200 px-2 py-1 rounded text-xs font-semibold">
+                      🔴 Rejected
+                    </span>
+                  )}
                 </TableCell>
 
+                {/* ATTENDEES */}
                 <TableCell className="text-slate-600">{c.number_of_attendees}</TableCell>
 
+                {/* DATE */}
+                <TableCell className="text-sm">
+                  {c.scheduled_at
+                    ? new Date(c.scheduled_at).toLocaleString()
+                    : "Not scheduled"}
+                </TableCell>
+
+                {/* CONFIRM */}
+                <TableCell className="capitalize text-xs font-semibold">
+                  {c.schedule_status ?? "pending"}
+                </TableCell>
+
+                {/* DOCS */}
                 <TableCell>
                   {c.case_documents.length ? (
                     c.case_documents.map((doc) =>
@@ -251,6 +305,7 @@ export default async function AdminDashboardPage({
                   )}
                 </TableCell>
 
+                {/* ACTIONS */}
                 <TableCell className="text-right">
                   <div className="flex justify-end">
                     {tab === "all" && (
@@ -265,14 +320,37 @@ export default async function AdminDashboardPage({
                     )}
 
                     {tab === "approved" && (
-                      <form action={unapproveCase}>
-                        <input type="hidden" name="caseId" value={c.id} />
-                        <AdminActionButton
-                          label="Unapprove"
-                          activeColor="bg-red-600"
-                          hoverColor="hover:bg-red-700"
-                        />
-                      </form>
+                      <>
+                        {/* propose */}
+                        <form action={proposeSchedule} className="flex gap-2">
+                          <input
+                            type="hidden"
+                            name="caseId"
+                            value={c.id}
+                          />
+                          <input
+                            type="datetime-local"
+                            name="scheduled_at"
+                            required
+                            className="border rounded px-2 py-1 text-xs"
+                          />
+                          <AdminActionButton
+                            label="Send"
+                            activeColor="bg-purple-600"
+                            hoverColor="hover:bg-purple-700"
+                          />
+                        </form>
+
+                        {/* unapprove */}
+                        <form action={unapproveCase}>
+                          <input type="hidden" name="caseId" value={c.id} />
+                          <AdminActionButton
+                            label="Unapprove"
+                            activeColor="bg-red-600"
+                            hoverColor="hover:bg-red-700"
+                          />
+                        </form>
+                      </>
                     )}
 
                     {tab === "submitted" && (
@@ -288,7 +366,7 @@ export default async function AdminDashboardPage({
             {!cases.length && (
               <TableRow>
                 <TableCell
-                  colSpan={tab === "approved" ? 6 : 5}
+                  colSpan={8}
                   className="text-center py-16 text-slate-400 italic"
                 >
                   No cases found in this section.

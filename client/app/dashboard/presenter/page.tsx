@@ -104,6 +104,26 @@ export default async function PresenterDashboard({
     revalidatePath("/dashboard/presenter");
   }
 
+  async function respondToSchedule(formData: FormData) {
+  "use server";
+
+  const caseId = formData.get("caseId") as string;
+  const response = formData.get("response") as "accepted" | "rejected";
+
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) return;
+
+  await supabase
+    .from("cases")
+    .update({ schedule_status: response })
+    .eq("id", caseId)
+    .eq("user_id", user.id);
+
+  revalidatePath("/dashboard/presenter");
+}
+
   /* ===========================
       UI
      =========================== */
@@ -136,12 +156,53 @@ export default async function PresenterDashboard({
                 </p>
               )}
 
-              {/* APPROVED BADGE */}
+              {/* APPROVED AREA */}
               {tab === "approved" && (
-                <span className="inline-block mt-2 text-xs font-semibold text-green-700 bg-green-50 border border-green-200 px-2 py-0.5 rounded">
-                  Approved by Admin
-                </span>
+                <div className="mt-3 space-y-2">
+                  <span className="inline-block text-xs font-semibold text-green-700 bg-green-50 border border-green-200 px-2 py-0.5 rounded">
+                    Approved by Admin
+                  </span>
+
+                  {/* proposed date */}
+                  {c.scheduled_at && (
+                    <div className="text-sm">
+                      Proposed time:{" "}
+                      <span className="font-semibold">
+                        {new Date(c.scheduled_at).toLocaleString("en-GB")}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* status */}
+                  <div className="text-xs capitalize font-semibold">
+                    Status: {c.schedule_status ?? "pending"}
+                  </div>
+
+                  {/* response buttons */}
+                  {(c.schedule_status === null ||
+                    c.schedule_status === "pending") &&
+                    c.scheduled_at && (
+                      <div className="flex gap-2">
+                        <form action={respondToSchedule}>
+                          <input type="hidden" name="caseId" value={c.id} />
+                          <input type="hidden" name="response" value="accepted" />
+                          <button className="px-3 py-1 text-xs bg-green-600 text-white rounded">
+                            Accept
+                          </button>
+                        </form>
+
+                        <form action={respondToSchedule}>
+                          <input type="hidden" name="caseId" value={c.id} />
+                          <input type="hidden" name="response" value="rejected" />
+                          <button className="px-3 py-1 text-xs bg-red-600 text-white rounded">
+                            Reject
+                          </button>
+                        </form>
+                      </div>
+                    )}
+                </div>
               )}
+
 
               {/* UPLOAD + EDIT ONLY FOR CURRENT */}
               {tab === "current" && (
