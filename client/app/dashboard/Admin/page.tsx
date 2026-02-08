@@ -153,21 +153,31 @@ export default async function AdminDashboardPage({
           {tab === "submitted" && "Submitted Cases"}
         </h2>
 
-        {/* ✅ Standalone form for building session */}
-        {tab === "approved" && (
-          <form
-            id="buildSessionForm"
-            action="/dashboard/Admin/sessions/new"
-            method="GET"
+        <div className="flex gap-3">
+          {/* NEW → Sessions list */}
+          <Link
+            href="/dashboard/Admin/sessions"
+            className="border px-4 py-2 rounded"
           >
-            <button
-              type="submit"
-              className="bg-black text-white px-4 py-2 rounded"
+            Sessions
+          </Link>
+
+          {/* Build session */}
+          {tab === "approved" && (
+            <form
+              id="buildSessionForm"
+              action="/dashboard/Admin/sessions/new"
+              method="GET"
             >
-              Build Session
-            </button>
-          </form>
-        )}
+              <button
+                type="submit"
+                className="bg-black text-white px-4 py-2 rounded"
+              >
+                Build Session
+              </button>
+            </form>
+          )}
+        </div>
       </div>
 
       {/* ================= TABLE ================= */}

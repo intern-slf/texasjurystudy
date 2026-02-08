@@ -10,15 +10,35 @@ import Link from "next/link";
    PAGE
 ========================= */
 
-export default async function NewSessionPage() {
+export default async function NewSessionPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ selectedCases?: string | string[] }>;
+}) {
   const supabase = await createClient();
 
-  // Approved cases
-  const { data: cases } = await supabase
-    .from("cases")
-    .select("id, title")
-    .eq("admin_status", "approved")
-    .order("created_at", { ascending: false });
+  /* =========================
+     READ SELECTED IDS
+  ========================= */
+  const params = await searchParams;
+
+  const selectedIds = params?.selectedCases
+    ? Array.isArray(params.selectedCases)
+      ? params.selectedCases
+      : [params.selectedCases]
+    : [];
+
+  /* =========================
+     FETCH ONLY SELECTED CASES
+  ========================= */
+
+  const { data: cases } = selectedIds.length
+    ? await supabase
+        .from("cases")
+        .select("id, title")
+        .in("id", selectedIds)
+        .order("created_at", { ascending: false })
+    : { data: [] };
 
   // Participants for sidebar
   const { data: participants } = await supabase
@@ -37,10 +57,10 @@ export default async function NewSessionPage() {
 
     if (!date) throw new Error("Session date required");
 
-    // 1️⃣ create session
+    // create session
     const sessionId = await createSession(date);
 
-    // timings
+    // attach cases
     const selectedCases = (cases ?? [])
       .map((c) => {
         const start = formData.get(`start_${c.id}`) as string;
@@ -60,7 +80,7 @@ export default async function NewSessionPage() {
       await addCasesToSession(sessionId, selectedCases);
     }
 
-    // ✔ NEW → selected from checkboxes
+    // invite participants
     const selectedParticipants = formData.getAll(
       "participants"
     ) as string[];
@@ -76,8 +96,15 @@ export default async function NewSessionPage() {
 
   return (
     <form action={handleCreate} className="space-y-8">
-      <h1 className="text-2xl font-bold">Create Session</h1>
-      {/* Date */}
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Create Session</h1>
+
+        <Link href="/dashboard/Admin" className="text-sm underline">
+          ← Back
+        </Link>
+      </div>
+
+      {/* DATE */}
       <div>
         <label className="block text-sm font-medium mb-2">
           Session Date
@@ -109,19 +136,21 @@ export default async function NewSessionPage() {
                     type="time"
                     name={`start_${c.id}`}
                     className="border rounded px-2 py-1"
+                    required
                   />
                   <span>→</span>
                   <input
                     type="time"
                     name={`end_${c.id}`}
                     className="border rounded px-2 py-1"
+                    required
                   />
                 </div>
               </div>
             ))
           ) : (
             <div className="text-sm text-slate-400 italic">
-              No approved cases.
+              No cases selected.
             </div>
           )}
         </div>
