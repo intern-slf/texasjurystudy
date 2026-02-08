@@ -1,4 +1,6 @@
 import { getParticipantProfile } from "@/lib/participant/getParticipantProfile";
+import { getPendingInvites } from "@/lib/participant/getPendingInvites";
+import { updateInviteStatus } from "@/lib/participant/updateInviteStatus";
 import Link from "next/link";
 
 export default async function ParticipantProfilePage({
@@ -15,16 +17,20 @@ export default async function ParticipantProfilePage({
     const { participantId } = await params;
     const sp = searchParams ? await searchParams : undefined;
 
-    const { participant, role } = await getParticipantProfile(
-      participantId,
-      {
-        from: sp?.from,
-        caseId: sp?.caseId,
-      }
-    );
+    const { participant, role } = await getParticipantProfile(participantId, {
+      from: sp?.from,
+      caseId: sp?.caseId,
+    });
 
-    const fromCase =
-      sp?.from === "case" && sp?.caseId;
+    const fromCase = sp?.from === "case" && sp?.caseId;
+
+    /* =========================
+       PENDING SESSION INVITES
+       ========================= */
+    const pendingInvites =
+      role === "participant"
+        ? await getPendingInvites(participant.user_id)
+        : [];
 
     return (
       <div className="max-w-5xl mx-auto p-8 space-y-8">
@@ -47,6 +53,51 @@ export default async function ParticipantProfilePage({
             {participant.city}, {participant.state}
           </p>
         </div>
+
+        {/* SESSION INVITES */}
+        {role === "participant" && pendingInvites.length > 0 && (
+          <section className="bg-white border rounded-xl p-6">
+            <h2 className="font-bold text-lg mb-4">Session Invitations</h2>
+
+            <div className="space-y-4">
+              {pendingInvites.map((invite) => (
+                <form
+                  key={invite.id}
+                  className="flex items-center justify-between border p-4 rounded-lg"
+                >
+                  <div>
+                    <p className="font-medium">Session Invite</p>
+                    <p className="text-sm text-slate-500">
+                      Date: {invite.sessions?.[0]?.session_date}
+                    </p>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <button
+                      formAction={async () => {
+                        "use server";
+                        await updateInviteStatus(invite.id, "accepted");
+                      }}
+                      className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700"
+                    >
+                      Accept
+                    </button>
+
+                    <button
+                      formAction={async () => {
+                        "use server";
+                        await updateInviteStatus(invite.id, "declined");
+                      }}
+                      className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700"
+                    >
+                      Decline
+                    </button>
+                  </div>
+                </form>
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* PARTICIPANT DASHBOARD BUTTON */}
         {role === "participant" && (
@@ -102,7 +153,7 @@ export default async function ParticipantProfilePage({
           </div>
         </section>
 
-        {/* FUTURE */}
+        {/* ADMIN AREA */}
         {role !== "participant" && (
           <section className="bg-slate-50 border rounded-xl p-6">
             <h2 className="font-bold text-lg mb-2">Admin / Presenter Area</h2>
