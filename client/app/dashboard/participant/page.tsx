@@ -48,14 +48,21 @@ export default async function ParticipantProfilePage({
           </p>
         </div>
 
-        {/* PARTICIPANT DASHBOARD BUTTON */}
+        {/* PARTICIPANT ACTION BUTTONS */}
         {role === "participant" && (
-          <div>
+          <div className="flex gap-3">
             <Link
               href="/dashboard/participant"
               className="inline-block bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
             >
               Go to My Dashboard
+            </Link>
+
+            <Link
+              href="/dashboard/participant/sessions"
+              className="inline-block px-4 py-2 rounded border"
+            >
+              Sessions
             </Link>
           </div>
         )}
@@ -113,10 +120,13 @@ export default async function ParticipantProfilePage({
         )}
       </div>
     );
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const message =
+      err instanceof Error ? err.message : "Something went wrong";
+
     return (
       <p className="text-center text-red-500 mt-20">
-        {err.message || "Something went wrong"}
+        {message}
       </p>
     );
   }
