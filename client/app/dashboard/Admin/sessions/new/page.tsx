@@ -35,7 +35,7 @@ export default async function NewSessionPage({
   const { data: cases } = selectedIds.length
     ? await supabase
         .from("cases")
-        .select("id, title")
+        .select("id, title, scheduled_at, schedule_status")
         .in("id", selectedIds)
         .order("created_at", { ascending: false })
     : { data: [] };
@@ -131,7 +131,39 @@ export default async function NewSessionPage({
               >
                 <div className="font-medium">{c.title}</div>
 
-                <div className="flex gap-2 items-center">
+                {/* EXISTING PROPOSED TIME */}
+                {c.scheduled_at ? (
+                  <div className="text-xs space-y-1">
+                    <div className="text-slate-600">
+                      Proposed: {new Date(c.scheduled_at).toLocaleString()}
+                    </div>
+
+                    {(!c.schedule_status || c.schedule_status === "pending") && (
+                      <span className="text-yellow-700 bg-yellow-50 border border-yellow-200 px-2 py-1 rounded font-semibold">
+                        🟡 Waiting response
+                      </span>
+                    )}
+
+                    {c.schedule_status === "accepted" && (
+                      <span className="text-green-700 bg-green-50 border border-green-200 px-2 py-1 rounded font-semibold">
+                        🟢 Accepted by presenter
+                      </span>
+                    )}
+
+                    {c.schedule_status === "rejected" && (
+                      <span className="text-red-700 bg-red-50 border border-red-200 px-2 py-1 rounded font-semibold">
+                        🔴 Rejected by presenter
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-xs text-slate-400 italic">
+                    No time proposed yet
+                  </div>
+                )}
+
+                {/* SESSION TIME INPUTS */}
+                <div className="flex gap-2 items-center pt-2">
                   <input
                     type="time"
                     name={`start_${c.id}`}
