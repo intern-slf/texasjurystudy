@@ -1,7 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
+import { unstable_noStore as noStore } from "next/cache";
 
 export async function getPendingInvites(userId: string) {
-  const supabase = await createClient(); // ✅ FIX
+  noStore(); // ✅ HARD REFRESH — disables all caching
+
+  const supabase = await createClient();
 
   const { data, error } = await supabase
     .from("session_participants")
