@@ -58,6 +58,7 @@ async function proposeSchedule(formData: FormData) {
 
   revalidatePath("/dashboard/Admin");
 }
+
 async function unapproveCase(formData: FormData) {
   "use server";
 
@@ -74,19 +75,18 @@ async function unapproveCase(formData: FormData) {
 
 async function approveCase(formData: FormData) {
   "use server";
+
   const caseId = formData.get("caseId") as string;
   const supabase = await createClient();
 
-  // 1. Update status and fetch case/presenter details
   const { data: updatedCase } = await supabase
     .from("cases")
     .update({ admin_status: "approved" })
     .eq("id", caseId)
-    .select('title, user_id')
+    .select("title, user_id")
     .single();
 
   if (updatedCase) {
-    // 2. Fetch presenter email from profiles
     const { data: profile } = await supabase
       .from("profiles")
       .select("email")
@@ -94,7 +94,6 @@ async function approveCase(formData: FormData) {
       .single();
 
     if (profile?.email) {
-      // 3. Trigger notification
       await sendApprovalEmail(profile.email, updatedCase.title);
     }
   }
@@ -175,31 +174,20 @@ export default async function AdminDashboardPage({
           {tab === "submitted" && "Submitted Cases"}
         </h2>
 
-        <div className="flex gap-3">
-          {/* NEW → Sessions list */}
-          <Link
-            href="/dashboard/Admin/sessions"
-            className="border px-4 py-2 rounded"
+        {tab === "approved" && (
+          <form
+            id="buildSessionForm"
+            action="/dashboard/Admin/sessions/new"
+            method="GET"
           >
-            Sessions
-          </Link>
-
-          {/* Build session */}
-          {tab === "approved" && (
-            <form
-              id="buildSessionForm"
-              action="/dashboard/Admin/sessions/new"
-              method="GET"
+            <button
+              type="submit"
+              className="bg-black text-white px-4 py-2 rounded"
             >
-              <button
-                type="submit"
-                className="bg-black text-white px-4 py-2 rounded"
-              >
-                Build Session
-              </button>
-            </form>
-          )}
-        </div>
+              Build Session
+            </button>
+          </form>
+        )}
       </div>
 
       {/* ================= TABLE ================= */}

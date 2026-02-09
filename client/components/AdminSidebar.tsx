@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, usePathname } from "next/navigation";
 
 type Counts = {
   all: number;
   approved: number;
   submitted: number;
+  sessions: number;
 };
 
 export default function AdminSidebar({
@@ -17,12 +18,14 @@ export default function AdminSidebar({
   counts: Counts;
 }) {
   const searchParams = useSearchParams();
-  // Ensure we highlight the active tab based on the URL parameter
+  const pathname = usePathname();
+
   const currentTab = searchParams.get("tab") || active;
 
   const items = [
     { id: "all", label: "All Cases", count: counts.all },
     { id: "approved", label: "Approved", count: counts.approved },
+    { id: "sessions", label: "Sessions", count: counts.sessions },
     { id: "submitted", label: "Submitted", count: counts.submitted },
   ];
 
@@ -36,17 +39,30 @@ export default function AdminSidebar({
         {items.map((i) => (
           <Link
             key={i.id}
-            href={`/dashboard/Admin?tab=${i.id}`}
+            href={
+              i.id === "sessions"
+                ? "/dashboard/Admin/sessions"
+                : `/dashboard/Admin?tab=${i.id}`
+            }
             className={`flex justify-between items-center px-3 py-2 rounded-lg text-sm transition-all ${
-              currentTab === i.id
+              (i.id === "sessions"
+                ? pathname.startsWith("/dashboard/Admin/sessions")
+                : currentTab === i.id)
                 ? "bg-white text-blue-600 border border-slate-200 shadow-sm font-medium"
                 : "text-slate-600 hover:bg-slate-200/50 hover:text-slate-900"
             }`}
           >
             <span>{i.label}</span>
-            <span className={`text-[10px] px-2 py-0.5 rounded-full ${
-              currentTab === i.id ? "bg-blue-50 text-blue-600" : "bg-slate-200 text-slate-500"
-            }`}>
+
+            <span
+              className={`text-[10px] px-2 py-0.5 rounded-full ${
+                (i.id === "sessions"
+                  ? pathname.startsWith("/dashboard/Admin/sessions")
+                  : currentTab === i.id)
+                  ? "bg-blue-50 text-blue-600"
+                  : "bg-slate-200 text-slate-500"
+              }`}
+            >
               {i.count}
             </span>
           </Link>
