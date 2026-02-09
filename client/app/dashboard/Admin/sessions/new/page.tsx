@@ -4,6 +4,13 @@ import {
   addCasesToSession,
   inviteParticipants,
 } from "@/lib/actions/session";
+import {
+  combineCaseFilters,
+  applyCaseFilters,
+  relaxFilters,
+  FILTER_PRIORITY,
+  CaseFilters
+} from "@/lib/filter-utils";
 import Link from "next/link";
 
 /* =========================
@@ -34,10 +41,10 @@ export default async function NewSessionPage({
 
   const { data: cases } = selectedIds.length
     ? await supabase
-        .from("cases")
-        .select("id, title, scheduled_at, schedule_status")
-        .in("id", selectedIds)
-        .order("created_at", { ascending: false })
+      .from("cases")
+      .select("id, title, scheduled_at, schedule_status")
+      .in("id", selectedIds)
+      .order("created_at", { ascending: false })
     : { data: [] };
 
   // Participants for sidebar
