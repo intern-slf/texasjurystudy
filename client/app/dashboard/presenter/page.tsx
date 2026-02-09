@@ -77,6 +77,83 @@ export default async function PresenterDashboard({
   /* ===========================
       SERVER ACTIONS
      =========================== */
+
+  async function softDeleteCase(formData: FormData) {
+    "use server";
+
+    const caseId = formData.get("case_id") as string;
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    await supabase
+      .from("cases")
+      .update({
+        status: "previous",
+        deleted_at: new Date().toISOString(),
+      })
+      .eq("id", caseId)
+      .eq("user_id", user.id);
+
+    await supabase.from("case_audit_logs").insert({
+      case_id: caseId,
+      user_id: user.id,
+      action: "soft_delete",
+    });
+
+    revalidatePath("/dashboard/presenter");
+  }
+
+  async function restoreCase(formData: FormData) {
+    "use server";
+
+    const caseId = formData.get("case_id") as string;
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    await supabase
+      .from("cases")
+      .update({
+        status: "current",
+        deleted_at: null,
+      })
+      .eq("id", caseId)
+      .eq("user_id", user.id);
+
+    await supabase.from("case_audit_logs").insert({
+      case_id: caseId,
+      user_id: user.id,
+      action: "restore",
+    });
+
+    revalidatePath("/dashboard/presenter");
+  }
+
+  async function permanentDeleteCase(formData: FormData) {
+    "use server";
+
+    const caseId = formData.get("case_id") as string;
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    await supabase
+      .from("cases")
+      .delete()
+      .eq("id", caseId)
+      .eq("user_id", user.id)
+      .eq("status", "previous");
+
+    await supabase.from("case_audit_logs").insert({
+      case_id: caseId,
+      user_id: user.id,
+      action: "permanent_delete",
+    });
+
+    revalidatePath("/dashboard/presenter");
+  }
+
   async function updateCase(formData: FormData) {
     "use server";
 
@@ -143,7 +220,7 @@ export default async function PresenterDashboard({
         )}
 
         <ul className="space-y-4">
-          {cases?.map((c) => (
+          {cases?.map((c: any) => (
             <li key={c.id} className="border rounded-md p-4">
               <h3 className="font-medium">{c.title}</h3>
               <p className="text-sm text-muted-foreground">
@@ -178,7 +255,6 @@ export default async function PresenterDashboard({
                     Status: {c.schedule_status ?? "pending"}
                   </div>
 
-                  {/* response buttons */}
                   {(c.schedule_status === null ||
                     c.schedule_status === "pending") &&
                     c.scheduled_at && (
@@ -203,8 +279,7 @@ export default async function PresenterDashboard({
                 </div>
               )}
 
-
-              {/* UPLOAD + EDIT ONLY FOR CURRENT */}
+              {/* CURRENT */}
               {tab === "current" && (
                 <>
                   <h2 className="text-lg font-medium mt-4">
@@ -255,7 +330,38 @@ export default async function PresenterDashboard({
                       </button>
                     </form>
                   </details>
+
+                  {/* DELETE */}
+                  <form action={softDeleteCase} className="mt-3">
+                    <input type="hidden" name="case_id" value={c.id} />
+                    <button className="px-3 py-1 text-xs bg-yellow-600 text-white rounded">
+                      Move to Previous
+                    </button>
+                  </form>
                 </>
+              )}
+
+              {/* PREVIOUS */}
+              {tab === "previous" && (
+                <div className="flex gap-2 mt-3">
+                  {/* Restore only if not expired */}
+                  {(!c.scheduled_at ||
+                    new Date(c.scheduled_at).getTime() > Date.now()) && (
+                    <form action={restoreCase}>
+                      <input type="hidden" name="case_id" value={c.id} />
+                      <button className="px-3 py-1 text-xs bg-blue-600 text-white rounded">
+                        Restore
+                      </button>
+                    </form>
+                  )}
+
+                  <form action={permanentDeleteCase}>
+                    <input type="hidden" name="case_id" value={c.id} />
+                    <button className="px-3 py-1 text-xs bg-red-700 text-white rounded">
+                      Delete Forever
+                    </button>
+                  </form>
+                </div>
               )}
 
               <CaseActions
