@@ -36,24 +36,29 @@ export default async function AdminLayout({
   /* =========================
       FETCH COUNTS FOR SIDEBAR
      ========================= */
-  // We fetch only the admin_status column to minimize data transfer
+  // Fetch only admin_status to minimize payload
   const { data: allCases } = await supabase
     .from("cases")
     .select("admin_status");
 
-  // Calculate counts for each status badge accurately
+  // Count total sessions (from real schema)
+  const { count: sessionsCount } = await supabase
+    .from("sessions")
+    .select("*", { count: "exact", head: true });
+
+  // Sidebar badge counts
   const counts = {
-    all: allCases?.filter((c) => c.admin_status === "all").length || 0,
-    approved: allCases?.filter((c) => c.admin_status === "approved").length || 0,
-    submitted: allCases?.filter((c) => c.admin_status === "submitted").length || 0,
+    all: allCases?.length || 0,
+    approved:
+      allCases?.filter((c) => c.admin_status === "approved").length || 0,
+    submitted:
+      allCases?.filter((c) => c.admin_status === "submitted").length || 0,
+    sessions: sessionsCount || 0,
   };
 
   return (
     <div className="flex min-h-screen bg-slate-50/30 font-sans">
-      {/* SIDEBAR 
-          Note: 'active' is a fallback; the sidebar component uses 
-          useSearchParams to highlight the correct tab dynamically.
-      */}
+      {/* SIDEBAR */}
       <AdminSidebar active="all" counts={counts} />
 
       {/* MAIN AREA */}
