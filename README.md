@@ -250,12 +250,15 @@ Frontend
 -> Next.js 16 (App Router)
 -> TypeScript
 -> Tailwind CSS
+-> shadcn/ui (Component Library)
+-> Lucide React (Icons)
 -> Server Components
 -> Turbopack
 
 Backend
 
 -> Supabase
+-> Resend (Email Infrastructure)
 
 Deployment
 
@@ -288,22 +291,27 @@ Email and Password Management
 -> Email confirmation required
 -> Password reset via Supabase recovery
 -> Custom password update page supported
+-> Case approval notifications (via Resend)
 
 Development Setup
 
-Install dependencies using:
+The Next.js application is located in the `client` directory.
 
-npm install
+1. Install dependencies:
 
-Create .env.local inside the client directory:
+   cd client
+   npm install
 
-NEXT_PUBLIC_SUPABASE_URL
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+2. Create .env.local inside the client directory:
 
-Run development server:
+   NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your_supabase_key
+   RESEND_API_KEY=your_resend_api_key (Optional, for emails)
+   NEXT_PUBLIC_APP_URL=http://localhost:3000
 
-cd client
-npm run dev
+3. Run development server:
+
+   npm run dev
 
 Future Features (Not Yet Implemented)
 

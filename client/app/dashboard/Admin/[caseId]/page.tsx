@@ -8,6 +8,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
+import { applyCaseFilters, CaseFilters } from "@/lib/filter-utils";
+
 /* =========================
    DB ROW TYPES
    ========================= */
@@ -36,13 +38,6 @@ interface JuryParticipant {
 
 interface CaseDocument extends CaseDocumentRow {
   signedUrl: string | null;
-}
-
-interface CaseFilters {
-  gender?: string[];
-  age?: { min?: number; max?: number };
-  location?: { state?: string[] };
-  socioeconomic?: { education_level?: string[] };
 }
 
 interface CaseInfo {
@@ -125,25 +120,8 @@ export default async function AdminCaseDetailPage({
     .from("jury_participants")
     .select("*");
 
-  const f = caseInfo.filters;
-
-  if (f?.gender?.length)
-    participantQuery = participantQuery.in("gender", f.gender);
-
-  if (f?.age?.min !== undefined)
-    participantQuery = participantQuery.gte("age", f.age.min);
-
-  if (f?.age?.max !== undefined)
-    participantQuery = participantQuery.lte("age", f.age.max);
-
-  if (f?.location?.state?.length)
-    participantQuery = participantQuery.in("state", f.location.state);
-
-  if (f?.socioeconomic?.education_level?.length)
-    participantQuery = participantQuery.in(
-      "education_level",
-      f.socioeconomic.education_level
-    );
+  // Apply filters using shared utility
+  participantQuery = applyCaseFilters(participantQuery, caseInfo.filters);
 
   const { data: participants } = await participantQuery;
 
