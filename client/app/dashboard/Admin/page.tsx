@@ -7,10 +7,19 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { sendApprovalEmail } from "@/lib/mail";
 import { AdminActionButton } from "@/components/AdminActionButton";
+import { Button } from "@/components/ui/button";
+import { Calendar, FileText, User, Users } from "lucide-react";
 
 /* =========================
    TYPES
@@ -165,14 +174,19 @@ export default async function AdminDashboardPage({
   );
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       {/* ================= HEADER ================= */}
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold">
-          {tab === "all" && "All Cases"}
-          {tab === "approved" && "Approved Cases"}
-          {tab === "submitted" && "Submitted Cases"}
-        </h2>
+        <div>
+          <h2 className="text-3xl font-bold tracking-tight">
+            {tab === "all" && "All Cases"}
+            {tab === "approved" && "Approved Cases"}
+            {tab === "submitted" && "Submitted Cases"}
+          </h2>
+          <p className="text-muted-foreground mt-1">
+            Manage and oversee case submissions and approvals.
+          </p>
+        </div>
 
         {tab === "approved" && (
           <form
@@ -180,225 +194,217 @@ export default async function AdminDashboardPage({
             action="/dashboard/Admin/sessions/new"
             method="GET"
           >
-            <button
-              type="submit"
-              className="bg-black text-white px-4 py-2 rounded"
-            >
+            <Button type="submit">
               Build Session
-            </button>
+            </Button>
           </form>
         )}
       </div>
 
       {/* ================= TABLE ================= */}
-      <div className="rounded-xl border bg-white shadow-sm overflow-hidden">
-        <Table>
-          <TableHeader className="bg-slate-50">
-            <TableRow>
-              {/* Checkbox column */}
-              {tab === "approved" && <TableHead className="w-10"></TableHead>}
+      <Card className="border-muted/60 shadow-md">
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader className="bg-muted/30">
+              <TableRow className="hover:bg-muted/30">
+                {/* Checkbox column */}
+                {tab === "approved" && <TableHead className="w-10"></TableHead>}
 
-              <TableHead className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Case
-              </TableHead>
+                <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground pl-6">
+                  Case Title
+                </TableHead>
 
-              <TableHead className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Status
-              </TableHead>
+                <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Status
+                </TableHead>
 
-              <TableHead className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Attendees
-              </TableHead>
+                <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Attendees
+                </TableHead>
 
-              <TableHead className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Schedule
-              </TableHead>
+                <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Schedule
+                </TableHead>
 
-              <TableHead className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Confirmation
-              </TableHead>
+                <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Documents
+                </TableHead>
 
-              <TableHead className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Documents
-              </TableHead>
+                <TableHead className="text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground pr-6">
+                  Actions
+                </TableHead>
+              </TableRow>
+            </TableHeader>
 
-              <TableHead className="text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Actions
-              </TableHead>
-            </TableRow>
-          </TableHeader>
+            <TableBody>
+              {cases.map((c) => {
+                const date = c.scheduled_at ? new Date(c.scheduled_at) : null;
 
-          <TableBody>
-  {cases.map((c, i) => {
-    const date = c.scheduled_at ? new Date(c.scheduled_at) : null;
+                return (
+                  <TableRow
+                    key={c.id}
+                    className="group hover:bg-muted/40 transition-colors"
+                  >
+                    {/* SELECT */}
+                    {tab === "approved" && (
+                      <TableCell className="py-4">
+                        <input
+                          type="checkbox"
+                          name="selectedCases"
+                          value={c.id}
+                          form="buildSessionForm"
+                          className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                        />
+                      </TableCell>
+                    )}
 
-    return (
-      <TableRow
-        key={c.id}
-        className={`align-top ${
-          i % 2 === 0 ? "bg-white" : "bg-slate-50/40"
-        }`}
-      >
-        {/* SELECT */}
-        {tab === "approved" && (
-          <TableCell className="pt-4">
-            <input
-              type="checkbox"
-              name="selectedCases"
-              value={c.id}
-              form="buildSessionForm"
-              className="h-4 w-4"
-            />
-          </TableCell>
-        )}
+                    {/* TITLE */}
+                    <TableCell className="font-medium text-foreground py-4 pl-6">
+                      <Link
+                        href={`/dashboard/Admin/${c.id}`}
+                        className="text-primary hover:text-primary/80 hover:underline flex items-center gap-2"
+                      >
+                       <FileText className="h-4 w-4 text-muted-foreground" />
+                        {c.title}
+                      </Link>
+                    </TableCell>
 
-        {/* TITLE */}
-        <TableCell className="font-semibold text-slate-900 pt-4">
-          <Link
-            href={`/dashboard/Admin/${c.id}`}
-            className="text-blue-600 hover:text-blue-800 hover:underline"
-          >
-            {c.title}
-          </Link>
-        </TableCell>
+                    {/* STATUS */}
+                    <TableCell className="py-4">
+                      {!c.schedule_status || c.schedule_status === "pending" ? (
+                        <span className="inline-flex items-center rounded-full bg-yellow-400/10 px-2 py-1 text-xs font-medium text-yellow-500 ring-1 ring-inset ring-yellow-400/20">
+                          Pending
+                        </span>
+                      ) : c.schedule_status === "accepted" ? (
+                        <span className="inline-flex items-center rounded-full bg-green-400/10 px-2 py-1 text-xs font-medium text-green-500 ring-1 ring-inset ring-green-400/20">
+                          Confirmed
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center rounded-full bg-red-400/10 px-2 py-1 text-xs font-medium text-red-500 ring-1 ring-inset ring-red-400/20">
+                          Declined
+                        </span>
+                      )}
+                    </TableCell>
 
-        {/* STATUS */}
-        <TableCell className="pt-4">
-          {!c.schedule_status || c.schedule_status === "pending" ? (
-            <span className="px-2 py-1 rounded-full text-[11px] font-semibold bg-yellow-100 text-yellow-800">
-              Pending
-            </span>
-          ) : c.schedule_status === "accepted" ? (
-            <span className="px-2 py-1 rounded-full text-[11px] font-semibold bg-green-100 text-green-800">
-              Confirmed
-            </span>
-          ) : (
-            <span className="px-2 py-1 rounded-full text-[11px] font-semibold bg-red-100 text-red-800">
-              Declined
-            </span>
-          )}
-        </TableCell>
+                    {/* ATTENDEES */}
+                    <TableCell className="py-4">
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <Users className="h-4 w-4" />
+                        <span>{c.number_of_attendees}</span>
+                      </div>
+                    </TableCell>
 
-        {/* ATTENDEES */}
-        <TableCell className="text-slate-700 font-medium pt-4">
-          {c.number_of_attendees}
-        </TableCell>
+                    {/* SCHEDULE */}
+                    <TableCell className="py-4">
+                      {date ? (
+                        <div className="flex items-center gap-2 text-sm text-foreground">
+                          <Calendar className="h-4 w-4 text-muted-foreground" />
+                          <div className="flex flex-col">
+                            <span className="font-medium">
+                              {date.toLocaleDateString()}
+                            </span>
+                            <span className="text-muted-foreground text-xs">
+                              {date.toLocaleTimeString()}
+                            </span>
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground italic">
+                          Not scheduled
+                        </span>
+                      )}
+                    </TableCell>
 
-        {/* SCHEDULE */}
-        <TableCell className="text-sm pt-4">
-          {date ? (
-            <div className="flex flex-col">
-              <span className="font-medium">
-                {date.toLocaleDateString()}
-              </span>
-              <span className="text-slate-500 text-xs">
-                {date.toLocaleTimeString()}
-              </span>
-            </div>
-          ) : (
-            <span className="text-xs text-slate-400 italic">
-              Not scheduled
-            </span>
-          )}
-        </TableCell>
+                    {/* DOCS */}
+                    <TableCell className="py-4 space-y-1">
+                      {c.case_documents.length ? (
+                        c.case_documents.map((doc) =>
+                          doc.signedUrl ? (
+                            <a
+                              key={doc.id}
+                              href={doc.signedUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="block text-xs text-primary hover:text-primary/80 hover:underline truncate max-w-[150px]"
+                            >
+                              📄 {doc.original_name}
+                            </a>
+                          ) : null
+                        )
+                      ) : (
+                        <span className="text-xs text-muted-foreground italic">
+                          No documents
+                        </span>
+                      )}
+                    </TableCell>
 
-        {/* CONFIRMATION */}
-        <TableCell className="pt-4">
-          <span className="text-xs font-semibold text-slate-600">
-            {c.admin_status}
-          </span>
-        </TableCell>
+                    {/* ACTIONS */}
+                    <TableCell className="text-right py-4 pr-6">
+                      <div className="flex justify-end flex-wrap gap-2">
+                        {tab === "all" && (
+                          <form action={approveCase}>
+                            <input type="hidden" name="caseId" value={c.id} />
+                            <AdminActionButton
+                              label="Approve"
+                              activeColor="bg-green-600"
+                              hoverColor="hover:bg-green-700"
+                            />
+                          </form>
+                        )}
 
-        {/* DOCS */}
-        <TableCell className="pt-4 space-y-1">
-          {c.case_documents.length ? (
-            c.case_documents.map((doc) =>
-              doc.signedUrl ? (
-                <a
-                  key={doc.id}
-                  href={doc.signedUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block text-xs text-blue-600 hover:text-blue-800 hover:underline truncate max-w-[200px]"
-                >
-                  📄 {doc.original_name}
-                </a>
-              ) : null
-            )
-          ) : (
-            <span className="text-xs text-slate-400 italic">
-              No documents
-            </span>
-          )}
-        </TableCell>
+                        {tab === "approved" && (
+                          <>
+                            <form action={proposeSchedule} className="flex gap-2 items-center">
+                              <input type="hidden" name="caseId" value={c.id} />
+                              <input
+                                type="datetime-local"
+                                name="scheduled_at"
+                                required
+                                className="h-8 rounded-md border border-input bg-background px-3 py-1 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                              />
+                              <AdminActionButton
+                                label="Send"
+                                activeColor="bg-purple-600"
+                                hoverColor="hover:bg-purple-700"
+                              />
+                            </form>
 
-        {/* ACTIONS */}
-        <TableCell className="text-right pt-4">
-          <div className="flex justify-end flex-wrap gap-2">
-            {tab === "all" && (
-              <form action={approveCase}>
-                <input type="hidden" name="caseId" value={c.id} />
-                <AdminActionButton
-                  label="Approve"
-                  activeColor="bg-green-600"
-                  hoverColor="hover:bg-green-700"
-                />
-              </form>
-            )}
+                            <form action={unapproveCase}>
+                              <input type="hidden" name="caseId" value={c.id} />
+                              <AdminActionButton
+                                label="Unapprove"
+                                activeColor="bg-red-600"
+                                hoverColor="hover:bg-red-700"
+                              />
+                            </form>
+                          </>
+                        )}
 
-            {tab === "approved" && (
-              <>
-                <form action={proposeSchedule} className="flex gap-2">
-                  <input type="hidden" name="caseId" value={c.id} />
-                  <input
-                    type="datetime-local"
-                    name="scheduled_at"
-                    required
-                    className="border rounded px-2 py-1 text-xs"
-                  />
-                  <AdminActionButton
-                    label="Send"
-                    activeColor="bg-purple-600"
-                    hoverColor="hover:bg-purple-700"
-                  />
-                </form>
+                        {tab === "submitted" && (
+                          <span className="text-xs text-muted-foreground font-medium italic bg-muted px-2 py-1 rounded">
+                            Finalized
+                          </span>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
 
-                <form action={unapproveCase}>
-                  <input type="hidden" name="caseId" value={c.id} />
-                  <AdminActionButton
-                    label="Unapprove"
-                    activeColor="bg-red-600"
-                    hoverColor="hover:bg-red-700"
-                  />
-                </form>
-              </>
-            )}
-
-            {tab === "submitted" && (
-              <span className="text-xs text-slate-400 font-medium italic bg-slate-100 px-2 py-1 rounded">
-                Finalized
-              </span>
-            )}
-          </div>
-        </TableCell>
-      </TableRow>
-    );
-  })}
-
-  {!cases.length && (
-    <TableRow>
-      <TableCell
-        colSpan={8}
-        className="text-center py-16 text-slate-400 italic"
-      >
-        No cases found in this section.
-      </TableCell>
-    </TableRow>
-  )}
-</TableBody>
-
-        </Table>
-      </div>
+              {!cases.length && (
+                <TableRow>
+                  <TableCell
+                    colSpan={8}
+                    className="text-center py-16 text-muted-foreground italic"
+                  >
+                    No cases found in this section.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
     </div>
   );
 }

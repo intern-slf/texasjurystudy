@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, Suspense } from "react";
+import { Loader2 } from "lucide-react";
 
 // 1. Move the logic into a internal component
 function SignUpFormFields({ className, ...props }: React.ComponentPropsWithoutRef<"div">) {
@@ -62,16 +63,16 @@ function SignUpFormFields({ className, ...props }: React.ComponentPropsWithoutRe
 
   return (
     <div className={cn("flex flex-col gap-6", className)} {...props}>
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-2xl">
+      <Card className="border-muted shadow-2xl backdrop-blur-sm bg-card/80 sm:w-[400px]">
+        <CardHeader className="space-y-1">
+          <CardTitle className="text-2xl font-bold tracking-tight text-center">
             Sign up as {role === "presenter" ? "Presenter" : "Participant"}
           </CardTitle>
-          <CardDescription>Create a new account</CardDescription>
+          <CardDescription className="text-center">Create a new account</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSignUp}>
-            <div className="flex flex-col gap-6">
+            <div className="flex flex-col gap-5">
               <div className="grid gap-2">
                 <Label htmlFor="email">Email</Label>
                 <Input
@@ -81,6 +82,7 @@ function SignUpFormFields({ className, ...props }: React.ComponentPropsWithoutRe
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  className="bg-background/50 focus:ring-primary focus:border-primary transition-all"
                 />
               </div>
               <div className="grid gap-2">
@@ -91,6 +93,7 @@ function SignUpFormFields({ className, ...props }: React.ComponentPropsWithoutRe
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  className="bg-background/50 focus:ring-primary focus:border-primary transition-all"
                 />
               </div>
               <div className="grid gap-2">
@@ -101,16 +104,28 @@ function SignUpFormFields({ className, ...props }: React.ComponentPropsWithoutRe
                   required
                   value={repeatPassword}
                   onChange={(e) => setRepeatPassword(e.target.value)}
+                  className="bg-background/50 focus:ring-primary focus:border-primary transition-all"
                 />
               </div>
-              {error && <p className="text-sm text-red-500">{error}</p>}
-              <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? "Creating an account..." : "Sign up"}
+              {error && (
+                <div className="p-3 text-sm font-medium text-red-500 bg-red-50 dark:bg-red-900/10 rounded-md border border-red-200 dark:border-red-900/20">
+                  {error}
+                </div>
+              )}
+              <Button type="submit" className="w-full font-medium" disabled={isLoading}>
+                {isLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Creating an account...
+                  </>
+                ) : (
+                  "Sign up"
+                )}
               </Button>
             </div>
-            <div className="mt-4 text-center text-sm">
+            <div className="mt-6 text-center text-sm text-muted-foreground">
               Already have an account?{" "}
-              <Link href="/auth/login" className="underline underline-offset-4">
+              <Link href="/auth/login" className="underline underline-offset-4 hover:text-primary transition-colors font-medium">
                 Login
               </Link>
             </div>
