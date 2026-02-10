@@ -225,6 +225,16 @@ export default async function NewSessionPage({
     }
   }
 
+  // Sort: best matches first
+  // 1) By matchLevel ascending (exact match level 0 first)
+  // 2) Within same level, by number of passed filters descending (more passes = higher)
+  participants.sort((a: any, b: any) => {
+    if (a.matchLevel !== b.matchLevel) return a.matchLevel - b.matchLevel;
+    const aPass = (a.filterChecks as any[]).filter((fc: any) => fc.passes).length;
+    const bPass = (b.filterChecks as any[]).filter((fc: any) => fc.passes).length;
+    return bPass - aPass; // more passes = higher rank
+  });
+
   /* =========================
      SERVER ACTION
   ========================= */
@@ -346,17 +356,19 @@ export default async function NewSessionPage({
 
           <div className="border rounded divide-y max-h-[500px] overflow-y-auto">
             {participants?.map((p) => (
-              <label
+              <div
                 key={p.user_id}
-                className="flex items-center justify-between p-3 hover:bg-slate-50 cursor-pointer"
+                className="flex items-center justify-between p-3 hover:bg-slate-50"
               >
                 <div className="flex-1 min-w-0">
-                  <Link
-                    href={`/dashboard/Admin/participant/${p.user_id}`}
-                    className="font-medium hover:underline"
+                  <a
+                    href={`/dashboard/participant/${p.id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-medium text-blue-600 hover:underline"
                   >
                     {p.first_name} {p.last_name}
-                  </Link>
+                  </a>
                   <div className="text-xs text-slate-500 mt-1">
                     Age {p.age} &bull; {p.city} &bull; {p.political_affiliation ?? "N/A"}
                   </div>
@@ -416,13 +428,15 @@ export default async function NewSessionPage({
                   </div>
                 </div>
 
-                <input
-                  type="checkbox"
-                  name="participants"
-                  value={p.user_id}
-                  className="h-4 w-4 ml-2 flex-shrink-0"
-                />
-              </label>
+                <label className="cursor-pointer p-1">
+                  <input
+                    type="checkbox"
+                    name="participants"
+                    value={p.user_id}
+                    className="h-4 w-4 ml-2 flex-shrink-0"
+                  />
+                </label>
+              </div>
             ))}
           </div>
         </div>

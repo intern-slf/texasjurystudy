@@ -121,33 +121,35 @@ export function applyCaseFilters(
 }
 
 /**
- * Combines multiple case filters into a single broad filter (Union-like logic).
+ * Combines multiple case filters into a single strict filter (Intersection / AND logic).
  * 
  * Strategy:
- * - Arrays (Gender, Race, etc): Union of all unique values.
- * - Ranges (Age): Widest range (lowest min, highest max).
- * - Single Values (Eligibility): 
- *    - If all agree (e.g. all "Yes"), keep "Yes".
- *    - If disjoint (one "Yes", one "No"), remove filter (allow "Any").
- *    - If one has filter and other doesn't (undefined/"Any"), remove filter (allow "Any") to be inclusive.
+ * - Arrays (Gender, Race, etc): Intersection of values. If one case has ["Republican"]
+ *   and another has ["Democrat", "Republican"], result = ["Republican"].
+ *   If one case has a filter and another doesn't (undefined = "Any"), keep the filter.
+ * - Ranges (Age): Tightest range (highest min, lowest max).
+ * - Single Values (Eligibility): Keep the value if ANY case requires it.
+ *   If cases conflict ("Yes" vs "No"), keep the stricter one (first encountered).
  */
 export function combineCaseFilters(filtersList: CaseFilters[]): CaseFilters {
   if (!filtersList || filtersList.length === 0) return {};
-  if (filtersList.length === 1) return filtersList[0];
+  // Filter out null/undefined entries
+  const valid = filtersList.filter(f => f != null);
+  if (valid.length === 0) return {};
+  if (valid.length === 1) return valid[0];
 
   const result: CaseFilters = {};
 
-  // --- IDENTITY ARRAYS ---
-  result.gender = uniqueUnion(filtersList.map(f => f.gender));
-  result.race = uniqueUnion(filtersList.map(f => f.race));
-  result.political_affiliation = uniqueUnion(filtersList.map(f => f.political_affiliation));
+  // --- IDENTITY ARRAYS (Intersection) ---
+  result.gender = intersectArrays(valid.map(f => f.gender));
+  result.race = intersectArrays(valid.map(f => f.race));
+  result.political_affiliation = intersectArrays(valid.map(f => f.political_affiliation));
 
-  // --- AGE ---
-  const ages = filtersList.map(f => f.age).filter(Boolean);
+  // --- AGE (Tightest range) ---
+  const ages = valid.map(f => f.age).filter(Boolean);
   if (ages.length > 0) {
-    const min = Math.min(...ages.map(a => a?.min ?? 0));
-    const max = Math.max(...ages.map(a => a?.max ?? 100)); // clamp to reasonable default if missing
-    // Only set if we have valid numbers
+    const min = Math.max(...ages.map(a => a?.min ?? 0));
+    const max = Math.min(...ages.map(a => a?.max ?? 100));
     if (isFinite(min) || isFinite(max)) {
         result.age = { 
             min: isFinite(min) ? min : undefined, 
@@ -156,18 +158,18 @@ export function combineCaseFilters(filtersList: CaseFilters[]): CaseFilters {
     }
   }
 
-  // --- LOCATION ---
+  // --- LOCATION (Intersection) ---
   if (!result.location) result.location = {};
-  result.location.state = uniqueUnion(filtersList.map(f => f.location?.state));
+  result.location.state = intersectArrays(valid.map(f => f.location?.state));
 
-  // --- SOCIOECONOMIC ---
+  // --- SOCIOECONOMIC (Intersection) ---
   if (!result.socioeconomic) result.socioeconomic = {};
-  result.socioeconomic.education_level = uniqueUnion(filtersList.map(f => f.socioeconomic?.education_level));
-  result.socioeconomic.marital_status = uniqueUnion(filtersList.map(f => f.socioeconomic?.marital_status));
-  result.socioeconomic.family_income = uniqueUnion(filtersList.map(f => f.socioeconomic?.family_income));
-  result.socioeconomic.availability = uniqueUnion(filtersList.map(f => f.socioeconomic?.availability));
+  result.socioeconomic.education_level = intersectArrays(valid.map(f => f.socioeconomic?.education_level));
+  result.socioeconomic.marital_status = intersectArrays(valid.map(f => f.socioeconomic?.marital_status));
+  result.socioeconomic.family_income = intersectArrays(valid.map(f => f.socioeconomic?.family_income));
+  result.socioeconomic.availability = intersectArrays(valid.map(f => f.socioeconomic?.availability));
 
-  // --- ELIGIBILITY (Single Values) ---
+  // --- ELIGIBILITY (Keep if ANY case requires it) ---
   if (!result.eligibility) result.eligibility = {};
   
   const eligibilityFields = [
@@ -182,35 +184,22 @@ export function combineCaseFilters(filtersList: CaseFilters[]): CaseFilters {
 
   eligibilityFields.forEach(field => {
       // Collect all non-empty values
-      const values = filtersList
+      const values = valid
         .map(f => f.eligibility?.[field as keyof typeof f.eligibility])
         .filter(v => v !== undefined && v !== "Any" && v !== "");
       
       const uniqueValues = Array.from(new Set(values));
 
-      // If everyone agrees on a single constraint (e.g. all "Yes"), keep it.
-      // If we have "Yes" and "No", conflict -> remove filter.
-      // If we have ["Yes"] but some cases had NO value (undefined/"Any"), 
-      // strict union says we should allow "Any", so strictly we should remove the filter.
-      // Example: Case A="Yes", Case B="Any". A wants Yes. B accepts Anyone.
-      // Combined session needs to accommodate B's people too, so we must allow Any.
-      // THUS: matches only if ALL filters had the SAME value and NONE were missing/Any.
-      
-      // However, if logic is "Show me candidates for A OR B", then:
-      // Candidates(A) = Yes. Candidates(B) = All. 
-      // Union = All.
-      // So yes, if ANY case is missing the filter (undefined), the result handles "Any".
-      
-      const allHaveIt = filtersList.every(f => {
-          const v = f.eligibility?.[field as keyof typeof f.eligibility];
-          return v !== undefined && v !== "Any" && v !== "";
-      });
-
-      if (uniqueValues.length === 1 && allHaveIt) {
+      if (uniqueValues.length === 1) {
+          // All cases that specify this field agree
+          // @ts-ignore
+          result.eligibility[field] = uniqueValues[0];
+      } else if (uniqueValues.length > 1) {
+          // Conflict — keep the first case's value (stricter = first wins)
           // @ts-ignore
           result.eligibility[field] = uniqueValues[0];
       } else {
-          // Conflict or Missing -> Any
+          // No case specifies this → Any
           // @ts-ignore
           result.eligibility[field] = undefined;
       }
@@ -219,32 +208,30 @@ export function combineCaseFilters(filtersList: CaseFilters[]): CaseFilters {
   return result;
 }
 
-function uniqueUnion(arrays: (string[] | undefined)[]): string[] | undefined {
-    const set = new Set<string>();
-    let hasValues = false;
-    
-    // Logic: If one case has ["TX"] and another has undefined (Any), should we filter to TX?
-    // Case A: lives in TX. Case B: Any.
-    // Union = Any.
-    // So if ANY case has undefined (Any), the result is undefined (Any).
-    // Wait, typical UI logic for "Any" in array often means "All selected" or "No filter".
-    // If Case A filters to TX, and Case B has no filter...
-    // Candidates A: Texans. Candidates B: Everyone.
-    // Union: Everyone.
+/**
+ * Intersection of arrays. 
+ * - If ALL cases have undefined/empty (= "Any"), result is undefined (no filter).
+ * - If SOME cases have values and others are undefined ("Any"), keep the values from the cases that have them.
+ * - If multiple cases have values, return only the common (intersected) values.
+ */
+function intersectArrays(arrays: (string[] | undefined)[]): string[] | undefined {
+    // Collect only the arrays that actually have filter values
+    const defined = arrays.filter((arr): arr is string[] => Array.isArray(arr) && arr.length > 0);
 
-    // So we only apply a filter if ALL cases have a filter.
-    const allHaveFilter = arrays.every(arr => Array.isArray(arr) && arr.length > 0);
-    
-    if (!allHaveFilter) return undefined;
+    // No case specifies this filter → no restriction
+    if (defined.length === 0) return undefined;
 
-    arrays.forEach(arr => {
-        if (arr) {
-            arr.forEach(v => set.add(v));
-            hasValues = true;
-        }
-    });
+    // Only one case specifies it → use that case's values
+    if (defined.length === 1) return [...defined[0]];
 
-    return hasValues ? Array.from(set) : undefined;
+    // Multiple cases specify it → intersect
+    let common = new Set<string>(defined[0]);
+    for (let i = 1; i < defined.length; i++) {
+        const next = new Set<string>(defined[i]);
+        common = new Set([...common].filter(v => next.has(v)));
+    }
+
+    return common.size > 0 ? Array.from(common) : undefined;
 }
 
 // Low index = Dropped First
