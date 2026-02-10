@@ -262,3 +262,204 @@ export function relaxFilters(filters: CaseFilters, level: number): CaseFilters {
 
   return relaxed;
 }
+
+/**
+ * Returns a numeric score representing how well a participant
+ * satisfies the given filters.
+ * Higher = better.
+ */
+/**
+ * Evaluate participant against ONE case.
+ * Counts every filter & sub-filter.
+ */
+export function getMatchScoreDetailed(
+  participant: any,
+  filters: CaseFilters
+) {
+  if (!filters) return { score: 0, total: 0 };
+
+  let score = 0;
+  let total = 0;
+
+  // --- IDENTITY ---
+  if (filters.gender?.length) {
+    total++;
+    if (filters.gender.includes(participant.gender)) score++;
+  }
+
+  if (filters.race?.length) {
+    total++;
+    if (filters.race.includes(participant.race)) score++;
+  }
+
+  if (filters.political_affiliation?.length) {
+    total++;
+    if (filters.political_affiliation.includes(participant.political_affiliation)) score++;
+  }
+
+  // --- AGE ---
+  if (filters.age) {
+    total++;
+    const { min, max } = filters.age;
+    if (
+      (min === undefined || participant.age >= min) &&
+      (max === undefined || participant.age <= max)
+    ) {
+      score++;
+    }
+  }
+
+  // --- LOCATION ---
+  if (filters.location?.state?.length) {
+    total++;
+    if (filters.location.state.includes(participant.state)) score++;
+  }
+
+  // --- SOCIOECONOMIC ---
+  if (filters.socioeconomic?.education_level?.length) {
+    total++;
+    if (filters.socioeconomic.education_level.includes(participant.education_level)) score++;
+  }
+
+  if (filters.socioeconomic?.marital_status?.length) {
+    total++;
+    if (filters.socioeconomic.marital_status.includes(participant.marital_status)) score++;
+  }
+
+  if (filters.socioeconomic?.family_income?.length) {
+    total++;
+    if (filters.socioeconomic.family_income.includes(participant.family_income)) score++;
+  }
+
+  if (filters.socioeconomic?.availability?.length) {
+    total++;
+
+    const ok =
+      (filters.socioeconomic.availability.includes("Weekdays") &&
+        participant.availability_weekdays === "Yes") ||
+      (filters.socioeconomic.availability.includes("Weekends") &&
+        participant.availability_weekends === "Yes");
+
+    if (ok) score++;
+  }
+
+  // --- ELIGIBILITY ---
+  if (filters.eligibility) {
+    type EligibilityKey = keyof NonNullable<CaseFilters["eligibility"]>;
+
+    (Object.keys(filters.eligibility) as EligibilityKey[]).forEach((key) => {
+      const required = filters.eligibility?.[key];
+      if (!required || required === "Any") return;
+
+      total++;
+      if (participant[key] === required) score++;
+    });
+  }
+
+  return { score, total };
+}
+/**
+ * Score participant against MULTIPLE cases.
+ * Also returns how many checks were evaluated.
+ */
+export function getMultiCaseScoreDetailed(
+  participant: any,
+  filtersList: CaseFilters[]
+) {
+  let score = 0;
+  let total = 0;
+
+  for (const filters of filtersList) {
+    const result = getMatchScoreDetailed(participant, filters);
+    score += result.score;
+    total += result.total;
+  }
+
+  return { score, total };
+}
+
+/**
+ * Attach multi-case score to each participant.
+ */
+export function attachMultiCaseScores(
+  participants: any[],
+  filtersList: CaseFilters[]
+) {
+  return participants.map((p) => {
+    const { score, total } = getMultiCaseScoreDetailed(p, filtersList);
+    const passCount = getCasePassCount(p, filtersList);
+
+    return {
+      ...p,
+      multiScore: score,
+      multiTotal: total,
+      casePassCount: passCount,
+    };
+  });
+}
+
+
+/**
+ * Sort by multi-case score.
+ */
+export function sortParticipantsByMultiCaseMatch(
+  participants: any[]
+) {
+  return [...participants].sort((a, b) => {
+    // 1️⃣ who satisfies more cases
+    if (a.casePassCount !== b.casePassCount) {
+      return b.casePassCount - a.casePassCount;
+    }
+
+    // 2️⃣ who has better overall score
+    return b.multiScore - a.multiScore;
+  });
+}
+
+
+
+/**
+ * Sort participants by best match first.
+ */
+export function sortParticipantsByMatch(
+  participants: any[],
+  filters: CaseFilters
+) {
+  return participants
+    .map(p => ({
+      ...p,
+      __score: getMatchScoreDetailed(p, filters).score
+    }))
+    .sort((a, b) => b.__score - a.__score);
+}
+
+
+
+/**
+ * Did participant satisfy ONE entire case?
+ */
+export function doesParticipantPassCase(
+  participant: any,
+  filters: CaseFilters
+) {
+  const { score, total } = getMatchScoreDetailed(participant, filters);
+  return total > 0 && score === total;
+}
+
+/**
+ * Count how many cases participant fully satisfies.
+ */
+export function getCasePassCount(
+  participant: any,
+  filtersList: CaseFilters[]
+) {
+  let passCount = 0;
+
+  for (const filters of filtersList) {
+    if (doesParticipantPassCase(participant, filters)) {
+      passCount++;
+    }
+  }
+
+  return passCount;
+}

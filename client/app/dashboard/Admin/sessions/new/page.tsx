@@ -9,7 +9,9 @@ import {
   applyCaseFilters,
   relaxFilters,
   FILTER_PRIORITY,
-  CaseFilters
+  CaseFilters,
+  attachMultiCaseScores,
+  sortParticipantsByMultiCaseMatch
 } from "@/lib/filter-utils";
 import Link from "next/link";
 
@@ -225,15 +227,8 @@ export default async function NewSessionPage({
     }
   }
 
-  // Sort: best matches first
-  // 1) By matchLevel ascending (exact match level 0 first)
-  // 2) Within same level, by number of passed filters descending (more passes = higher)
-  participants.sort((a: any, b: any) => {
-    if (a.matchLevel !== b.matchLevel) return a.matchLevel - b.matchLevel;
-    const aPass = (a.filterChecks as any[]).filter((fc: any) => fc.passes).length;
-    const bPass = (b.filterChecks as any[]).filter((fc: any) => fc.passes).length;
-    return bPass - aPass; // more passes = higher rank
-  });
+  participants = attachMultiCaseScores(participants, filtersList);
+  participants = sortParticipantsByMultiCaseMatch(participants);
 
   /* =========================
      SERVER ACTION
@@ -408,6 +403,15 @@ export default async function NewSessionPage({
                         </div>
                       </details>
                     )}
+                    <div className="text-[10px] text-slate-500 mt-1">
+                      Cases Passed: {p.casePassCount}
+                      {p.casePassCount > 0 && (
+                        <span className="ml-2 text-[10px] font-semibold text-green-700">
+                          ⭐ Strong Candidate
+                        </span>
+                      )}
+                      &nbsp;|&nbsp; Score: {p.multiScore} / {p.multiTotal}
+                    </div>
 
                     {p.matchLevel >= FILTER_PRIORITY.length && (
                       <details className="inline-block">
