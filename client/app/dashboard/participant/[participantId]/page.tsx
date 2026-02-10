@@ -33,16 +33,6 @@ export default async function ParticipantProfilePage({
 
     return (
       <div className="max-w-5xl mx-auto p-8 space-y-8">
-        {/* BACK LINK */}
-        {fromCase && role !== "participant" && (
-          <Link
-            href={`/admin/cases/${sp?.caseId}`}
-            className="text-blue-600 underline"
-          >
-            ← Back to Case
-          </Link>
-        )}
-
         {/* HEADER */}
         <div className="bg-white border rounded-xl p-6 shadow-sm">
           <h1 className="text-3xl font-bold">
