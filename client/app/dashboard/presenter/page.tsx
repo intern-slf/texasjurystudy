@@ -4,6 +4,28 @@ import CaseActions from "@/components/CaseActions";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import PresenterSidebar from "@/components/PresenterSidebar";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Calendar, Clock, AlertCircle, FileText, Upload } from "lucide-react";
+
+// Define a proper interface for your case object to replace 'any'
+interface Case {
+  id: string;
+  title: string;
+  description: string;
+  scheduled_at: string | null;
+  schedule_status: string | null;
+  [key: string]: unknown; // Allow for dynamic fields from Supabase
+}
 
 type PresenterDashboardProps = {
   searchParams?: Promise<{
@@ -25,7 +47,7 @@ export default async function PresenterDashboard({
 
   /* ===========================
       AUTO-MOVE EXPIRED CASES
-     =========================== */
+      =========================== */
   const sixtyMinutesAgo = new Date(
     Date.now() - 60 * 60 * 1000
   ).toISOString();
@@ -39,7 +61,7 @@ export default async function PresenterDashboard({
 
   /* ===========================
       TAB HANDLING
-     =========================== */
+      =========================== */
   const resolvedSearchParams = await searchParams;
 
   const tab: "current" | "approved" | "previous" =
@@ -51,7 +73,7 @@ export default async function PresenterDashboard({
 
   /* ===========================
       FETCH CASES (UPDATED QUERY)
-     =========================== */
+      =========================== */
   let caseQuery = supabase
     .from("cases")
     .select(`*, case_documents (id)`)
@@ -76,15 +98,15 @@ export default async function PresenterDashboard({
 
   /* ===========================
       SERVER ACTIONS
-     =========================== */
+      =========================== */
 
   async function softDeleteCase(formData: FormData) {
     "use server";
 
     const caseId = formData.get("case_id") as string;
     const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    const { data: { user: activeUser } } = await supabase.auth.getUser();
+    if (!activeUser) return;
 
     await supabase
       .from("cases")
@@ -93,11 +115,11 @@ export default async function PresenterDashboard({
         deleted_at: new Date().toISOString(),
       })
       .eq("id", caseId)
-      .eq("user_id", user.id);
+      .eq("user_id", activeUser.id);
 
     await supabase.from("case_audit_logs").insert({
       case_id: caseId,
-      user_id: user.id,
+      user_id: activeUser.id,
       action: "soft_delete",
     });
 
@@ -109,8 +131,8 @@ export default async function PresenterDashboard({
 
     const caseId = formData.get("case_id") as string;
     const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    const { data: { user: activeUser } } = await supabase.auth.getUser();
+    if (!activeUser) return;
 
     await supabase
       .from("cases")
@@ -119,11 +141,11 @@ export default async function PresenterDashboard({
         deleted_at: null,
       })
       .eq("id", caseId)
-      .eq("user_id", user.id);
+      .eq("user_id", activeUser.id);
 
     await supabase.from("case_audit_logs").insert({
       case_id: caseId,
-      user_id: user.id,
+      user_id: activeUser.id,
       action: "restore",
     });
 
@@ -135,19 +157,19 @@ export default async function PresenterDashboard({
 
     const caseId = formData.get("case_id") as string;
     const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    const { data: { user: activeUser } } = await supabase.auth.getUser();
+    if (!activeUser) return;
 
     await supabase
       .from("cases")
       .delete()
       .eq("id", caseId)
-      .eq("user_id", user.id)
+      .eq("user_id", activeUser.id)
       .eq("status", "previous");
 
     await supabase.from("case_audit_logs").insert({
       case_id: caseId,
-      user_id: user.id,
+      user_id: activeUser.id,
       action: "permanent_delete",
     });
 
@@ -163,8 +185,8 @@ export default async function PresenterDashboard({
     const scheduledAt = formData.get("scheduled_at") as string;
 
     const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    const { data: { user: activeUser } } = await supabase.auth.getUser();
+    if (!activeUser) return;
 
     await supabase
       .from("cases")
@@ -176,206 +198,261 @@ export default async function PresenterDashboard({
           : null,
       })
       .eq("id", caseId)
-      .eq("user_id", user.id);
+      .eq("user_id", activeUser.id);
 
     revalidatePath("/dashboard/presenter");
   }
 
   async function respondToSchedule(formData: FormData) {
-  "use server";
+    "use server";
 
-  const caseId = formData.get("caseId") as string;
-  const response = formData.get("response") as "accepted" | "rejected";
+    const caseId = formData.get("caseId") as string;
+    const response = formData.get("response") as "accepted" | "rejected";
 
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+    const supabase = await createClient();
+    const { data: { user: activeUser } } = await supabase.auth.getUser();
 
-  if (!user) return;
+    if (!activeUser) return;
 
-  await supabase
-    .from("cases")
-    .update({ schedule_status: response })
-    .eq("id", caseId)
-    .eq("user_id", user.id);
+    await supabase
+      .from("cases")
+      .update({ schedule_status: response })
+      .eq("id", caseId)
+      .eq("user_id", activeUser.id);
 
-  revalidatePath("/dashboard/presenter");
-}
+    revalidatePath("/dashboard/presenter");
+  }
 
   /* ===========================
       UI
-     =========================== */
+      =========================== */
   return (
-    <main className="flex min-h-screen">
+    <div className="flex min-h-screen bg-muted/10 font-sans">
       <PresenterSidebar activeTab={tab} />
 
-      <section className="flex-1 px-8 py-10">
-        <h1 className="text-2xl font-semibold mb-6 capitalize">
-          {tab} Focus Groups
-        </h1>
-
-        {!cases?.length && (
-          <p className="text-muted-foreground">
-            No {tab} focus groups.
-          </p>
-        )}
-
-        <ul className="space-y-4">
-          {cases?.map((c: any) => (
-            <li key={c.id} className="border rounded-md p-4">
-              <h3 className="font-medium">{c.title}</h3>
-              <p className="text-sm text-muted-foreground">
-                {c.description}
+      <main className="flex-1 overflow-y-auto">
+        <div className="max-w-5xl mx-auto px-8 py-12">
+          <div className="flex items-center justify-between mb-8">
+            <div>
+              <h1 className="text-3xl font-bold tracking-tight capitalize">
+                {tab} Focus Groups
+              </h1>
+              <p className="text-muted-foreground mt-2">
+                Manage your {tab} cases and sessions.
               </p>
+            </div>
+            
+            {tab === "current" && (
+                <div className="hidden md:block">
+                     <Badge variant="outline" className="text-sm py-1 px-3 bg-white">
+                        {cases?.length || 0} Active Cases
+                     </Badge>
+                </div>
+            )}
+          </div>
 
-              {c.scheduled_at && (
-                <p className="text-xs font-semibold text-blue-600 mt-2">
-                  📅 Scheduled for: {new Date(c.scheduled_at).toLocaleString("en-GB")}
-                </p>
-              )}
+          {!cases?.length && (
+            <div className="flex flex-col items-center justify-center p-12 text-center border-2 border-dashed rounded-xl bg-card/50">
+                <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mb-4">
+                    <FileText className="h-6 w-6 text-muted-foreground" />
+                </div>
+              <h3 className="text-lg font-semibold">No cases found</h3>
+              <p className="text-muted-foreground mt-1">
+                You don&apos;t have any {tab} focus groups at the moment.
+              </p>
+            </div>
+          )}
 
-              {/* APPROVED AREA */}
-              {tab === "approved" && (
-                <div className="mt-3 space-y-2">
-                  <span className="inline-block text-xs font-semibold text-green-700 bg-green-50 border border-green-200 px-2 py-0.5 rounded">
-                    Approved by Admin
-                  </span>
+          <div className="grid gap-6">
+            {(cases as Case[] | null)?.map((c) => (
+              <Card key={c.id} className="overflow-hidden border-muted shadow-sm hover:shadow-md transition-shadow">
+                <CardHeader className="bg-muted/10 pb-4">
+                    <div className="flex justify-between items-start">
+                        <div>
+                            <CardTitle className="text-xl">{c.title}</CardTitle>
+                            <CardDescription className="line-clamp-2 mt-1">
+                                {c.description}
+                            </CardDescription>
+                        </div>
+                         {c.scheduled_at && (
+                            <Badge variant="secondary" className="flex items-center gap-1.5 font-medium">
+                                <Calendar className="h-3 w-3" />
+                                {new Date(c.scheduled_at).toLocaleDateString()}
+                            </Badge>
+                        )}
+                    </div>
+                </CardHeader>
+                
+                <CardContent className="pt-6">
+                  {/* APPROVED AREA */}
+                  {tab === "approved" && (
+                    <div className="space-y-4">
+                        <div className="flex items-center gap-2 p-3 bg-green-500/10 text-green-700 rounded-lg border border-green-500/20">
+                            <AlertCircle className="h-4 w-4" />
+                            <span className="text-sm font-medium">Approved by Admin</span>
+                        </div>
 
-                  {/* proposed date */}
-                  {c.scheduled_at && (
-                    <div className="text-sm">
-                      Proposed time:{" "}
-                      <span className="font-semibold">
-                        {new Date(c.scheduled_at).toLocaleString("en-GB")}
-                      </span>
+                      {/* proposed date */}
+                      {c.scheduled_at && (
+                        <div className="flex items-center justify-between p-4 border rounded-lg bg-card">
+                            <div className="flex items-center gap-3">
+                                <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                                    <Clock className="h-5 w-5" />
+                                </div>
+                                <div>
+                                    <p className="text-sm font-medium">Proposed Schedule</p>
+                                    <p className="text-xs text-muted-foreground">
+                                        {new Date(c.scheduled_at).toLocaleString()}
+                                    </p>
+                                </div>
+                            </div>
+                            
+                            <Badge variant={c.schedule_status === "accepted" ? "default" : c.schedule_status === "rejected" ? "destructive" : "outline"} className="capitalize">
+                                {c.schedule_status || "Pending Action"}
+                            </Badge>
+                        </div>
+                      )}
+
+                      {(c.schedule_status === null ||
+                        c.schedule_status === "pending") &&
+                        c.scheduled_at && (
+                          <div className="flex gap-3 pt-2">
+                            <form action={respondToSchedule}>
+                              <input type="hidden" name="caseId" value={c.id} />
+                              <input type="hidden" name="response" value="accepted" />
+                              <Button size="sm" className="bg-green-600 hover:bg-green-700">
+                                Accept Schedule
+                              </Button>
+                            </form>
+
+                            <form action={respondToSchedule}>
+                              <input type="hidden" name="caseId" value={c.id} />
+                              <input type="hidden" name="response" value="rejected" />
+                              <Button size="sm" variant="destructive">
+                                Reject Schedule
+                              </Button>
+                            </form>
+                          </div>
+                        )}
                     </div>
                   )}
 
-                  {/* status */}
-                  <div className="text-xs capitalize font-semibold">
-                    Status: {c.schedule_status ?? "pending"}
-                  </div>
-
-                  {(c.schedule_status === null ||
-                    c.schedule_status === "pending") &&
-                    c.scheduled_at && (
-                      <div className="flex gap-2">
-                        <form action={respondToSchedule}>
-                          <input type="hidden" name="caseId" value={c.id} />
-                          <input type="hidden" name="response" value="accepted" />
-                          <button className="px-3 py-1 text-xs bg-green-600 text-white rounded">
-                            Accept
-                          </button>
-                        </form>
-
-                        <form action={respondToSchedule}>
-                          <input type="hidden" name="caseId" value={c.id} />
-                          <input type="hidden" name="response" value="rejected" />
-                          <button className="px-3 py-1 text-xs bg-red-600 text-white rounded">
-                            Reject
-                          </button>
-                        </form>
+                  {/* CURRENT */}
+                  {tab === "current" && (
+                    <div className="space-y-6">
+                      <div>
+                        <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                            <Upload className="h-4 w-4" />
+                            Case Documents
+                        </h4>
+                        <div className="bg-muted/30 rounded-lg p-4 border border-dashed">
+                            <CaseDocumentUploader caseId={c.id} />
+                        </div>
                       </div>
-                    )}
-                </div>
-              )}
 
-              {/* CURRENT */}
-              {tab === "current" && (
-                <>
-                  <h2 className="text-lg font-medium mt-4">
-                    Upload Case Documents
-                  </h2>
+                      <details className="group">
+                        <summary className="cursor-pointer text-sm font-medium text-primary hover:underline flex items-center gap-2 select-none">
+                            <span>Edit Case Details</span>
+                        </summary>
 
-                  <CaseDocumentUploader caseId={c.id} />
+                        <div className="pt-4 animate-in slide-in-from-top-2 duration-300">
+                             <form action={updateCase} className="space-y-4 border p-4 rounded-lg bg-card">
+                                <input type="hidden" name="case_id" value={c.id} />
 
-                  <details className="mt-4">
-                    <summary className="cursor-pointer text-sm underline">
-                      Edit case details
-                    </summary>
+                                <div className="space-y-2">
+                                    <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Title</label>
+                                    <Input
+                                        name="title"
+                                        defaultValue={c.title}
+                                        required
+                                    />
+                                </div>
 
-                    <form action={updateCase} className="mt-3 space-y-3">
-                      <input type="hidden" name="case_id" value={c.id} />
+                                <div className="space-y-2">
+                                    <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Description</label>
+                                    <Textarea
+                                        name="description"
+                                        defaultValue={c.description}
+                                        className="min-h-[100px]"
+                                    />
+                                </div>
 
-                      <input
-                        name="title"
-                        defaultValue={c.title}
-                        className="input w-full"
-                        required
-                      />
+                                <div className="space-y-2">
+                                    <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Schedule</label>
+                                    <Input
+                                        type="datetime-local"
+                                        name="scheduled_at"
+                                        defaultValue={
+                                        c.scheduled_at
+                                            ? new Date(
+                                                new Date(c.scheduled_at).getTime() -
+                                                new Date().getTimezoneOffset() * 60000
+                                            )
+                                                .toISOString()
+                                                .slice(0, 16)
+                                            : ""
+                                        }
+                                    />
+                                </div>
 
-                      <textarea
-                        name="description"
-                        defaultValue={c.description}
-                        className="input w-full"
-                      />
-
-                      <input
-                        type="datetime-local"
-                        name="scheduled_at"
-                        defaultValue={
-                          c.scheduled_at
-                            ? new Date(
-                                new Date(c.scheduled_at).getTime() -
-                                  new Date().getTimezoneOffset() * 60000
-                              )
-                                .toISOString()
-                                .slice(0, 16)
-                            : ""
-                        }
-                        className="input"
-                      />
-
-                      <button className="px-4 py-2 bg-primary text-white rounded">
-                        Save changes
-                      </button>
-                    </form>
-                  </details>
-
-                  {/* DELETE */}
-                  <form action={softDeleteCase} className="mt-3">
-                    <input type="hidden" name="case_id" value={c.id} />
-                    <button className="px-3 py-1 text-xs bg-yellow-600 text-white rounded">
-                      Move to Previous
-                    </button>
-                  </form>
-                </>
-              )}
-
-              {/* PREVIOUS */}
-              {tab === "previous" && (
-                <div className="flex gap-2 mt-3">
-                  {/* Restore only if not expired */}
-                  {(!c.scheduled_at ||
-                    new Date(c.scheduled_at).getTime() > Date.now()) && (
-                    <form action={restoreCase}>
-                      <input type="hidden" name="case_id" value={c.id} />
-                      <button className="px-3 py-1 text-xs bg-blue-600 text-white rounded">
-                        Restore
-                      </button>
-                    </form>
+                                <div className="pt-2">
+                                    <Button size="sm">Save Changes</Button>
+                                </div>
+                            </form>
+                        </div>
+                      </details>
+                    </div>
                   )}
 
-                  <form action={permanentDeleteCase}>
-                    <input type="hidden" name="case_id" value={c.id} />
-                    <button className="px-3 py-1 text-xs bg-red-700 text-white rounded">
-                      Delete Forever
-                    </button>
-                  </form>
-                </div>
-              )}
+                  {/* PREVIOUS */}
+                  {tab === "previous" && (
+                     <div className="flex items-center gap-3 pt-2">
+                      {/* Restore only if not expired */}
+                      {(!c.scheduled_at ||
+                        new Date(c.scheduled_at).getTime() > Date.now()) && (
+                        <form action={restoreCase}>
+                          <input type="hidden" name="case_id" value={c.id} />
+                          <Button size="sm" variant="outline" className="text-blue-600 hover:text-blue-700 hover:bg-blue-50">
+                            Restore Case
+                          </Button>
+                        </form>
+                      )}
 
-              <CaseActions
-                tab={tab}
-                caseId={c.id}
-                isExpired={
-                  !!c.scheduled_at &&
-                  new Date(c.scheduled_at).getTime() < Date.now()
-                }
-              />
-            </li>
-          ))}
-        </ul>
-      </section>
-    </main>
+                      <form action={permanentDeleteCase}>
+                        <input type="hidden" name="case_id" value={c.id} />
+                        <Button size="sm" variant="outline" className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200">
+                            Permanently Delete
+                        </Button>
+                      </form>
+                    </div>
+                  )}
+                  
+                  <div className="mt-6 pt-6 border-t flex justify-between items-center">
+                       <CaseActions
+                        tab={tab}
+                        caseId={c.id}
+                        isExpired={
+                        !!c.scheduled_at &&
+                        new Date(c.scheduled_at).getTime() < Date.now()
+                        }
+                    />
+                    
+                     {tab === "current" && (
+                        <form action={softDeleteCase}>
+                            <input type="hidden" name="case_id" value={c.id} />
+                            <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-destructive">
+                                Move to Archive
+                            </Button>
+                        </form>
+                     )}
+                  </div>
+
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      </main>
+    </div>
   );
 }

@@ -28,9 +28,6 @@ export default async function ParticipantProfilePage({
       return <ParticipantForm userId={participantId} />;
     }
 
-    // From here, participant is guaranteed to exist
-    const fromCase = sp?.from === "case" && sp?.caseId;
-
     return (
       <div className="max-w-5xl mx-auto p-8 space-y-8">
         {/* HEADER */}
