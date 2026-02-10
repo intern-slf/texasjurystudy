@@ -198,7 +198,18 @@ export default function NewCasePage() {
                 <MultiCheckbox label="Gender" options={["Male", "Female", "Other"]} values={filters.gender} onChange={(v) => setFilters({ ...filters, gender: v })} />
                 <MultiCheckbox label="Race" options={["Caucasian", "African American", "Asian", "Native American", "Middle Eastern", "Latino/Hispanic", "Multi-racial", "Other"]} values={filters.race} onChange={(v) => setFilters({ ...filters, race: v })} />
               </div>
+
+
+
+              <div className="p-6 bg-primary/5 rounded-2xl border border-primary/10 space-y-4">
+                <label className="text-sm font-bold uppercase tracking-wider text-primary">Number of Attendees</label>
+                <div className="flex gap-4">
+                  <input type="number" className="number_of_attendees" placeholder="10" />
+                </div>
+              </div>
+
             </div>
+            
 
             {/* PREFERENCES SECTION */}
             <div className="lg:col-span-8 space-y-8">

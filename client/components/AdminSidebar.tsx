@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
 import { useSearchParams, usePathname } from "next/navigation";
 import { 
   CheckCircle2, 
@@ -60,16 +59,6 @@ export default function AdminSidebar({
   return (
     <aside className="w-80 border-r bg-card/40 backdrop-blur-xl flex flex-col min-h-screen z-10 sticky top-0 h-screen transition-all duration-300">
       <div className="p-8 pb-4">
-        <div className="flex items-center gap-4 mb-8 px-2">
-          <Image
-            src="/logo.png"
-            alt="Texas Jury Study"
-            width={160}
-            height={48}
-            className="w-auto h-12 object-contain"
-            priority
-          />
-        </div>
         
         <div className="px-3 mb-6">
           <p className="text-xs font-bold text-muted-foreground/80 uppercase tracking-[0.2em]">
