@@ -407,7 +407,7 @@ export default async function NewSessionPage({
                       Cases Passed: {p.casePassCount}
                       {p.casePassCount > 0 && (
                         <span className="ml-2 text-[10px] font-semibold text-green-700">
-                          ⭐ Strong Candidate
+                          ⭐ Recommended Candidate
                         </span>
                       )}
                       &nbsp;|&nbsp; Score: {p.multiScore} / {p.multiTotal}
