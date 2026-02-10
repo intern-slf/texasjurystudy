@@ -230,18 +230,25 @@ function testRelaxFilters() {
 
     // Level 0: No change
     const level0 = relaxFilters(fullFilters, 0);
-    assert(level0.political_affiliation !== undefined, "Level 0 keeps political");
+    assert(level0.location !== undefined, "Level 0 keeps location");
 
-    // Level 1: Drop Political (First in priority list)
+    // Level 1: Drop Location (First in NEW priority list)
     const level1 = relaxFilters(fullFilters, 1);
-    assert(level1.political_affiliation === undefined, "Level 1 drops political");
-    assert(level1.race !== undefined, "Level 1 keeps race");
+    assert(level1.location === undefined, "Level 1 drops location");
+    assert(level1.age !== undefined, "Level 1 keeps age");
 
-    // Level 2: Drop Political + Race
+    // Level 2: Drop Location + Age
     const level2 = relaxFilters(fullFilters, 2);
-    assert(level2.political_affiliation === undefined, "Level 2 drops political");
-    assert(level2.race === undefined, "Level 2 drops race");
-    assert(level2.gender !== undefined, "Level 2 keeps gender");
+    assert(level2.location === undefined, "Level 2 drops location");
+    assert(level2.age === undefined, "Level 2 drops age");
+    assert(level2.race !== undefined, "Level 2 keeps race");
+    
+    // Check Political is still there (it's last)
+    const levelMax = relaxFilters(fullFilters, 6); // Drop 6 things
+    assert(levelMax.political_affiliation !== undefined, "Level 6 keeps political (dropped last)");
+    
+    const levelAll = relaxFilters(fullFilters, 10);
+    assert(levelAll.political_affiliation === undefined, "Level 10 drops political");
 }
 
 console.log("Running Filter Tests...");

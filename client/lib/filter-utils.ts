@@ -249,13 +249,13 @@ function uniqueUnion(arrays: (string[] | undefined)[]): string[] | undefined {
 
 // Low index = Dropped First
 export const FILTER_PRIORITY = [
-  "political_affiliation",
+  "location",      // Drop location first (least important?)
+  "age",
   "race",
   "gender",
-  "socioeconomic", // Drops all sub-fields (education, income, etc)
-  "eligibility",   // Drops all sub-fields
-  "age",
-  "location"       // Dropped last
+  "socioeconomic", 
+  "eligibility",
+  "political_affiliation" // Keep this loop longest (Drop last)
 ];
 
 /**
