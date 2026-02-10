@@ -89,7 +89,7 @@ export default async function ParticipantProfilePage({
           </div>
         </section>
 
-        {/* FUTURE */}
+        {/* FUTURE AREA */}
         {role !== "participant" && (
           <section className="bg-slate-50 border rounded-xl p-6">
             <h2 className="font-bold text-lg mb-2">Admin / Presenter Area</h2>
@@ -100,10 +100,13 @@ export default async function ParticipantProfilePage({
         )}
       </div>
     );
-  } catch (err: any) {
+  } catch (err: unknown) {
+    // Narrowing the error type to access .message safely
+    const errorMessage = err instanceof Error ? err.message : "Something went wrong";
+    
     return (
       <p className="text-center text-red-500 mt-20">
-        {err.message || "Something went wrong"}
+        {errorMessage}
       </p>
     );
   }

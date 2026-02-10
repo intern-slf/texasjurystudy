@@ -7,7 +7,7 @@ import {
   PlayCircle,
   History,
   CheckCircle2,
-  Presentation
+  // Presentation removed - unused
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 

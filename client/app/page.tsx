@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, CheckCircle2, Gavel, Scale, Users } from "lucide-react";
+import { ArrowRight, Gavel, Scale, Users } from "lucide-react"; // CheckCircle2 removed
 
 export default function Home() {
   return (

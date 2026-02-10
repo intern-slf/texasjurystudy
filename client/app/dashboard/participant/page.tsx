@@ -12,8 +12,8 @@ export default async function ParticipantProfilePage({
 }) {
   try {
     /* =========================
-       UNWRAP ASYNC PARAMS
-       ========================= */
+        UNWRAP ASYNC PARAMS
+        ========================= */
     const { participantId } = await params;
     const sp = searchParams ? await searchParams : undefined;
 
@@ -25,8 +25,8 @@ export default async function ParticipantProfilePage({
     const fromCase = sp?.from === "case" && sp?.caseId;
 
     /* =========================
-       PENDING SESSION INVITES
-       ========================= */
+        PENDING SESSION INVITES
+        ========================= */
     const pendingInvites =
       role === "participant"
         ? await getPendingInvites(participant.user_id)
@@ -61,7 +61,7 @@ export default async function ParticipantProfilePage({
 
             <div className="space-y-4">
               {pendingInvites.map((invite) => (
-                <form
+                <div
                   key={invite.id}
                   className="flex items-center justify-between border p-4 rounded-lg"
                 >
@@ -73,27 +73,31 @@ export default async function ParticipantProfilePage({
                   </div>
 
                   <div className="flex gap-2">
-                    <button
-                      formAction={async () => {
-                        "use server";
-                        await updateInviteStatus(invite.id, "accepted");
-                      }}
-                      className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700"
-                    >
-                      Accept
-                    </button>
+                    <form action={async () => {
+                      "use server";
+                      await updateInviteStatus(invite.id, "accepted");
+                    }}>
+                      <button
+                        type="submit"
+                        className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700"
+                      >
+                        Accept
+                      </button>
+                    </form>
 
-                    <button
-                      formAction={async () => {
-                        "use server";
-                        await updateInviteStatus(invite.id, "declined");
-                      }}
-                      className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700"
-                    >
-                      Decline
-                    </button>
+                    <form action={async () => {
+                      "use server";
+                      await updateInviteStatus(invite.id, "declined");
+                    }}>
+                      <button
+                        type="submit"
+                        className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700"
+                      >
+                        Decline
+                      </button>
+                    </form>
                   </div>
-                </form>
+                </div>
               ))}
             </div>
           </section>
@@ -164,10 +168,13 @@ export default async function ParticipantProfilePage({
         )}
       </div>
     );
-  } catch (err: any) {
+  } catch (err: unknown) {
+    // Narrowing the error type to safely access the message property
+    const errorMessage = err instanceof Error ? err.message : "Something went wrong";
+    
     return (
       <p className="text-center text-red-500 mt-20">
-        {err.message || "Something went wrong"}
+        {errorMessage}
       </p>
     );
   }

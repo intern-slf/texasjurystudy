@@ -10,16 +10,14 @@ import {
 import {
   Card,
   CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
+  // CardDescription, CardHeader, CardTitle removed - unused in Table layout
 } from "@/components/ui/card";
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { sendApprovalEmail } from "@/lib/mail";
 import { AdminActionButton } from "@/components/AdminActionButton";
 import { Button } from "@/components/ui/button";
-import { Calendar, FileText, User, Users } from "lucide-react";
+import { Calendar, FileText, Users } from "lucide-react"; // User icon removed - unused
 
 /* =========================
    TYPES

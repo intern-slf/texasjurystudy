@@ -8,7 +8,6 @@ import {
   Card,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -17,6 +16,16 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Calendar, Clock, AlertCircle, FileText, Upload } from "lucide-react";
+
+// Define a proper interface for your case object to replace 'any'
+interface Case {
+  id: string;
+  title: string;
+  description: string;
+  scheduled_at: string | null;
+  schedule_status: string | null;
+  [key: string]: unknown; // Allow for dynamic fields from Supabase
+}
 
 type PresenterDashboardProps = {
   searchParams?: Promise<{
@@ -38,7 +47,7 @@ export default async function PresenterDashboard({
 
   /* ===========================
       AUTO-MOVE EXPIRED CASES
-     =========================== */
+      =========================== */
   const sixtyMinutesAgo = new Date(
     Date.now() - 60 * 60 * 1000
   ).toISOString();
@@ -52,7 +61,7 @@ export default async function PresenterDashboard({
 
   /* ===========================
       TAB HANDLING
-     =========================== */
+      =========================== */
   const resolvedSearchParams = await searchParams;
 
   const tab: "current" | "approved" | "previous" =
@@ -64,7 +73,7 @@ export default async function PresenterDashboard({
 
   /* ===========================
       FETCH CASES (UPDATED QUERY)
-     =========================== */
+      =========================== */
   let caseQuery = supabase
     .from("cases")
     .select(`*, case_documents (id)`)
@@ -89,15 +98,15 @@ export default async function PresenterDashboard({
 
   /* ===========================
       SERVER ACTIONS
-     =========================== */
+      =========================== */
 
   async function softDeleteCase(formData: FormData) {
     "use server";
 
     const caseId = formData.get("case_id") as string;
     const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    const { data: { user: activeUser } } = await supabase.auth.getUser();
+    if (!activeUser) return;
 
     await supabase
       .from("cases")
@@ -106,11 +115,11 @@ export default async function PresenterDashboard({
         deleted_at: new Date().toISOString(),
       })
       .eq("id", caseId)
-      .eq("user_id", user.id);
+      .eq("user_id", activeUser.id);
 
     await supabase.from("case_audit_logs").insert({
       case_id: caseId,
-      user_id: user.id,
+      user_id: activeUser.id,
       action: "soft_delete",
     });
 
@@ -122,8 +131,8 @@ export default async function PresenterDashboard({
 
     const caseId = formData.get("case_id") as string;
     const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    const { data: { user: activeUser } } = await supabase.auth.getUser();
+    if (!activeUser) return;
 
     await supabase
       .from("cases")
@@ -132,11 +141,11 @@ export default async function PresenterDashboard({
         deleted_at: null,
       })
       .eq("id", caseId)
-      .eq("user_id", user.id);
+      .eq("user_id", activeUser.id);
 
     await supabase.from("case_audit_logs").insert({
       case_id: caseId,
-      user_id: user.id,
+      user_id: activeUser.id,
       action: "restore",
     });
 
@@ -148,19 +157,19 @@ export default async function PresenterDashboard({
 
     const caseId = formData.get("case_id") as string;
     const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    const { data: { user: activeUser } } = await supabase.auth.getUser();
+    if (!activeUser) return;
 
     await supabase
       .from("cases")
       .delete()
       .eq("id", caseId)
-      .eq("user_id", user.id)
+      .eq("user_id", activeUser.id)
       .eq("status", "previous");
 
     await supabase.from("case_audit_logs").insert({
       case_id: caseId,
-      user_id: user.id,
+      user_id: activeUser.id,
       action: "permanent_delete",
     });
 
@@ -176,8 +185,8 @@ export default async function PresenterDashboard({
     const scheduledAt = formData.get("scheduled_at") as string;
 
     const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    const { data: { user: activeUser } } = await supabase.auth.getUser();
+    if (!activeUser) return;
 
     await supabase
       .from("cases")
@@ -189,7 +198,7 @@ export default async function PresenterDashboard({
           : null,
       })
       .eq("id", caseId)
-      .eq("user_id", user.id);
+      .eq("user_id", activeUser.id);
 
     revalidatePath("/dashboard/presenter");
   }
@@ -201,22 +210,22 @@ export default async function PresenterDashboard({
     const response = formData.get("response") as "accepted" | "rejected";
 
     const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user: activeUser } } = await supabase.auth.getUser();
 
-    if (!user) return;
+    if (!activeUser) return;
 
     await supabase
       .from("cases")
       .update({ schedule_status: response })
       .eq("id", caseId)
-      .eq("user_id", user.id);
+      .eq("user_id", activeUser.id);
 
     revalidatePath("/dashboard/presenter");
   }
 
   /* ===========================
       UI
-     =========================== */
+      =========================== */
   return (
     <div className="flex min-h-screen bg-muted/10 font-sans">
       <PresenterSidebar activeTab={tab} />
@@ -249,13 +258,13 @@ export default async function PresenterDashboard({
                 </div>
               <h3 className="text-lg font-semibold">No cases found</h3>
               <p className="text-muted-foreground mt-1">
-                You don't have any {tab} focus groups at the moment.
+                You don&apos;t have any {tab} focus groups at the moment.
               </p>
             </div>
           )}
 
           <div className="grid gap-6">
-            {cases?.map((c: any) => (
+            {(cases as Case[] | null)?.map((c) => (
               <Card key={c.id} className="overflow-hidden border-muted shadow-sm hover:shadow-md transition-shadow">
                 <CardHeader className="bg-muted/10 pb-4">
                     <div className="flex justify-between items-start">

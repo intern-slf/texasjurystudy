@@ -4,12 +4,11 @@ import Link from "next/link";
 import Image from "next/image";
 import { useSearchParams, usePathname } from "next/navigation";
 import { 
-  BarChart3, 
   CheckCircle2, 
   FileText, 
   LayoutDashboard, 
   Users 
-} from "lucide-react";
+} from "lucide-react"; // BarChart3 removed
 import { cn } from "@/lib/utils";
 
 type Counts = {
