@@ -215,10 +215,6 @@ export default async function AdminDashboardPage({
               </TableHead>
 
               <TableHead className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Confirmation
-              </TableHead>
-
-              <TableHead className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Documents
               </TableHead>
 
@@ -300,13 +296,6 @@ export default async function AdminDashboardPage({
               Not scheduled
             </span>
           )}
-        </TableCell>
-
-        {/* CONFIRMATION */}
-        <TableCell className="pt-4">
-          <span className="text-xs font-semibold text-slate-600">
-            {c.admin_status}
-          </span>
         </TableCell>
 
         {/* DOCS */}
