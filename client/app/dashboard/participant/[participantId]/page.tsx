@@ -1,4 +1,7 @@
 import { getParticipantProfile } from "@/lib/participant/getParticipantProfile";
+import { getPendingInvites } from "@/lib/participant/getPendingInvites";
+import { updateInviteStatus } from "@/lib/participant/updateInviteStatus";
+import ParticipantForm from "@/components/ParticipantForm";
 import Link from "next/link";
 
 export default async function ParticipantProfilePage({
@@ -13,24 +16,37 @@ export default async function ParticipantProfilePage({
        UNWRAP ASYNC PARAMS
        ========================= */
     const { participantId } = await params;
-    const schParams = searchParams ? await searchParams : undefined;
+    const sp = searchParams ? await searchParams : undefined;
 
-    const { participant, role } = await getParticipantProfile(
-      participantId,
-      {
-        from: schParams?.from,
-        caseId: schParams?.caseId,
-      }
-    );
-    const fromCase =
-      schParams?.from === "case" && schParams?.caseId;
+    const { participant, role } = await getParticipantProfile(participantId, {
+      from: sp?.from,
+      caseId: sp?.caseId,
+    });
+
+    /* =========================
+       🟢 NEW USER → SHOW FORM
+       ========================= */
+    if (role === "participant" && !participant) {
+      return <ParticipantForm userId={participantId} />;
+    }
+
+    // From here, participant is guaranteed to exist
+    const fromCase = sp?.from === "case" && sp?.caseId;
+
+    /* =========================
+       PENDING SESSION INVITES
+       ========================= */
+    const pendingInvites =
+      role === "participant"
+        ? await getPendingInvites(participant.user_id)
+        : [];
 
     return (
       <div className="max-w-5xl mx-auto p-8 space-y-8">
         {/* BACK LINK */}
         {fromCase && role !== "participant" && (
           <Link
-            href={`/dashboard/Admin/${schParams?.caseId}`}
+            href={`/admin/cases/${sp?.caseId}`}
             className="text-blue-600 underline"
           >
             ← Back to Case
@@ -46,6 +62,63 @@ export default async function ParticipantProfilePage({
             {participant.city}, {participant.state}
           </p>
         </div>
+
+        {/* SESSION INVITES */}
+        {role === "participant" && pendingInvites.length > 0 && (
+          <section className="bg-white border rounded-xl p-6">
+            <h2 className="font-bold text-lg mb-4">Session Invitations</h2>
+
+            <div className="space-y-4">
+              {pendingInvites.map((invite) => (
+                <form
+                  key={invite.id}
+                  className="flex items-center justify-between border p-4 rounded-lg"
+                >
+                  <div>
+                    <p className="font-medium">Session Invite</p>
+                    <p className="text-sm text-slate-500">
+                      Date: {invite.sessions?.[0]?.session_date}
+                    </p>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <button
+                      formAction={async () => {
+                        "use server";
+                        await updateInviteStatus(invite.id, "accepted");
+                      }}
+                      className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700"
+                    >
+                      Accept
+                    </button>
+
+                    <button
+                      formAction={async () => {
+                        "use server";
+                        await updateInviteStatus(invite.id, "declined");
+                      }}
+                      className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700"
+                    >
+                      Decline
+                    </button>
+                  </div>
+                </form>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* PARTICIPANT DASHBOARD BUTTON */}
+        {role === "participant" && (
+          <div>
+            <Link
+              href="/dashboard/participant"
+              className="inline-block bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+            >
+              Go to My Dashboard
+            </Link>
+          </div>
+        )}
 
         {/* DEMOGRAPHICS */}
         <section className="bg-white border rounded-xl p-6">
@@ -89,7 +162,7 @@ export default async function ParticipantProfilePage({
           </div>
         </section>
 
-        {/* FUTURE */}
+        {/* ADMIN AREA */}
         {role !== "participant" && (
           <section className="bg-slate-50 border rounded-xl p-6">
             <h2 className="font-bold text-lg mb-2">Admin / Presenter Area</h2>

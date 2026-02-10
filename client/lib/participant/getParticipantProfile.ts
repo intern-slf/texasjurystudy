@@ -40,7 +40,15 @@ export async function getParticipantProfile(
       .eq("user_id", user.id)
       .single();
 
-    if (!self) throw new Error("Participant record not found");
+    if (!self) {
+      return {
+        participant: null,
+        role,
+      };
+    }
+
+    finalParticipantId = self.id;
+
 
     finalParticipantId = self.id;
   }
@@ -76,7 +84,14 @@ export async function getParticipantProfile(
     .eq("id", finalParticipantId)
     .single();
 
-  if (!participant) throw new Error("Participant not found");
+  
+
+  if (!participant) {
+    return {
+      participant: null,
+      role,
+    };
+  }
 
   return {
     participant,
