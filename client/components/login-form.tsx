@@ -71,76 +71,101 @@ export function LoginForm({
   };
 
   return (
-    <div className={cn("flex flex-col gap-6", className)} {...props}>
-      <Card className="border-muted shadow-2xl backdrop-blur-sm bg-card/80 sm:w-[400px]">
-        <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl font-bold tracking-tight text-center">Login</CardTitle>
-          <CardDescription className="text-center">
-            Enter your email below to login to your account
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleLogin}>
-            <div className="flex flex-col gap-5">
-              <div className="grid gap-2">
-                <Label htmlFor="email">Email</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="m@example.com"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="bg-background/50 focus:ring-primary focus:border-primary transition-all"
-                />
-              </div>
-              <div className="grid gap-2">
-                <div className="flex items-center">
-                  <Label htmlFor="password">Password</Label>
-                  <Link
-                    href="/auth/forgot-password"
-                    className="ml-auto inline-block text-sm text-primary hover:text-primary/80 transition-colors"
-                  >
-                    Forgot your password?
-                  </Link>
-                </div>
-                <Input
-                  id="password"
-                  type="password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="bg-background/50 focus:ring-primary focus:border-primary transition-all"
-                />
-              </div>
-              {error && (
-                <div className="p-3 text-sm font-medium text-red-500 bg-red-50 dark:bg-red-900/10 rounded-md border border-red-200 dark:border-red-900/20">
-                  {error}
-                </div>
-              )}
-              <Button type="submit" className="w-full font-medium" disabled={isLoading}>
-                {isLoading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Logging in...
-                  </>
-                ) : (
-                  "Login"
-                )}
-              </Button>
-            </div>
-            <div className="mt-6 text-center text-sm text-muted-foreground">
-              Don&apos;t have an account?{" "}
+  <div
+    className={cn(
+      "flex min-h-screen items-center justify-center bg-gradient-to-br from-indigo-500/10 via-background to-purple-500/10 px-4",
+      className
+    )}
+    {...props}
+  >
+    <Card className="w-full max-w-md border border-white/10 bg-background/80 backdrop-blur-xl shadow-2xl rounded-2xl">
+      <CardHeader className="space-y-2 text-center pb-2">
+        <CardTitle className="text-3xl font-bold tracking-tight">
+          Welcome Back
+        </CardTitle>
+        <CardDescription className="text-muted-foreground">
+          Login to access your dashboard
+        </CardDescription>
+      </CardHeader>
+
+      <CardContent>
+        <form onSubmit={handleLogin} className="space-y-6">
+          {/* Email */}
+          <div className="space-y-2">
+            <Label htmlFor="email" className="text-sm font-medium">
+              Email
+            </Label>
+            <Input
+              id="email"
+              type="email"
+              placeholder="admin@example.com"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="h-11 bg-background/60 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-0 transition-all"
+            />
+          </div>
+
+          {/* Password */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="password" className="text-sm font-medium">
+                Password
+              </Label>
               <Link
-                href="/auth/signup"
-                className="underline underline-offset-4 hover:text-primary transition-colors font-medium"
+                href="/auth/forgot-password"
+                className="text-sm text-primary hover:underline transition"
               >
-                Sign up
+                Forgot?
               </Link>
             </div>
-          </form>
-        </CardContent>
-      </Card>
-    </div>
-  );
+            <Input
+              id="password"
+              type="password"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="h-11 bg-background/60 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-0 transition-all"
+            />
+          </div>
+
+          {/* Error */}
+          {error && (
+            <div className="rounded-md border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-500">
+              {error}
+            </div>
+          )}
+
+          {/* Button */}
+          <Button
+            type="submit"
+            disabled={isLoading}
+            className="h-11 w-full text-base font-semibold rounded-lg transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Logging in...
+              </>
+            ) : (
+              "Login"
+            )}
+          </Button>
+
+          {/* Footer */}
+          <p className="pt-4 text-center text-sm text-muted-foreground">
+            Don&apos;t have an account?{" "}
+            <Link
+              href="/auth/signup"
+              className="font-medium text-primary hover:underline transition"
+            >
+              Sign up
+            </Link>
+          </p>
+        </form>
+      </CardContent>
+    </Card>
+  </div>
+);
+
 }

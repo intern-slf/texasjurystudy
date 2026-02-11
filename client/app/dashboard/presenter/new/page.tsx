@@ -126,7 +126,7 @@ export default function NewCasePage() {
       <div className="flex flex-col space-y-1">
         <label className="text-sm font-medium">{label}</label>
         <select className="input mt-1" value={value} onChange={(e) => onChange(e.target.value)}>
-          <option value="">Any (No weight)</option>
+          <option value="">No Preferenc</option>
           <option value="Yes">Yes</option>
           <option value="No">No</option>
         </select>
@@ -184,7 +184,7 @@ export default function NewCasePage() {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Scheduled Date</label>
+                  <label className="text-sm font-medium">Preferable Date</label>
                   <input type="datetime-local" className="input w-full" value={form.scheduled_at} onChange={(e) => setForm({ ...form, scheduled_at: e.target.value })} />
                 </div>
               </div>
@@ -250,7 +250,7 @@ export default function NewCasePage() {
               </div>
 
               <button onClick={createCaseAndUpload} disabled={loading} className="w-full py-5 bg-primary text-primary-foreground rounded-2xl font-bold text-lg shadow-xl hover:brightness-110 active:scale-[0.98] transition-all disabled:opacity-50">
-                {loading ? "Establishing Case..." : "Save Case & Launch Soft Filter"}
+                {loading ? "Establishing Case..." : "Save Case & Filter"}
               </button>
             </div>
           </div>
