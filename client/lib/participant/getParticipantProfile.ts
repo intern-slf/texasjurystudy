@@ -2,9 +2,10 @@ import { createClient } from "@/lib/supabase/server";
 
 export async function getParticipantProfile(
   requestedId: string,
-  context?: { from?: string; caseId?: string }
+  context?: { from?: string; caseId?: string; testTable?: string }
 ) {
   const supabase = await createClient();
+  const testTable = context?.testTable || "jury_participants";
 
   /* =========================
      AUTH USER
@@ -71,7 +72,7 @@ export async function getParticipantProfile(
      FETCH PARTICIPANT
      ========================= */
   const { data: participant } = await supabase
-    .from("jury_participants")
+    .from(testTable)
     .select("*")
     .eq("id", finalParticipantId)
     .single();

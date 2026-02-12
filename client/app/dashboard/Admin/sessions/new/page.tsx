@@ -149,7 +149,7 @@ function checkFilterMatch(
 export default async function NewSessionPage({
   searchParams,
 }: {
-  searchParams: Promise<{ selectedCases?: string | string[] }>;
+  searchParams: Promise<{ selectedCases?: string | string[]; test_table?: string }>;
 }) {
   const supabase = await createClient();
 
@@ -157,6 +157,8 @@ export default async function NewSessionPage({
      READ SELECTED IDS
   ========================= */
   const params = await searchParams;
+  const isOldData = params?.test_table === "oldData";
+  const testTable = isOldData ? "oldData" : "jury_participants";
 
   const selectedIds = params?.selectedCases
     ? Array.isArray(params.selectedCases)
@@ -180,8 +182,23 @@ export default async function NewSessionPage({
   const filtersList = (cases || []).map((c: any) => c.filters as CaseFilters);
   const combinedFilters = combineCaseFilters(filtersList);
 
+  // DIAGNOSTIC CHECK
+  const { count: totalInTable, error: diagnosticError } = await supabase
+    .from(testTable)
+    .select("*", { count: "exact", head: true });
+
+  const { data: sampleBatch, error: sampleError } = await supabase
+    .from(testTable)
+    .select("*")
+    .limit(1);
+
   // DEBUG
-  //console.log("[DEBUG] combinedFilters:", JSON.stringify(combinedFilters, null, 2));
+  // console.log(`[DIAGNOSTIC] Table: ${testTable}`, {
+  //   totalInTable,
+  //   diagnosticError: diagnosticError?.message,
+  //   sampleCount: sampleBatch?.length,
+  //   sampleError: sampleError?.message
+  // });
 
   // Participants (Soft Filtered)
   let participants: any[] = [];
@@ -194,7 +211,7 @@ export default async function NewSessionPage({
     const currentFilters = relaxFilters(combinedFilters, level);
 
     let query = supabase
-      .from("jury_participants")
+      .from(testTable)
       .select("*"); // Fetch all columns so we can compare against filters
 
     query = applyCaseFilters(query, currentFilters);
@@ -205,7 +222,12 @@ export default async function NewSessionPage({
     }
 
     // @ts-ignore
-    const { data: batch } = await query.limit(minRequired - participants.length + 20);
+    const { data: batch, error } = await query.limit(minRequired - participants.length + 20);
+
+    // console.log(`[DEBUG] Level ${level} fetch from "${testTable}":`, {
+    //   count: batch?.length,
+    //   error: error?.message
+    // });
 
     if (batch && batch.length > 0) {
       let newPeeps = batch.filter((p: any) => !seenIds.has(p.user_id));
@@ -282,13 +304,38 @@ export default async function NewSessionPage({
       </div>
 
       {/* DEBUG */}
-      {/* <details className="border border-yellow-300 bg-yellow-50 rounded p-3 text-xs">
-        <summary className="font-bold text-yellow-800 cursor-pointer">Debug: Filter Info</summary>
-        <pre className="mt-2 overflow-auto max-h-40">{JSON.stringify(combinedFilters, null, 2)}</pre>
-        <p className="mt-1 font-semibold">Total participants: {participants.length}</p>
-        <p>Level 0 (Exact): {exactCount}</p>
-        <p>Level 1-6 (Partial): {partialCount}</p>
-        <p>Level 7+ (Fallback): {fallbackCount}</p>
+      {/* <details open className="border border-yellow-300 bg-yellow-50 rounded p-3 text-xs">
+        <summary className="font-bold text-yellow-800 cursor-pointer text-sm">⚠️ Debug: Table & Filter Diagnostics</summary>
+        <div className="mt-2 space-y-2">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <p><span className="font-bold">Active Table:</span> <code className="bg-white px-1 border rounded">{testTable}</code></p>
+              <p><span className="font-bold">Table Row Count (Unfiltered):</span> {totalInTable !== null ? totalInTable : "Error"}</p>
+              <p><span className="font-bold">Total Participants (Filtered):</span> {participants.length}</p>
+            </div>
+            <div className="space-y-1">
+              <p><span className="font-bold">Match Summary:</span></p>
+              <p className="ml-2">Level 0 (Exact): {exactCount}</p>
+              <p className="ml-2">Partial Match: {partialCount}</p>
+              <p className="ml-2">Fallback: {fallbackCount}</p>
+            </div>
+          </div>
+
+          {(diagnosticError || sampleError) && (
+            <div className="bg-red-50 border border-red-200 p-2 rounded text-red-700">
+              <p className="font-bold underline">Supabase Errors:</p>
+              <p>Count Query: {diagnosticError?.message || "None"}</p>
+              <p>Sample Query: {sampleError?.message || "None"}</p>
+            </div>
+          )}
+
+          <div className="mt-2">
+            <p className="font-bold">Combined Filters:</p>
+            <pre className="mt-1 overflow-auto max-h-40 bg-white p-2 border rounded shadow-inner text-[10px] leading-tight">
+              {JSON.stringify(combinedFilters, null, 2)}
+            </pre>
+          </div>
+        </div>
       </details> */}
 
       {/* DATE */}

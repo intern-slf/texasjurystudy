@@ -6,7 +6,7 @@ export default async function ParticipantProfilePage({
   searchParams,
 }: {
   params: Promise<{ participantId: string }>;
-  searchParams?: Promise<{ from?: string; caseId?: string }>;
+  searchParams?: Promise<{ from?: string; caseId?: string; test_table?: string }>;
 }) {
   try {
     /* =========================
@@ -14,12 +14,15 @@ export default async function ParticipantProfilePage({
        ========================= */
     const { participantId } = await params;
     const schParams = searchParams ? await searchParams : undefined;
+    const isOldData = schParams?.test_table === "oldData";
+    const testTable = isOldData ? "oldData" : "jury_participants";
 
     const { participant, role } = await getParticipantProfile(
       participantId,
       {
         from: schParams?.from,
         caseId: schParams?.caseId,
+        testTable: testTable,
       }
     );
     const fromCase =
@@ -30,7 +33,7 @@ export default async function ParticipantProfilePage({
         {/* BACK LINK */}
         {fromCase && role !== "participant" && (
           <Link
-            href={`/dashboard/Admin/${schParams?.caseId}`}
+            href={`/dashboard/Admin/${schParams?.caseId}${isOldData ? "?test_table=oldData" : ""}`}
             className="text-blue-600 underline"
           >
             ← Back to Case

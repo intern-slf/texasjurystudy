@@ -108,12 +108,14 @@ async function approveCase(formData: FormData) {
 export default async function AdminDashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: AdminTab }>;
+  searchParams: Promise<{ tab?: AdminTab; test_table?: string }>;
 }) {
   const supabase = await createClient();
 
   const resolvedParams = await searchParams;
   const tab: AdminTab = resolvedParams?.tab ?? "all";
+  const isOldData = resolvedParams?.test_table === "oldData";
+  const testTable = isOldData ? "oldData" : "jury_participants";
 
   /* =========================
       FETCH CASES BY TAB
@@ -174,20 +176,44 @@ export default async function AdminDashboardPage({
           {tab === "submitted" && "Submitted Cases"}
         </h2>
 
-        {tab === "approved" && (
-          <form
-            id="buildSessionForm"
-            action="/dashboard/Admin/sessions/new"
-            method="GET"
-          >
-            <button
-              type="submit"
-              className="bg-black text-white px-4 py-2 rounded"
+        <div className="flex items-center gap-4">
+          <div className="flex bg-slate-100 p-1 rounded-lg border text-xs font-medium">
+            <Link
+              href={`/dashboard/Admin?tab=${tab}`}
+              className={`px-3 py-1.5 rounded-md transition-colors ${!isOldData
+                ? "bg-white shadow text-black"
+                : "text-slate-500 hover:text-slate-700"
+                }`}
             >
-              Build Session
-            </button>
-          </form>
-        )}
+              Live Data
+            </Link>
+            <Link
+              href={`/dashboard/Admin?tab=${tab}&test_table=oldData`}
+              className={`px-3 py-1.5 rounded-md transition-colors ${isOldData
+                ? "bg-white shadow text-black"
+                : "text-slate-500 hover:text-slate-700"
+                }`}
+            >
+              Old Data (Testing)
+            </Link>
+          </div>
+
+          {tab === "approved" && (
+            <form
+              id="buildSessionForm"
+              action="/dashboard/Admin/sessions/new"
+              method="GET"
+            >
+              <input type="hidden" name="test_table" value={isOldData ? "oldData" : "jury_participants"} />
+              <button
+                type="submit"
+                className="bg-black text-white px-4 py-2 rounded"
+              >
+                Build Session
+              </button>
+            </form>
+          )}
+        </div>
       </div>
 
       {/* ================= TABLE ================= */}
@@ -225,28 +251,27 @@ export default async function AdminDashboardPage({
           </TableHeader>
 
           <TableBody>
-  {cases.map((c, i) => {
-    const date = c.scheduled_at ? new Date(c.scheduled_at) : null;
+            {cases.map((c, i) => {
+              const date = c.scheduled_at ? new Date(c.scheduled_at) : null;
 
-    return (
-      <TableRow
-        key={c.id}
-        className={`align-top ${
-          i % 2 === 0 ? "bg-white" : "bg-slate-50/40"
-        }`}
-      >
-        {/* SELECT */}
-        {tab === "approved" && (
-          <TableCell className="pt-4">
-            <input
-              type="checkbox"
-              name="selectedCases"
-              value={c.id}
-              form="buildSessionForm"
-              className="h-4 w-4"
-            />
-          </TableCell>
-        )}
+              return (
+                <TableRow
+                  key={c.id}
+                  className={`align-top ${i % 2 === 0 ? "bg-white" : "bg-slate-50/40"
+                    }`}
+                >
+                  {/* SELECT */}
+                  {tab === "approved" && (
+                    <TableCell className="pt-4">
+                      <input
+                        type="checkbox"
+                        name="selectedCases"
+                        value={c.id}
+                        form="buildSessionForm"
+                        className="h-4 w-4"
+                      />
+                    </TableCell>
+                  )}
 
         {/* TITLE */}
         <TableCell className="font-semibold text-slate-900 pt-4">
@@ -258,133 +283,133 @@ export default async function AdminDashboardPage({
           </Link>
         </TableCell>
 
-        {/* STATUS */}
-        <TableCell className="pt-4">
-          {!c.schedule_status || c.schedule_status === "pending" ? (
-            <span className="px-2 py-1 rounded-full text-[11px] font-semibold bg-yellow-100 text-yellow-800">
-              Pending
-            </span>
-          ) : c.schedule_status === "accepted" ? (
-            <span className="px-2 py-1 rounded-full text-[11px] font-semibold bg-green-100 text-green-800">
-              Confirmed
-            </span>
-          ) : (
-            <span className="px-2 py-1 rounded-full text-[11px] font-semibold bg-red-100 text-red-800">
-              Declined
-            </span>
-          )}
-        </TableCell>
+                  {/* STATUS */}
+                  <TableCell className="pt-4">
+                    {!c.schedule_status || c.schedule_status === "pending" ? (
+                      <span className="px-2 py-1 rounded-full text-[11px] font-semibold bg-yellow-100 text-yellow-800">
+                        Pending
+                      </span>
+                    ) : c.schedule_status === "accepted" ? (
+                      <span className="px-2 py-1 rounded-full text-[11px] font-semibold bg-green-100 text-green-800">
+                        Confirmed
+                      </span>
+                    ) : (
+                      <span className="px-2 py-1 rounded-full text-[11px] font-semibold bg-red-100 text-red-800">
+                        Declined
+                      </span>
+                    )}
+                  </TableCell>
 
-        {/* ATTENDEES */}
-        <TableCell className="text-slate-700 font-medium pt-4">
-          {c.number_of_attendees}
-        </TableCell>
+                  {/* ATTENDEES */}
+                  <TableCell className="text-slate-700 font-medium pt-4">
+                    {c.number_of_attendees}
+                  </TableCell>
 
-        {/* SCHEDULE */}
-        <TableCell className="text-sm pt-4">
-          {date ? (
-            <div className="flex flex-col">
-              <span className="font-medium">
-                {date.toLocaleDateString()}
-              </span>
-              <span className="text-slate-500 text-xs">
-                {date.toLocaleTimeString()}
-              </span>
-            </div>
-          ) : (
-            <span className="text-xs text-slate-400 italic">
-              Not scheduled
-            </span>
-          )}
-        </TableCell>
+                  {/* SCHEDULE */}
+                  <TableCell className="text-sm pt-4">
+                    {date ? (
+                      <div className="flex flex-col">
+                        <span className="font-medium">
+                          {date.toLocaleDateString()}
+                        </span>
+                        <span className="text-slate-500 text-xs">
+                          {date.toLocaleTimeString()}
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-slate-400 italic">
+                        Not scheduled
+                      </span>
+                    )}
+                  </TableCell>
 
-        {/* DOCS */}
-        <TableCell className="pt-4 space-y-1">
-          {c.case_documents.length ? (
-            c.case_documents.map((doc) =>
-              doc.signedUrl ? (
-                <a
-                  key={doc.id}
-                  href={doc.signedUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block text-xs text-blue-600 hover:text-blue-800 hover:underline truncate max-w-[200px]"
+                  {/* DOCS */}
+                  <TableCell className="pt-4 space-y-1">
+                    {c.case_documents.length ? (
+                      c.case_documents.map((doc) =>
+                        doc.signedUrl ? (
+                          <a
+                            key={doc.id}
+                            href={doc.signedUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="block text-xs text-blue-600 hover:text-blue-800 hover:underline truncate max-w-[200px]"
+                          >
+                            📄 {doc.original_name}
+                          </a>
+                        ) : null
+                      )
+                    ) : (
+                      <span className="text-xs text-slate-400 italic">
+                        No documents
+                      </span>
+                    )}
+                  </TableCell>
+
+                  {/* ACTIONS */}
+                  <TableCell className="text-right pt-4">
+                    <div className="flex justify-end flex-wrap gap-2">
+                      {tab === "all" && (
+                        <form action={approveCase}>
+                          <input type="hidden" name="caseId" value={c.id} />
+                          <AdminActionButton
+                            label="Approve"
+                            activeColor="bg-green-600"
+                            hoverColor="hover:bg-green-700"
+                          />
+                        </form>
+                      )}
+
+                      {tab === "approved" && (
+                        <>
+                          <form action={proposeSchedule} className="flex gap-2">
+                            <input type="hidden" name="caseId" value={c.id} />
+                            <input
+                              type="datetime-local"
+                              name="scheduled_at"
+                              required
+                              className="border rounded px-2 py-1 text-xs"
+                            />
+                            <AdminActionButton
+                              label="Send"
+                              activeColor="bg-purple-600"
+                              hoverColor="hover:bg-purple-700"
+                            />
+                          </form>
+
+                          <form action={unapproveCase}>
+                            <input type="hidden" name="caseId" value={c.id} />
+                            <AdminActionButton
+                              label="Unapprove"
+                              activeColor="bg-red-600"
+                              hoverColor="hover:bg-red-700"
+                            />
+                          </form>
+                        </>
+                      )}
+
+                      {tab === "submitted" && (
+                        <span className="text-xs text-slate-400 font-medium italic bg-slate-100 px-2 py-1 rounded">
+                          Finalized
+                        </span>
+                      )}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+
+            {!cases.length && (
+              <TableRow>
+                <TableCell
+                  colSpan={8}
+                  className="text-center py-16 text-slate-400 italic"
                 >
-                  📄 {doc.original_name}
-                </a>
-              ) : null
-            )
-          ) : (
-            <span className="text-xs text-slate-400 italic">
-              No documents
-            </span>
-          )}
-        </TableCell>
-
-        {/* ACTIONS */}
-        <TableCell className="text-right pt-4">
-          <div className="flex justify-end flex-wrap gap-2">
-            {tab === "all" && (
-              <form action={approveCase}>
-                <input type="hidden" name="caseId" value={c.id} />
-                <AdminActionButton
-                  label="Approve"
-                  activeColor="bg-green-600"
-                  hoverColor="hover:bg-green-700"
-                />
-              </form>
+                  No cases found in this section.
+                </TableCell>
+              </TableRow>
             )}
-
-            {tab === "approved" && (
-              <>
-                <form action={proposeSchedule} className="flex gap-2">
-                  <input type="hidden" name="caseId" value={c.id} />
-                  <input
-                    type="datetime-local"
-                    name="scheduled_at"
-                    required
-                    className="border rounded px-2 py-1 text-xs"
-                  />
-                  <AdminActionButton
-                    label="Send"
-                    activeColor="bg-purple-600"
-                    hoverColor="hover:bg-purple-700"
-                  />
-                </form>
-
-                <form action={unapproveCase}>
-                  <input type="hidden" name="caseId" value={c.id} />
-                  <AdminActionButton
-                    label="Unapprove"
-                    activeColor="bg-red-600"
-                    hoverColor="hover:bg-red-700"
-                  />
-                </form>
-              </>
-            )}
-
-            {tab === "submitted" && (
-              <span className="text-xs text-slate-400 font-medium italic bg-slate-100 px-2 py-1 rounded">
-                Finalized
-              </span>
-            )}
-          </div>
-        </TableCell>
-      </TableRow>
-    );
-  })}
-
-  {!cases.length && (
-    <TableRow>
-      <TableCell
-        colSpan={8}
-        className="text-center py-16 text-slate-400 italic"
-      >
-        No cases found in this section.
-      </TableCell>
-    </TableRow>
-  )}
-</TableBody>
+          </TableBody>
 
         </Table>
       </div>
