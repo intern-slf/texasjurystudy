@@ -26,7 +26,7 @@ export default function AdminSidebar({
     { id: "all", label: "All Cases", count: counts.all },
     { id: "approved", label: "Approved", count: counts.approved },
     { id: "sessions", label: "Sessions", count: counts.sessions },
-    { id: "submitted", label: "Submitted", count: counts.submitted },
+    { id: "submitted", label: "Upcomig Sessions", count: counts.submitted },
   ];
 
   return (
