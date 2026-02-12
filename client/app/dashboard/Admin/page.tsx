@@ -16,8 +16,9 @@ import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { sendApprovalEmail } from "@/lib/mail";
 import { AdminActionButton } from "@/components/AdminActionButton";
-import { Button } from "@/components/ui/button";
+import { proposeSchedule, unapproveCase, approveCase } from "@/app/dashboard/Admin/actions";
 import { Calendar, FileText, Users } from "lucide-react"; // User icon removed - unused
+import ScheduleProposalForm from "@/components/ScheduleProposalForm";
 
 /* =========================
    TYPES
@@ -38,6 +39,7 @@ interface JuryCase {
   number_of_attendees: number;
   case_documents: CaseDocument[];
   scheduled_at: string | null;
+  admin_scheduled_at: string | null;
   schedule_status: string | null;
 }
 
@@ -137,6 +139,7 @@ export default async function AdminDashboardPage({
       admin_status,
       number_of_attendees,
       scheduled_at,
+      admin_scheduled_at,
       schedule_status,
       case_documents (
         id,
@@ -383,21 +386,8 @@ export default async function AdminDashboardPage({
 
                         {tab === "approved" && (
                           <>
-                            <form action={proposeSchedule} className="flex gap-2 items-center">
-                              <input type="hidden" name="caseId" value={c.id} />
-                              <input
-                                type="datetime-local"
-                                name="scheduled_at"
-                                required
-                                className="h-8 rounded-md border border-input bg-background px-3 py-1 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                              />
-                              <AdminActionButton
-                                label="Send"
-                                activeColor="bg-purple-600"
-                                hoverColor="hover:bg-purple-700"
-                              />
-                            </form>
-
+                            <ScheduleProposalForm caseId={c.id} />
+                            
                             <form action={unapproveCase}>
                               <input type="hidden" name="caseId" value={c.id} />
                               <AdminActionButton

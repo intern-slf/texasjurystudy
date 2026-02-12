@@ -23,6 +23,7 @@ interface Case {
   title: string;
   description: string;
   scheduled_at: string | null;
+  admin_scheduled_at: string | null;
   schedule_status: string | null;
   [key: string]: unknown; // Allow for dynamic fields from Supabase
 }
@@ -214,11 +215,37 @@ export default async function PresenterDashboard({
 
     if (!activeUser) return;
 
-    await supabase
-      .from("cases")
-      .update({ schedule_status: response })
-      .eq("id", caseId)
-      .eq("user_id", activeUser.id);
+    if (response === "accepted") {
+      // 1. Fetch the proposed time
+      const { data: currentCase } = await supabase
+        .from("cases")
+        .select("admin_scheduled_at")
+        .eq("id", caseId)
+        .single();
+
+      if (currentCase?.admin_scheduled_at) {
+        // 2. Move admin_scheduled_at -> scheduled_at
+        await supabase
+          .from("cases")
+          .update({
+            scheduled_at: currentCase.admin_scheduled_at,
+            admin_scheduled_at: null, // Clear the proposal
+            schedule_status: "accepted",
+          })
+          .eq("id", caseId)
+          .eq("user_id", activeUser.id);
+      }
+    } else {
+      // Rejected: Just clear the proposal and set status
+      await supabase
+        .from("cases")
+        .update({
+          admin_scheduled_at: null,
+          schedule_status: "rejected"
+        })
+        .eq("id", caseId)
+        .eq("user_id", activeUser.id);
+    }
 
     revalidatePath("/dashboard/presenter");
   }
@@ -292,48 +319,88 @@ export default async function PresenterDashboard({
                             <span className="text-sm font-medium">Approved by Admin</span>
                         </div>
 
-                      {/* proposed date */}
-                      {c.scheduled_at && (
-                        <div className="flex items-center justify-between p-4 border rounded-lg bg-card">
-                            <div className="flex items-center gap-3">
-                                <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
-                                    <Clock className="h-5 w-5" />
-                                </div>
-                                <div>
-                                    <p className="text-sm font-medium">Proposed Schedule</p>
-                                    <p className="text-xs text-muted-foreground">
-                                        {new Date(c.scheduled_at).toLocaleString()}
-                                    </p>
-                                </div>
+                      {/* CASE A: Admin Proposal Pending - Show Comparison */ }
+                      {c.admin_scheduled_at && c.schedule_status === 'pending' ? (
+                        <div className="border border-purple-200 bg-purple-50 rounded-lg p-4 space-y-4 animate-in fade-in zoom-in-95 duration-300">
+                          <div className="flex items-start gap-3">
+                            <div className="h-10 w-10 mt-1 rounded-full bg-purple-100 flex items-center justify-center text-purple-600 shrink-0">
+                              <AlertCircle className="h-5 w-5" />
                             </div>
-                            
-                            <Badge variant={c.schedule_status === "accepted" ? "default" : c.schedule_status === "rejected" ? "destructive" : "outline"} className="capitalize">
-                                {c.schedule_status || "Pending Action"}
-                            </Badge>
-                        </div>
-                      )}
+                            <div className="space-y-1">
+                              <p className="text-sm font-semibold text-purple-900 leading-none">Schedule Update Request</p>
+                              <p className="text-xs text-purple-700">The admin has proposed a new time for this case.</p>
+                            </div>
+                          </div>
 
-                      {(c.schedule_status === null ||
-                        c.schedule_status === "pending") &&
-                        c.scheduled_at && (
-                          <div className="flex gap-3 pt-2">
+                          <div className="bg-white/60 rounded-md p-3 grid grid-cols-1 md:grid-cols-2 gap-4 text-sm border border-purple-100">
+                            {/* Presenter's Preference */}
+                            <div className="space-y-1">
+                              <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Your Preference</p>
+                              {c.scheduled_at ? (
+                                <div className="font-medium text-slate-700">
+                                  <div>{new Date(c.scheduled_at).toLocaleDateString()}</div>
+                                  <div className="text-xs text-slate-500">{new Date(c.scheduled_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</div>
+                                </div>
+                              ) : (
+                                <span className="text-slate-400 italic">No time set</span>
+                              )}
+                            </div>
+
+                            {/* Arrow Indicator on mobile/desktop */}
+                            <div className="hidden md:flex flex-col justify-center items-center text-purple-300">
+                               &rarr;
+                            </div>
+
+                            {/* Admin Proposal */}
+                            <div className="space-y-1">
+                               <p className="text-xs font-semibold text-purple-600 uppercase tracking-wider">Admin Proposed</p>
+                               <div className="font-bold text-purple-900 bg-purple-100/50 px-2 py-1 rounded inline-block">
+                                  <div>{new Date(c.admin_scheduled_at).toLocaleDateString()}</div>
+                                  <div className="text-xs font-normal">{new Date(c.admin_scheduled_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</div>
+                               </div>
+                            </div>
+                          </div>
+
+                          <div className="flex gap-3 pt-1">
                             <form action={respondToSchedule}>
                               <input type="hidden" name="caseId" value={c.id} />
                               <input type="hidden" name="response" value="accepted" />
-                              <Button size="sm" className="bg-green-600 hover:bg-green-700">
-                                Accept Schedule
+                              <Button size="sm" className="bg-purple-600 hover:bg-purple-700 text-white w-full md:w-auto">
+                                Accept New Time
                               </Button>
                             </form>
 
                             <form action={respondToSchedule}>
                               <input type="hidden" name="caseId" value={c.id} />
                               <input type="hidden" name="response" value="rejected" />
-                              <Button size="sm" variant="destructive">
-                                Reject Schedule
+                              <Button size="sm" variant="ghost" className="text-red-600 hover:text-red-700 hover:bg-red-50 w-full md:w-auto">
+                                Reject
                               </Button>
                             </form>
                           </div>
-                        )}
+                        </div>
+                      ) : (
+                        /* CASE B: No Admin Proposal - Show Standard Info */
+                        c.scheduled_at && (
+                          <div className="flex items-center justify-between p-4 border rounded-lg bg-card">
+                            <div className="flex items-center gap-3">
+                              <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                                <Clock className="h-5 w-5" />
+                              </div>
+                              <div>
+                                <p className="text-sm font-medium">Your Preferred Schedule</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {new Date(c.scheduled_at).toLocaleString()}
+                                </p>
+                              </div>
+                            </div>
+
+                            <Badge variant={c.schedule_status === "accepted" ? "default" : c.schedule_status === "rejected" ? "destructive" : "outline"} className="capitalize">
+                              {c.schedule_status || "Pending Action"}
+                            </Badge>
+                          </div>
+                        )
+                      )}
                     </div>
                   )}
 
