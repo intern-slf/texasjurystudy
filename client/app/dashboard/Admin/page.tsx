@@ -250,7 +250,9 @@ export default async function AdminDashboardPage({
                 </TableHead>
 
                 <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Schedule
+                  Preferred Schedule
+                  <br />
+                  by Presenter
                 </TableHead>
 
                 <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -331,7 +333,7 @@ export default async function AdminDashboardPage({
                               {date.toLocaleDateString()}
                             </span>
                             <span className="text-muted-foreground text-xs">
-                              {date.toLocaleTimeString()}
+                              {date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
                             </span>
                           </div>
                         </div>
