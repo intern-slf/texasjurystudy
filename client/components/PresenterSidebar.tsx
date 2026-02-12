@@ -1,19 +1,24 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams, usePathname } from "next/navigation";
 import {
   PlusCircle,
   PlayCircle,
   History,
   CheckCircle2,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
 
 type Props = {
   activeTab?: "current" | "approved" | "previous" | "new";
 };
 
 export default function PresenterSidebar({ activeTab }: Props) {
+  const searchParams = useSearchParams();
+  const pathname = usePathname();
+
+  const currentTab = searchParams.get("tab") || activeTab;
+
   const navItems = [
     {
       label: "Current Cases",
@@ -42,64 +47,44 @@ export default function PresenterSidebar({ activeTab }: Props) {
   ];
 
   return (
-    <aside className="w-80 border-r bg-card flex flex-col sticky top-16 h-[calc(100vh-4rem)]">
+    <aside className="w-64 border-r bg-slate-50 p-6 flex flex-col min-h-screen">
+      <h2 className="text-xs font-semibold uppercase text-slate-500 mb-6 tracking-wider">
+        Presenter Panel
+      </h2>
 
-      {/* Header */}
-      <div className="px-8 pt-10 pb-8">
-        <p className="text-xs font-bold text-muted-foreground/80 uppercase tracking-[0.25em]">
-          Presenter Portal
-        </p>
-      </div>
-
-      {/* Navigation */}
-      <nav className="px-6 flex-1 space-y-4">
+      <nav className="space-y-2 flex-1">
         {navItems.map((item) => {
-          const isActive = activeTab === item.id;
           const Icon = item.icon;
+
+          const isActive =
+            item.id === "new"
+              ? pathname === "/dashboard/presenter/new"
+              : currentTab === item.id;
 
           return (
             <Link
               key={item.id}
               href={item.href}
-              className={cn(
-                "relative group flex items-center gap-4 px-5 py-4 rounded-2xl text-sm transition-all duration-300 border border-transparent",
+              className={`flex justify-between items-center px-3 py-2 rounded-lg text-sm transition-all ${
                 isActive
-                  ? "bg-primary/10 text-primary font-semibold shadow-md border-primary/10"
-                  : "text-muted-foreground hover:bg-muted/60 hover:text-foreground hover:pl-6"
-              )}
+                  ? "bg-white text-blue-600 border border-slate-200 shadow-sm font-medium"
+                  : "text-slate-600 hover:bg-slate-200/50 hover:text-slate-900"
+              }`}
             >
-              <Icon
-                className={cn(
-                  "h-5 w-5 transition-colors duration-300",
-                  isActive
-                    ? "text-primary"
-                    : "text-muted-foreground group-hover:text-foreground"
-                )}
-              />
-
-              <span>{item.label}</span>
-
-              {isActive && (
-                <div className="absolute left-0 top-3 bottom-3 w-1.5 bg-primary rounded-r-full" />
-              )}
+              <div className="flex items-center gap-2">
+                <Icon className="h-4 w-4" />
+                <span>{item.label}</span>
+              </div>
             </Link>
           );
         })}
       </nav>
 
-      {/* Footer */}
-      <div className="p-8 mt-auto border-t border-border/40">
-        <div className="flex items-center gap-4 px-4 py-4 rounded-2xl bg-muted/30 border shadow-sm">
-          <div className="h-3 w-3 rounded-full bg-blue-500" />
-          <div>
-            <p className="text-xs font-semibold">Status: Active</p>
-            <p className="text-[11px] text-muted-foreground">
-              Connected to server
-            </p>
-          </div>
-        </div>
+      <div className="mt-auto pt-4 border-t border-slate-200">
+        <p className="text-[10px] text-center text-slate-400">
+          Presenter Access Only
+        </p>
       </div>
-
     </aside>
   );
 }
