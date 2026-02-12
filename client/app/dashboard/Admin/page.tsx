@@ -115,12 +115,14 @@ async function approveCase(formData: FormData) {
 export default async function AdminDashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: AdminTab }>;
+  searchParams: Promise<{ tab?: AdminTab; test_table?: string }>;
 }) {
   const supabase = await createClient();
 
   const resolvedParams = await searchParams;
   const tab: AdminTab = resolvedParams?.tab ?? "all";
+  const isOldData = resolvedParams?.test_table === "oldData";
+  const testTable = isOldData ? "oldData" : "jury_participants";
 
   /* =========================
       FETCH CASES BY TAB
@@ -186,17 +188,44 @@ export default async function AdminDashboardPage({
           </p>
         </div>
 
-        {tab === "approved" && (
-          <form
-            id="buildSessionForm"
-            action="/dashboard/Admin/sessions/new"
-            method="GET"
-          >
-            <Button type="submit">
-              Build Session
-            </Button>
-          </form>
-        )}
+        <div className="flex items-center gap-4">
+          <div className="flex bg-slate-100 p-1 rounded-lg border text-xs font-medium">
+            <Link
+              href={`/dashboard/Admin?tab=${tab}`}
+              className={`px-3 py-1.5 rounded-md transition-colors ${!isOldData
+                ? "bg-white shadow text-black"
+                : "text-slate-500 hover:text-slate-700"
+                }`}
+            >
+              Live Data
+            </Link>
+            <Link
+              href={`/dashboard/Admin?tab=${tab}&test_table=oldData`}
+              className={`px-3 py-1.5 rounded-md transition-colors ${isOldData
+                ? "bg-white shadow text-black"
+                : "text-slate-500 hover:text-slate-700"
+                }`}
+            >
+              Old Data (Testing)
+            </Link>
+          </div>
+
+          {tab === "approved" && (
+            <form
+              id="buildSessionForm"
+              action="/dashboard/Admin/sessions/new"
+              method="GET"
+            >
+              <input type="hidden" name="test_table" value={isOldData ? "oldData" : "jury_participants"} />
+              <button
+                type="submit"
+                className="bg-black text-white px-4 py-2 rounded"
+              >
+                Build Session
+              </button>
+            </form>
+          )}
+        </div>
       </div>
 
       {/* ================= TABLE ================= */}

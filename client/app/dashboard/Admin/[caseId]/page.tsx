@@ -55,11 +55,16 @@ interface CaseInfo {
 
 export default async function AdminCaseDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ caseId: string }>;
+  searchParams: Promise<{ test_table?: string }>;
 }) {
   const supabase = await createClient();
   const { caseId } = await params;
+  const resolvedSearchParams = await searchParams;
+  const isOldData = resolvedSearchParams?.test_table === "oldData";
+  const testTable = isOldData ? "oldData" : "jury_participants";
 
   /* =========================
      FETCH CASE
@@ -117,7 +122,7 @@ export default async function AdminCaseDetailPage({
      ========================= */
 
   let participantQuery = supabase
-    .from("jury_participants")
+    .from(testTable)
     .select("*");
 
   // Apply filters using shared utility
@@ -186,7 +191,7 @@ export default async function AdminCaseDetailPage({
                   <TableRow key={p.id} className="hover:bg-slate-50">
                     <TableCell>
                       <a
-                        href={`/dashboard/participant/${p.id}?from=case&caseId=${caseId}`}
+                        href={`/dashboard/participant/${p.id}?from=case&caseId=${caseId}${isOldData ? "&test_table=oldData" : ""}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="font-medium text-blue-600 hover:underline"
