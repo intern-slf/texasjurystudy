@@ -7,29 +7,40 @@ export default async function ParticipantProfilePage({
   searchParams,
 }: {
   params: Promise<{ participantId: string }>;
-  searchParams?: Promise<{ from?: string; caseId?: string }>;
+  searchParams?: Promise<{ from?: string; caseId?: string; test_table?: string }>;
 }) {
   try {
     /* =========================
        UNWRAP ASYNC PARAMS
        ========================= */
     const { participantId } = await params;
-    const sp = searchParams ? await searchParams : undefined;
+    const schParams = searchParams ? await searchParams : undefined;
+    const isOldData = schParams?.test_table === "oldData";
+    const testTable = isOldData ? "oldData" : "jury_participants";
 
-    const { participant, role } = await getParticipantProfile(participantId, {
-      from: sp?.from,
-      caseId: sp?.caseId,
-    });
-
-    /* =========================
-       🟢 NEW USER → SHOW FORM
-       ========================= */
-    if (role === "participant" && !participant) {
-      return <ParticipantForm userId={participantId} />;
-    }
+    const { participant, role } = await getParticipantProfile(
+      participantId,
+      {
+        from: schParams?.from,
+        caseId: schParams?.caseId,
+        testTable: testTable,
+      }
+    );
+    const fromCase =
+      schParams?.from === "case" && schParams?.caseId;
 
     return (
       <div className="max-w-5xl mx-auto p-8 space-y-8">
+        {/* BACK LINK */}
+        {fromCase && role !== "participant" && (
+          <Link
+            href={`/dashboard/Admin/${schParams?.caseId}${isOldData ? "?test_table=oldData" : ""}`}
+            className="text-blue-600 underline"
+          >
+            ← Back to Case
+          </Link>
+        )}
+
         {/* HEADER */}
         <div className="bg-white border rounded-xl p-6 shadow-sm">
           <h1 className="text-3xl font-bold">
