@@ -36,10 +36,15 @@ function checkFilterMatch(
   participant: any,
   filters: CaseFilters | null,
   filterKey: string
-): { passes: boolean; detail: string } {
+): { passes: boolean; detail: string; subRows?: string[] } {
   if (!filters) return { passes: true, detail: "No filter" };
 
   const filterVal = (filters as any)[filterKey];
+
+  // Check for conflict marker in direct array values
+  if (Array.isArray(filterVal) && filterVal.includes("No Common Value")) {
+    return { passes: false, detail: "Contradictory Requirements (e.g. Case A vs Case B)" };
+  }
 
   switch (filterKey) {
     case "political_affiliation": {
@@ -80,6 +85,11 @@ function checkFilterMatch(
 
     case "location": {
       const loc = filterVal as { state?: string[] } | undefined;
+      // Check for conflict marker in location.state
+      if (loc?.state?.includes("No Common Value")) {
+          return { passes: false, detail: "Contradictory Requirements (e.g. Case A vs Case B)" };
+      }
+
       if (!loc?.state || loc.state.length === 0) return { passes: true, detail: "Any" };
       const pState = participant.state ?? "";
       const match = loc.state.includes(pState);
@@ -89,51 +99,106 @@ function checkFilterMatch(
     case "socioeconomic": {
       const socio = filterVal as any;
       if (!socio) return { passes: true, detail: "Any" };
-      const checks: string[] = [];
+      
+      // Check for conflict markers in sub-fields
+      if (socio.education_level?.includes("No Common Value") || 
+          socio.marital_status?.includes("No Common Value") || 
+          socio.family_income?.includes("No Common Value") ||
+          socio.availability?.includes("No Common Value")) {
+           return { passes: false, detail: "Contradictory Requirements (e.g. Case A vs Case B)" };
+      }
+
+      const subRows: string[] = [];
       let allPass = true;
 
+      // Education
       if (socio.education_level?.length) {
         const match = socio.education_level.includes(participant.education_level);
         if (!match) allPass = false;
-        checks.push(`Education: ${socio.education_level.join(", ")} (${match ? "pass" : "fail"})`);
+        subRows.push(`Education: ${participant.education_level} (Needs: ${socio.education_level.join(", ")}) ${match ? "✅" : "❌"}`);
+      } else {
+        subRows.push(`Education: ${participant.education_level} (Any)`);
       }
+
+      // Marital
       if (socio.marital_status?.length) {
         const match = socio.marital_status.includes(participant.marital_status);
         if (!match) allPass = false;
-        checks.push(`Marital: ${socio.marital_status.join(", ")} (${match ? "pass" : "fail"})`);
+        subRows.push(`Marital: ${participant.marital_status} (Needs: ${socio.marital_status.join(", ")}) ${match ? "✅" : "❌"}`);
+      } else {
+        subRows.push(`Marital: ${participant.marital_status} (Any)`);
       }
+
+      // Income
       if (socio.family_income?.length) {
         const match = socio.family_income.includes(participant.family_income);
         if (!match) allPass = false;
-        checks.push(`Income: ${socio.family_income.join(", ")} (${match ? "pass" : "fail"})`);
+        subRows.push(`Income: ${participant.family_income} (Needs: ${socio.family_income.join(", ")}) ${match ? "✅" : "❌"}`);
+      } else {
+        subRows.push(`Income: ${participant.family_income} (Any)`);
+      }
+
+      // Availability
+      if (socio.availability?.length) {
+          const reqs = socio.availability as string[];
+          const pWeekdays = participant.availability_weekdays === "Yes";
+          const pWeekends = participant.availability_weekends === "Yes";
+          
+          const match = (reqs.includes("Weekdays") && pWeekdays) || (reqs.includes("Weekends") && pWeekends);
+          if (!match) allPass = false;
+
+          let pAvail = [];
+          if (pWeekdays) pAvail.push("Weekdays");
+          if (pWeekends) pAvail.push("Weekends");
+          
+          subRows.push(`Availability: ${pAvail.join(", ") || "None"} (Needs: ${reqs.join(", ")}) ${match ? "✅" : "❌"}`);
+      } else {
+          // subRows.push(`Availability: Any`); // Optional to show
       }
 
       return {
         passes: allPass,
-        detail: checks.length > 0 ? checks.join("; ") : "Any",
+        detail: allPass ? "Matches Requirements" : "Failed Requirements",
+        subRows
       };
     }
 
     case "eligibility": {
       const elig = filterVal as any;
       if (!elig) return { passes: true, detail: "Any" };
+      
       const fields = [
         "served_on_jury", "convicted_felon", "us_citizen",
         "has_children", "served_armed_forces", "currently_employed", "internet_access"
       ];
-      const checks: string[] = [];
+      
+      const subRows: string[] = [];
       let allPass = true;
+
       for (const f of fields) {
         const required = elig[f];
-        if (!required || required === "Any") continue;
+        
+        // Conflict check
+        if (required === "No Common Value") {
+            return { passes: false, detail: "Contradictory Requirements" };
+        }
+
         const pVal = participant[f];
+
+        if (!required || required === "Any") {
+            subRows.push(`${f.replace(/_/g, ' ')}: ${pVal} (Any)`);
+            continue;
+        }
+
         const match = pVal === required;
         if (!match) allPass = false;
-        checks.push(`${f}: needs ${required} (${match ? "pass" : "fail: " + (pVal ?? "N/A")})`);
+        subRows.push(`${f.replace(/_/g, ' ')}: ${pVal} (Needs: ${required}) ${match ? "✅" : "❌"}`);
       }
+
       return {
         passes: allPass,
-        detail: checks.length > 0 ? checks.join("; ") : "Any",
+        detail: allPass ? "Matches Requirements" : "Failed Requirements",
+        subRows
       };
     }
 
@@ -352,38 +417,40 @@ export default async function NewSessionPage({
 
           {cases?.length ? (
             cases.map((c) => (
-              <div key={c.id} className="border rounded p-4 flex items-center justify-between">
-                <div className="font-medium">{c.title}</div>
+              <div key={c.id} className="border rounded p-4 flex flex-col gap-3">
+                <div className="flex justify-between items-start w-full">
+                  <div className="font-medium text-base">{c.title}</div>
+                  {c.scheduled_at ? (
+                     <div className="text-xs text-right">
+                        <div className="text-slate-500 mb-1">
+                          {new Date(c.scheduled_at).toLocaleString()}
+                        </div>
+                        {(!c.schedule_status || c.schedule_status === "pending") && (
+                          <span className="inline-block text-yellow-700 bg-yellow-50 border border-yellow-200 px-2 py-0.5 rounded text-[10px] font-semibold">
+                            Waiting response
+                          </span>
+                        )}
+                        {c.schedule_status === "accepted" && (
+                          <span className="inline-block text-green-700 bg-green-50 border border-green-200 px-2 py-0.5 rounded text-[10px] font-semibold">
+                            Accepted
+                          </span>
+                        )}
+                        {c.schedule_status === "rejected" && (
+                          <span className="inline-block text-red-700 bg-red-50 border border-red-200 px-2 py-0.5 rounded text-[10px] font-semibold">
+                            Rejected
+                          </span>
+                        )}
+                     </div>
+                  ) : (
+                    <div className="text-xs text-slate-400 italic">No time proposed</div>
+                  )}
+                </div>
 
-                {c.scheduled_at ? (
-                  <div className="text-xs space-y-1">
-                    <div className="text-slate-600">
-                      Proposed: {new Date(c.scheduled_at).toLocaleString()}
-                    </div>
-                    {(!c.schedule_status || c.schedule_status === "pending") && (
-                      <span className="text-yellow-700 bg-yellow-50 border border-yellow-200 px-2 py-1 rounded font-semibold">
-                        Waiting response
-                      </span>
-                    )}
-                    {c.schedule_status === "accepted" && (
-                      <span className="text-green-700 bg-green-50 border border-green-200 px-2 py-1 rounded font-semibold">
-                        Accepted by presenter
-                      </span>
-                    )}
-                    {c.schedule_status === "rejected" && (
-                      <span className="text-red-700 bg-red-50 border border-red-200 px-2 py-1 rounded font-semibold">
-                        Rejected by presenter
-                      </span>
-                    )}
-                  </div>
-                ) : (
-                  <div className="text-xs text-slate-400 italic">No time proposed yet</div>
-                )}
-
-                <div className="flex gap-2 items-center pt-2">
-                  <input type="time" name={`start_${c.id}`} className="border rounded px-2 py-1" required />
-                  <span>&rarr;</span>
-                  <input type="time" name={`end_${c.id}`} className="border rounded px-2 py-1" required />
+                <div className="flex items-center gap-2 text-sm w-full mt-1 bg-slate-50 p-2 rounded border border-slate-100">
+                  <span className="text-slate-500 text-xs font-semibold uppercase mr-auto">Session Time:</span>
+                  <input type="time" name={`start_${c.id}`} className="border rounded px-2 py-1 bg-white" required />
+                  <span className="text-slate-400">&rarr;</span>
+                  <input type="time" name={`end_${c.id}`} className="border rounded px-2 py-1 bg-white" required />
                 </div>
               </div>
             ))
@@ -434,43 +501,37 @@ export default async function NewSessionPage({
                       </details>
                     )}
 
-                    {p.matchLevel > 0 && p.matchLevel < FILTER_PRIORITY.length && (
+{/* Partial / Mismatch Details requested to be visible but red */}
+                    {p.matchLevel > 0 && (
                       <details className="inline-block">
-                        <summary className="bg-yellow-50 text-yellow-700 px-1.5 py-0.5 rounded border border-yellow-200 text-[10px] font-semibold cursor-pointer select-none list-none">
-                          Partial Match
+                        <summary className="bg-red-50 text-red-700 px-1.5 py-0.5 rounded border border-red-200 text-[10px] font-semibold cursor-pointer select-none list-none hover:bg-red-100 transition-colors">
+                          Mismatch Details
                         </summary>
-                        <div className="mt-1 p-2 bg-yellow-50 border border-yellow-200 rounded text-[10px] space-y-0.5">
+                        <div className="mt-1 p-2 bg-red-50/50 border border-red-100 rounded text-[10px] space-y-0.5">
                           {(p.filterChecks as any[]).map((fc: any) => (
-                            <div key={fc.key} className={`flex gap-1 ${fc.passes ? "text-green-700" : "text-red-500"}`}>
-                              <span>{fc.passes ? "\u2713" : "\u2717"}</span>
-                              <span className="font-semibold">{fc.label}:</span>
-                              <span>{fc.detail}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </details>
-                    )}
-                    <div className="text-[10px] text-slate-500 mt-1">
-                      Cases Passed: {p.casePassCount}
-                      {p.casePassCount > 0 && (
-                        <span className="ml-2 text-[10px] font-semibold text-green-700">
-                          ⭐ Recommended Candidate
-                        </span>
-                      )}
-                      &nbsp;|&nbsp; Score: {p.multiScore} / {p.multiTotal}
-                    </div>
-
-                    {p.matchLevel >= FILTER_PRIORITY.length && (
-                      <details className="inline-block">
-                        <summary className="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded border border-slate-200 text-[10px] font-semibold cursor-pointer select-none list-none">
-                          Fallback
-                        </summary>
-                        <div className="mt-1 p-2 bg-slate-50 border border-slate-200 rounded text-[10px] space-y-0.5">
-                          {(p.filterChecks as any[]).map((fc: any) => (
-                            <div key={fc.key} className={`flex gap-1 ${fc.passes ? "text-green-700" : "text-red-500"}`}>
-                              <span>{fc.passes ? "\u2713" : "\u2717"}</span>
-                              <span className="font-semibold">{fc.label}:</span>
-                              <span>{fc.detail}</span>
+                            <div key={fc.key} className={`flex flex-col gap-1 ${fc.passes ? "text-green-700" : "text-red-500"}`}>
+                              
+                              {fc.subRows ? (
+                                <details className="group/sub w-full">
+                                    <summary className="flex gap-1 items-center cursor-pointer list-none">
+                                        <span>{fc.passes ? "\u2713" : "\u2717"}</span>
+                                        <span className="font-semibold underline decoration-dotted underline-offset-2">{fc.label}</span>
+                                        <span className="text-[9px] opacity-70 ml-1">(Click)</span>
+                                    </summary>
+                                    <ul className="ml-4 mt-1 space-y-0.5 text-[9px] bg-white/50 p-1.5 rounded border border-black/5 text-slate-700">
+                                        {fc.subRows.map((row: string, i: number) => (
+                                            <li key={i}>{row}</li>
+                                        ))}
+                                    </ul>
+                                </details>
+                              ) : (
+                                <div className="flex gap-1 items-center">
+                                    <span>{fc.passes ? "\u2713" : "\u2717"}</span>
+                                    <span className="font-semibold">{fc.label}:</span>
+                                    <span>{fc.detail}</span>
+                                </div>
+                              )}
+                            
                             </div>
                           ))}
                         </div>
