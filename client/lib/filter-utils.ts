@@ -33,7 +33,7 @@ export interface CaseFilters {
  * @returns The modified query with filters applied
  */
 export function applyCaseFilters(
-  query: any, 
+  query: any,
   filters: CaseFilters
 ) {
   if (!filters) return query;
@@ -150,11 +150,16 @@ export function combineCaseFilters(filtersList: CaseFilters[]): CaseFilters {
   if (ages.length > 0) {
     const min = Math.max(...ages.map(a => a?.min ?? 0));
     const max = Math.min(...ages.map(a => a?.max ?? 100));
-    if (isFinite(min) || isFinite(max)) {
-        result.age = { 
-            min: isFinite(min) ? min : undefined, 
-            max: isFinite(max) ? max : undefined 
-        };
+
+    // Treat wide ranges as "Any"
+    // If min is low enough (<= 18) and max is high enough (>= 99), it's effectively "Any"
+    const isEffectivelyAny = min <= 18 && max >= 99;
+
+    if (!isEffectivelyAny && (isFinite(min) || isFinite(max))) {
+      result.age = {
+        min: isFinite(min) ? min : undefined,
+        max: isFinite(max) ? max : undefined
+      };
     }
   }
 
@@ -171,38 +176,38 @@ export function combineCaseFilters(filtersList: CaseFilters[]): CaseFilters {
 
   // --- ELIGIBILITY (Keep if ANY case requires it) ---
   if (!result.eligibility) result.eligibility = {};
-  
+
   const eligibilityFields = [
-      "served_on_jury",
-      "convicted_felon",
-      "us_citizen",
-      "has_children",
-      "served_armed_forces",
-      "currently_employed",
-      "internet_access"
+    "served_on_jury",
+    "convicted_felon",
+    "us_citizen",
+    "has_children",
+    "served_armed_forces",
+    "currently_employed",
+    "internet_access"
   ];
 
   eligibilityFields.forEach(field => {
-      // Collect all non-empty values
-      const values = valid
-        .map(f => f.eligibility?.[field as keyof typeof f.eligibility])
-        .filter(v => v !== undefined && v !== "Any" && v !== "");
-      
-      const uniqueValues = Array.from(new Set(values));
+    // Collect all non-empty values
+    const values = valid
+      .map(f => f.eligibility?.[field as keyof typeof f.eligibility])
+      .filter(v => v !== undefined && v.toLowerCase() !== "any" && v !== "");
 
-      if (uniqueValues.length === 1) {
-          // All cases that specify this field agree
-          // @ts-ignore
-          result.eligibility[field] = uniqueValues[0];
-      } else if (uniqueValues.length > 1) {
-          // Conflict — keep the first case's value (stricter = first wins)
-          // @ts-ignore
-          result.eligibility[field] = uniqueValues[0];
-      } else {
-          // No case specifies this → Any
-          // @ts-ignore
-          result.eligibility[field] = undefined;
-      }
+    const uniqueValues = Array.from(new Set(values));
+
+    if (uniqueValues.length === 1) {
+      // All cases that specify this field agree
+      // @ts-ignore
+      result.eligibility[field] = uniqueValues[0];
+    } else if (uniqueValues.length > 1) {
+      // Conflict — keep the first case's value (stricter = first wins)
+      // @ts-ignore
+      result.eligibility[field] = uniqueValues[0];
+    } else {
+      // No case specifies this → Any
+      // @ts-ignore
+      result.eligibility[field] = undefined;
+    }
   });
 
   return result;
@@ -215,23 +220,33 @@ export function combineCaseFilters(filtersList: CaseFilters[]): CaseFilters {
  * - If multiple cases have values, return only the common (intersected) values.
  */
 function intersectArrays(arrays: (string[] | undefined)[]): string[] | undefined {
-    // Collect only the arrays that actually have filter values
-    const defined = arrays.filter((arr): arr is string[] => Array.isArray(arr) && arr.length > 0);
+  // 1. Normalize: Treat ["Any"] as undefined (wildcard)
+  //    And filter down to only arrays that have actual constraints
+  const defined = arrays.filter((arr): arr is string[] => {
+    if (!Array.isArray(arr)) return false;
+    if (arr.length === 0) return false;
+    if (arr.length === 1 && arr[0].toLowerCase() === "any") return false; // Explicit "Any" (case-insensitive) -> Wildcard
+    return true;
+  });
 
-    // No case specifies this filter → no restriction
-    if (defined.length === 0) return undefined;
+  // 2. No case specifies a strict filter → no restriction (Any)
+  if (defined.length === 0) return undefined;
 
-    // Only one case specifies it → use that case's values
-    if (defined.length === 1) return [...defined[0]];
+  // 3. Only one case specifies a strict filter → use that case's values
+  if (defined.length === 1) return [...defined[0]];
 
-    // Multiple cases specify it → intersect
-    let common = new Set<string>(defined[0]);
-    for (let i = 1; i < defined.length; i++) {
-        const next = new Set<string>(defined[i]);
-        common = new Set([...common].filter(v => next.has(v)));
-    }
+  // 4. Multiple cases specify strict filters → intersect
+  let common = new Set<string>(defined[0]);
+  for (let i = 1; i < defined.length; i++) {
+    const next = new Set<string>(defined[i]);
+    // Keep only values present in BOTH sets
+    common = new Set([...common].filter(v => next.has(v)));
+  }
 
-    return common.size > 0 ? Array.from(common) : undefined;
+  // 5. If intersection is empty, it means CONFLICT (e.g. Alaska vs Texas).
+  //    We return a special marker so the query returns 0 results, 
+  //    instead of reverting to "Any" (undefined).
+  return common.size > 0 ? Array.from(common) : ["No Common Value"];
 }
 
 // Low index = Dropped First
@@ -240,7 +255,7 @@ export const FILTER_PRIORITY = [
   "age",
   "race",
   "gender",
-  "socioeconomic", 
+  "socioeconomic",
   "eligibility",
   "political_affiliation" // Keep this loop longest (Drop last)
 ];

@@ -434,38 +434,13 @@ export default async function NewSessionPage({
                       </details>
                     )}
 
-                    {p.matchLevel > 0 && p.matchLevel < FILTER_PRIORITY.length && (
+{/* Partial / Mismatch Details requested to be visible but red */}
+                    {p.matchLevel > 0 && (
                       <details className="inline-block">
-                        <summary className="bg-yellow-50 text-yellow-700 px-1.5 py-0.5 rounded border border-yellow-200 text-[10px] font-semibold cursor-pointer select-none list-none">
-                          Partial Match
+                        <summary className="bg-red-50 text-red-700 px-1.5 py-0.5 rounded border border-red-200 text-[10px] font-semibold cursor-pointer select-none list-none hover:bg-red-100 transition-colors">
+                          Mismatch Details
                         </summary>
-                        <div className="mt-1 p-2 bg-yellow-50 border border-yellow-200 rounded text-[10px] space-y-0.5">
-                          {(p.filterChecks as any[]).map((fc: any) => (
-                            <div key={fc.key} className={`flex gap-1 ${fc.passes ? "text-green-700" : "text-red-500"}`}>
-                              <span>{fc.passes ? "\u2713" : "\u2717"}</span>
-                              <span className="font-semibold">{fc.label}:</span>
-                              <span>{fc.detail}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </details>
-                    )}
-                    <div className="text-[10px] text-slate-500 mt-1">
-                      Cases Passed: {p.casePassCount}
-                      {p.casePassCount > 0 && (
-                        <span className="ml-2 text-[10px] font-semibold text-green-700">
-                          ⭐ Recommended Candidate
-                        </span>
-                      )}
-                      &nbsp;|&nbsp; Score: {p.multiScore} / {p.multiTotal}
-                    </div>
-
-                    {p.matchLevel >= FILTER_PRIORITY.length && (
-                      <details className="inline-block">
-                        <summary className="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded border border-slate-200 text-[10px] font-semibold cursor-pointer select-none list-none">
-                          Fallback
-                        </summary>
-                        <div className="mt-1 p-2 bg-slate-50 border border-slate-200 rounded text-[10px] space-y-0.5">
+                        <div className="mt-1 p-2 bg-red-50/50 border border-red-100 rounded text-[10px] space-y-0.5">
                           {(p.filterChecks as any[]).map((fc: any) => (
                             <div key={fc.key} className={`flex gap-1 ${fc.passes ? "text-green-700" : "text-red-500"}`}>
                               <span>{fc.passes ? "\u2713" : "\u2717"}</span>
