@@ -1,7 +1,7 @@
 'use server';
 
 import { supabaseAdmin } from '@/lib/supabase/admin';
-import { sendEmail } from '@/lib/mailer';
+import { sendEmail } from '@/lib/mail';
 import { redirect } from 'next/navigation';
 
 export async function signupWithCustomEmail(formData: FormData) {
@@ -23,6 +23,16 @@ export async function signupWithCustomEmail(formData: FormData) {
                 return { error: "User already registered" };
             }
             return { error: createError.message };
+        }
+
+        // MANUALLY INSERT ROLE INTO public.roles TABLE
+        const { error: roleError } = await supabaseAdmin
+            .from('roles')
+            .insert({ user_id: userCreatedData.user.id, role, email });
+
+        if (roleError) {
+            console.error("Failed to insert role:", JSON.stringify(roleError));
+            return { error: `Failed to assign role: ${roleError.message}` };
         }
 
         const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
