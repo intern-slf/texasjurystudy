@@ -10,6 +10,7 @@ import {
   relaxFilters,
   FILTER_PRIORITY,
   CaseFilters,
+  AgeRange,
   attachMultiCaseScores,
   sortParticipantsByMultiCaseMatch
 } from "@/lib/filter-utils";
@@ -28,50 +29,101 @@ const FILTER_LABELS: Record<string, string> = {
   political_affiliation: "Political Affiliation",
 };
 
+/* ====================================================================
+   Helper: check a participant against ONE case for a simple array filter
+   Returns { pass, detail }
+   ==================================================================== */
+function checkArrayForCase(
+  participant: any,
+  caseFilters: CaseFilters,
+  field: string,        // e.g. "gender", "race", "political_affiliation"
+  pField: string,       // participant field name (usually same as field)
+): { pass: boolean; pVal: string; caseVals: string[] | undefined } {
+  const arr = (caseFilters as any)[field] as string[] | undefined;
+  const pVal = participant[pField] ?? "";
+  if (!arr || arr.length === 0) return { pass: true, pVal, caseVals: undefined };
+  return { pass: arr.includes(pVal), pVal, caseVals: arr };
+}
+
 /**
- * Check if a participant actually passes a specific filter.
- * Returns { passes: boolean, detail: string }
+ * Check if a participant passes a specific filter.
+ * When multiple cases exist, shows per-case breakdowns.
+ * passes = true ONLY when ALL cases are satisfied.
+ * subTypes = nested expandable sub-sections (for socioeconomic/eligibility).
  */
 function checkFilterMatch(
   participant: any,
   filters: CaseFilters | null,
   filterKey: string
-): { passes: boolean; detail: string; subRows?: string[] } {
+): {
+  passes: boolean;
+  detail: string;
+  subRows?: string[];
+  subTypes?: { label: string; passes: boolean; subRows: string[] }[];
+} {
   if (!filters) return { passes: true, detail: "No filter" };
 
   const filterVal = (filters as any)[filterKey];
-
-  // Check for conflict marker in direct array values
-  if (Array.isArray(filterVal) && filterVal.includes("No Common Value")) {
-    return { passes: false, detail: "Contradictory Requirements (e.g. Case A vs Case B)" };
-  }
+  const perCase = filters._perCaseFilters;
+  const hasMultipleCases = perCase && perCase.length > 1;
 
   switch (filterKey) {
-    case "political_affiliation": {
-      const arr = filterVal as string[] | undefined;
-      if (!arr || arr.length === 0) return { passes: true, detail: "Any" };
-      const pVal = participant.political_affiliation ?? "";
-      const match = arr.includes(pVal);
-      return { passes: match, detail: `${arr.join(", ")} (participant: ${pVal || "N/A"})` };
-    }
-
-    case "gender": {
-      const arr = filterVal as string[] | undefined;
-      if (!arr || arr.length === 0) return { passes: true, detail: "Any" };
-      const pVal = participant.gender ?? "";
-      const match = arr.includes(pVal);
-      return { passes: match, detail: `${arr.join(", ")} (participant: ${pVal || "N/A"})` };
-    }
-
+    /* ============= SIMPLE ARRAY FILTERS ============= */
+    case "political_affiliation":
+    case "gender":
     case "race": {
+      const pField = filterKey;
+      const pVal = participant[pField] ?? "";
+
+      if (hasMultipleCases) {
+        const subRows: string[] = [];
+        let allPass = true;
+
+        for (const pc of perCase!) {
+          const { pass, caseVals } = checkArrayForCase(participant, pc.filters, filterKey, pField);
+          if (!pass) allPass = false;
+          const needs = caseVals ? caseVals.join(", ") : "Any";
+          subRows.push(`${pc.caseTitle}: ${needs} (participant: ${pVal || "N/A"}) ${pass ? "✅" : "❌"}`);
+        }
+
+        return {
+          passes: allPass,
+          detail: allPass ? "All cases matched" : "Not all cases matched",
+          subRows,
+        };
+      }
+
       const arr = filterVal as string[] | undefined;
       if (!arr || arr.length === 0) return { passes: true, detail: "Any" };
-      const pVal = participant.race ?? "";
       const match = arr.includes(pVal);
       return { passes: match, detail: `${arr.join(", ")} (participant: ${pVal || "N/A"})` };
     }
 
+    /* ============= AGE ============= */
     case "age": {
+      const caseRanges = (filters as any).ageRanges as AgeRange[] | undefined;
+      if (caseRanges && caseRanges.length > 0) {
+        const pAge = participant.age;
+        const subRows: string[] = [];
+        let allPass = true;
+
+        for (const r of caseRanges) {
+          const minOk = r.min === undefined || pAge >= r.min;
+          const maxOk = r.max === undefined || pAge <= r.max;
+          const pass = minOk && maxOk;
+          if (!pass) allPass = false;
+          const label = r.caseLabel || "Case";
+          const rangeStr = `${r.min ?? 0}–${r.max ?? "99+"}`;
+          subRows.push(`${label}: ${rangeStr} (participant: ${pAge}) ${pass ? "✅" : "❌"}`);
+        }
+
+        return {
+          passes: allPass,
+          detail: allPass ? "All cases matched" : "Not all cases matched",
+          subRows,
+        };
+      }
+
       const ageFilter = filterVal as { min?: number; max?: number } | undefined;
       if (!ageFilter) return { passes: true, detail: "Any" };
       const pAge = participant.age;
@@ -79,127 +131,215 @@ function checkFilterMatch(
       const maxOk = ageFilter.max === undefined || pAge <= ageFilter.max;
       return {
         passes: minOk && maxOk,
-        detail: `${ageFilter.min ?? 0}-${ageFilter.max ?? "99+"} (participant: ${pAge})`,
+        detail: `${ageFilter.min ?? 0}–${ageFilter.max ?? "99+"} (participant: ${pAge})`,
       };
     }
 
+    /* ============= LOCATION ============= */
     case "location": {
-      const loc = filterVal as { state?: string[] } | undefined;
-      // Check for conflict marker in location.state
-      if (loc?.state?.includes("No Common Value")) {
-          return { passes: false, detail: "Contradictory Requirements (e.g. Case A vs Case B)" };
+      const pState = participant.state ?? "";
+
+      if (hasMultipleCases) {
+        const subRows: string[] = [];
+        let allPass = true;
+
+        for (const pc of perCase!) {
+          const caseStates = pc.filters.location?.state;
+          const noFilter = !caseStates || caseStates.length === 0;
+          const pass = noFilter || caseStates!.includes(pState);
+          if (!pass) allPass = false;
+          const needs = noFilter ? "Any" : caseStates!.join(", ");
+          subRows.push(`${pc.caseTitle}: ${needs} (participant: ${pState || "N/A"}) ${pass ? "✅" : "❌"}`);
+        }
+
+        return {
+          passes: allPass,
+          detail: allPass ? "All cases matched" : "Not all cases matched",
+          subRows,
+        };
       }
 
+      const loc = filterVal as { state?: string[] } | undefined;
       if (!loc?.state || loc.state.length === 0) return { passes: true, detail: "Any" };
-      const pState = participant.state ?? "";
       const match = loc.state.includes(pState);
       return { passes: match, detail: `${loc.state.join(", ")} (participant: ${pState || "N/A"})` };
     }
 
+    /* ============= SOCIOECONOMIC (nested sub-types) ============= */
     case "socioeconomic": {
+      if (hasMultipleCases) {
+        const subTypeDefs = [
+          { label: "Education", field: "education_level", pField: "education_level" },
+          { label: "Marital Status", field: "marital_status", pField: "marital_status" },
+          { label: "Income", field: "family_income", pField: "family_income" },
+          { label: "Availability", field: "availability", pField: null as string | null }, // special handling
+        ];
+
+        const subTypes: { label: string; passes: boolean; subRows: string[] }[] = [];
+        let allTypesPass = true;
+
+        for (const def of subTypeDefs) {
+          const rows: string[] = [];
+          let typeAllPass = true;
+          let hasAnyRequirement = false;
+
+          for (const pc of perCase!) {
+            const socio = pc.filters.socioeconomic;
+
+            if (def.field === "availability") {
+              const avail = socio?.availability;
+              if (!avail || avail.length === 0) {
+                rows.push(`${pc.caseTitle}: Any ✅`);
+                continue;
+              }
+              hasAnyRequirement = true;
+              const pW = participant.availability_weekdays === "Yes";
+              const pE = participant.availability_weekends === "Yes";
+              const m = (avail.includes("Weekdays") && pW) || (avail.includes("Weekends") && pE);
+              if (!m) typeAllPass = false;
+              const pAvail = [pW && "Weekdays", pE && "Weekends"].filter(Boolean).join(", ") || "None";
+              rows.push(`${pc.caseTitle}: Needs ${avail.join(", ")} (participant: ${pAvail}) ${m ? "✅" : "❌"}`);
+            } else {
+              const vals = (socio as any)?.[def.field] as string[] | undefined;
+              if (!vals || vals.length === 0) {
+                rows.push(`${pc.caseTitle}: Any ✅`);
+                continue;
+              }
+              hasAnyRequirement = true;
+              const pVal = participant[def.pField!] ?? "N/A";
+              const m = vals.includes(pVal);
+              if (!m) typeAllPass = false;
+              rows.push(`${pc.caseTitle}: ${vals.join(", ")} (participant: ${pVal}) ${m ? "✅" : "❌"}`);
+            }
+          }
+
+          if (!hasAnyRequirement) typeAllPass = true;
+          if (!typeAllPass) allTypesPass = false;
+
+          subTypes.push({ label: def.label, passes: typeAllPass, subRows: rows });
+        }
+
+        return {
+          passes: allTypesPass,
+          detail: allTypesPass ? "All cases matched" : "Not all cases matched",
+          subTypes,
+        };
+      }
+
+      // Single-case fallback
       const socio = filterVal as any;
       if (!socio) return { passes: true, detail: "Any" };
-      
-      // Check for conflict markers in sub-fields
-      if (socio.education_level?.includes("No Common Value") || 
-          socio.marital_status?.includes("No Common Value") || 
-          socio.family_income?.includes("No Common Value") ||
-          socio.availability?.includes("No Common Value")) {
-           return { passes: false, detail: "Contradictory Requirements (e.g. Case A vs Case B)" };
-      }
 
-      const subRows: string[] = [];
+      const subTypes: { label: string; passes: boolean; subRows: string[] }[] = [];
       let allPass = true;
 
-      // Education
       if (socio.education_level?.length) {
-        const match = socio.education_level.includes(participant.education_level);
-        if (!match) allPass = false;
-        subRows.push(`Education: ${participant.education_level} (Needs: ${socio.education_level.join(", ")}) ${match ? "✅" : "❌"}`);
+        const m = socio.education_level.includes(participant.education_level);
+        if (!m) allPass = false;
+        subTypes.push({ label: "Education", passes: m, subRows: [`${participant.education_level} (Needs: ${socio.education_level.join(", ")}) ${m ? "✅" : "❌"}`] });
       } else {
-        subRows.push(`Education: ${participant.education_level} (Any)`);
+        subTypes.push({ label: "Education", passes: true, subRows: [`${participant.education_level} (Any)`] });
       }
 
-      // Marital
       if (socio.marital_status?.length) {
-        const match = socio.marital_status.includes(participant.marital_status);
-        if (!match) allPass = false;
-        subRows.push(`Marital: ${participant.marital_status} (Needs: ${socio.marital_status.join(", ")}) ${match ? "✅" : "❌"}`);
+        const m = socio.marital_status.includes(participant.marital_status);
+        if (!m) allPass = false;
+        subTypes.push({ label: "Marital Status", passes: m, subRows: [`${participant.marital_status} (Needs: ${socio.marital_status.join(", ")}) ${m ? "✅" : "❌"}`] });
       } else {
-        subRows.push(`Marital: ${participant.marital_status} (Any)`);
+        subTypes.push({ label: "Marital Status", passes: true, subRows: [`${participant.marital_status} (Any)`] });
       }
 
-      // Income
       if (socio.family_income?.length) {
-        const match = socio.family_income.includes(participant.family_income);
-        if (!match) allPass = false;
-        subRows.push(`Income: ${participant.family_income} (Needs: ${socio.family_income.join(", ")}) ${match ? "✅" : "❌"}`);
+        const m = socio.family_income.includes(participant.family_income);
+        if (!m) allPass = false;
+        subTypes.push({ label: "Income", passes: m, subRows: [`${participant.family_income} (Needs: ${socio.family_income.join(", ")}) ${m ? "✅" : "❌"}`] });
       } else {
-        subRows.push(`Income: ${participant.family_income} (Any)`);
+        subTypes.push({ label: "Income", passes: true, subRows: [`${participant.family_income} (Any)`] });
       }
 
-      // Availability
       if (socio.availability?.length) {
-          const reqs = socio.availability as string[];
-          const pWeekdays = participant.availability_weekdays === "Yes";
-          const pWeekends = participant.availability_weekends === "Yes";
-          
-          const match = (reqs.includes("Weekdays") && pWeekdays) || (reqs.includes("Weekends") && pWeekends);
-          if (!match) allPass = false;
-
-          let pAvail = [];
-          if (pWeekdays) pAvail.push("Weekdays");
-          if (pWeekends) pAvail.push("Weekends");
-          
-          subRows.push(`Availability: ${pAvail.join(", ") || "None"} (Needs: ${reqs.join(", ")}) ${match ? "✅" : "❌"}`);
-      } else {
-          // subRows.push(`Availability: Any`); // Optional to show
+        const reqs = socio.availability as string[];
+        const pWeekdays = participant.availability_weekdays === "Yes";
+        const pWeekends = participant.availability_weekends === "Yes";
+        const m = (reqs.includes("Weekdays") && pWeekdays) || (reqs.includes("Weekends") && pWeekends);
+        if (!m) allPass = false;
+        const pAvail = [pWeekdays && "Weekdays", pWeekends && "Weekends"].filter(Boolean).join(", ") || "None";
+        subTypes.push({ label: "Availability", passes: m, subRows: [`${pAvail} (Needs: ${reqs.join(", ")}) ${m ? "✅" : "❌"}`] });
       }
 
-      return {
-        passes: allPass,
-        detail: allPass ? "Matches Requirements" : "Failed Requirements",
-        subRows
-      };
+      return { passes: allPass, detail: allPass ? "Matches" : "Failed", subTypes };
     }
 
+    /* ============= ELIGIBILITY (nested sub-types) ============= */
     case "eligibility": {
-      const elig = filterVal as any;
-      if (!elig) return { passes: true, detail: "Any" };
-      
       const fields = [
-        "served_on_jury", "convicted_felon", "us_citizen",
-        "has_children", "served_armed_forces", "currently_employed", "internet_access"
+        { key: "served_on_jury", label: "Served on Jury" },
+        { key: "convicted_felon", label: "Convicted Felon" },
+        { key: "us_citizen", label: "US Citizen" },
+        { key: "has_children", label: "Has Children" },
+        { key: "served_armed_forces", label: "Armed Forces" },
+        { key: "currently_employed", label: "Employed" },
+        { key: "internet_access", label: "Internet Access" },
       ];
-      
-      const subRows: string[] = [];
-      let allPass = true;
 
-      for (const f of fields) {
-        const required = elig[f];
-        
-        // Conflict check
-        if (required === "No Common Value") {
-            return { passes: false, detail: "Contradictory Requirements" };
+      if (hasMultipleCases) {
+        const subTypes: { label: string; passes: boolean; subRows: string[] }[] = [];
+        let allTypesPass = true;
+
+        for (const def of fields) {
+          const rows: string[] = [];
+          let typeAllPass = true;
+          let hasAnyRequirement = false;
+
+          for (const pc of perCase!) {
+            const required = pc.filters.eligibility?.[def.key as keyof NonNullable<CaseFilters["eligibility"]>];
+            const pVal = participant[def.key] ?? "N/A";
+
+            if (!required || required === "Any") {
+              rows.push(`${pc.caseTitle}: Any ✅`);
+              continue;
+            }
+            hasAnyRequirement = true;
+            const m = pVal === required;
+            if (!m) typeAllPass = false;
+            rows.push(`${pc.caseTitle}: Needs ${required} (participant: ${pVal}) ${m ? "✅" : "❌"}`);
+          }
+
+          if (!hasAnyRequirement) typeAllPass = true;
+          if (!typeAllPass) allTypesPass = false;
+
+          subTypes.push({ label: def.label, passes: typeAllPass, subRows: rows });
         }
 
-        const pVal = participant[f];
-
-        if (!required || required === "Any") {
-            subRows.push(`${f.replace(/_/g, ' ')}: ${pVal} (Any)`);
-            continue;
-        }
-
-        const match = pVal === required;
-        if (!match) allPass = false;
-        subRows.push(`${f.replace(/_/g, ' ')}: ${pVal} (Needs: ${required}) ${match ? "✅" : "❌"}`);
+        return {
+          passes: allTypesPass,
+          detail: allTypesPass ? "All cases matched" : "Not all cases matched",
+          subTypes,
+        };
       }
 
-      return {
-        passes: allPass,
-        detail: allPass ? "Matches Requirements" : "Failed Requirements",
-        subRows
-      };
+      // Single-case fallback
+      const elig = filterVal as any;
+      if (!elig) return { passes: true, detail: "Any" };
+
+      const subTypes: { label: string; passes: boolean; subRows: string[] }[] = [];
+      let allPass = true;
+
+      for (const def of fields) {
+        const required = elig[def.key];
+        const pVal = participant[def.key] ?? "N/A";
+
+        if (!required || required === "Any") {
+          subTypes.push({ label: def.label, passes: true, subRows: [`${pVal} (Any)`] });
+          continue;
+        }
+
+        const m = pVal === required;
+        if (!m) allPass = false;
+        subTypes.push({ label: def.label, passes: m, subRows: [`${pVal} (Needs: ${required}) ${m ? "✅" : "❌"}`] });
+      }
+
+      return { passes: allPass, detail: allPass ? "Matches" : "Failed", subTypes };
     }
 
     default:
@@ -246,6 +386,26 @@ export default async function NewSessionPage({
   // Calculate combined filters
   const filtersList = (cases || []).map((c: any) => c.filters as CaseFilters);
   const combinedFilters = combineCaseFilters(filtersList);
+
+  // Enrich ageRanges with actual case titles
+  if (combinedFilters.ageRanges && cases) {
+    combinedFilters.ageRanges = combinedFilters.ageRanges.map((r) => ({
+      ...r,
+      caseLabel: r.caseIndex !== undefined && cases[r.caseIndex]
+        ? cases[r.caseIndex].title
+        : r.caseLabel,
+    }));
+  }
+
+  // Enrich _perCaseFilters with actual case titles
+  if (combinedFilters._perCaseFilters && cases) {
+    combinedFilters._perCaseFilters = combinedFilters._perCaseFilters.map((pc) => ({
+      ...pc,
+      caseTitle: pc.caseIndex !== undefined && cases[pc.caseIndex]
+        ? cases[pc.caseIndex].title
+        : pc.caseTitle,
+    }));
+  }
 
   // DIAGNOSTIC CHECK
   const { count: totalInTable, error: diagnosticError } = await supabase
@@ -308,6 +468,13 @@ export default async function NewSessionPage({
           label: FILTER_LABELS[key] || key,
           ...checkFilterMatch(p, combinedFilters, key),
         }));
+
+        // Recalculate matchLevel: if ANY filter fails (not all cases pass),
+        // bump to at least 1 so it shows "Mismatch Details" instead of "Exact Match"
+        const allFiltersPassed = p.filterChecks.every((fc: any) => fc.passes);
+        if (!allFiltersPassed && p.matchLevel === 0) {
+          p.matchLevel = 1;
+        }
 
         participants.push(p);
       });
@@ -461,7 +628,7 @@ export default async function NewSessionPage({
 
         {/* RIGHT - PARTICIPANTS */}
         <div className="space-y-4">
-          <h2 className="font-semibold">Participants</h2>
+          <h2 className="font-semibold">Recommended Participants</h2>
 
           <div className="border rounded divide-y max-h-[500px] overflow-y-auto">
             {participants?.map((p) => (
@@ -491,10 +658,51 @@ export default async function NewSessionPage({
                         </summary>
                         <div className="mt-1 p-2 bg-green-50 border border-green-200 rounded text-[10px] space-y-0.5">
                           {(p.filterChecks as any[]).map((fc: any) => (
-                            <div key={fc.key} className={`flex gap-1 ${fc.passes ? "" : "text-red-500"}`}>
-                              <span>{fc.passes ? "\u2713" : "\u2717"}</span>
-                              <span className="font-semibold">{fc.label}:</span>
-                              <span>{fc.detail}</span>
+                            <div key={fc.key} className={`flex flex-col gap-0.5 ${fc.passes ? "" : "text-red-500"}`}>
+                              {fc.subTypes ? (
+                                <details className="group/sub w-full">
+                                  <summary className="flex gap-1 items-center cursor-pointer list-none">
+                                    <span>{fc.passes ? "\u2713" : "\u2717"}</span>
+                                    <span className="font-semibold underline decoration-dotted underline-offset-2">{fc.label}</span>
+                                    <span className="text-[9px] opacity-70 ml-1">(Click)</span>
+                                  </summary>
+                                  <div className="ml-4 mt-1 space-y-1">
+                                    {fc.subTypes.map((st: any, si: number) => (
+                                      <details key={si} className="w-full">
+                                        <summary className={`flex gap-1 items-center cursor-pointer list-none text-[9px] ${st.passes ? "text-green-700" : "text-red-500"}`}>
+                                          <span>{st.passes ? "\u2713" : "\u2717"}</span>
+                                          <span className="font-medium underline decoration-dotted">{st.label}</span>
+                                          <span className="opacity-60 ml-1">(Click)</span>
+                                        </summary>
+                                        <ul className="ml-4 mt-0.5 space-y-0.5 text-[9px] bg-white/50 p-1 rounded border border-black/5 text-slate-700">
+                                          {st.subRows.map((row: string, ri: number) => (
+                                            <li key={ri}>{row}</li>
+                                          ))}
+                                        </ul>
+                                      </details>
+                                    ))}
+                                  </div>
+                                </details>
+                              ) : fc.subRows ? (
+                                <details className="group/sub w-full">
+                                  <summary className="flex gap-1 items-center cursor-pointer list-none">
+                                    <span>{fc.passes ? "\u2713" : "\u2717"}</span>
+                                    <span className="font-semibold underline decoration-dotted underline-offset-2">{fc.label}</span>
+                                    <span className="text-[9px] opacity-70 ml-1">(Click)</span>
+                                  </summary>
+                                  <ul className="ml-4 mt-1 space-y-0.5 text-[9px] bg-white/50 p-1.5 rounded border border-black/5 text-slate-700">
+                                    {fc.subRows.map((row: string, i: number) => (
+                                      <li key={i}>{row}</li>
+                                    ))}
+                                  </ul>
+                                </details>
+                              ) : (
+                                <div className="flex gap-1">
+                                  <span>{fc.passes ? "\u2713" : "\u2717"}</span>
+                                  <span className="font-semibold">{fc.label}:</span>
+                                  <span>{fc.detail}</span>
+                                </div>
+                              )}
                             </div>
                           ))}
                         </div>
@@ -509,9 +717,33 @@ export default async function NewSessionPage({
                         </summary>
                         <div className="mt-1 p-2 bg-red-50/50 border border-red-100 rounded text-[10px] space-y-0.5">
                           {(p.filterChecks as any[]).map((fc: any) => (
-                            <div key={fc.key} className={`flex flex-col gap-1 ${fc.passes ? "text-green-700" : "text-red-500"}`}>
-                              
-                              {fc.subRows ? (
+                            <div key={fc.key} className={`flex flex-col gap-0.5 ${fc.passes ? "text-green-700" : "text-red-500"}`}>
+
+                              {fc.subTypes ? (
+                                <details className="group/sub w-full">
+                                    <summary className="flex gap-1 items-center cursor-pointer list-none">
+                                        <span>{fc.passes ? "\u2713" : "\u2717"}</span>
+                                        <span className="font-semibold underline decoration-dotted underline-offset-2">{fc.label}</span>
+                                        <span className="text-[9px] opacity-70 ml-1">(Click)</span>
+                                    </summary>
+                                    <div className="ml-4 mt-1 space-y-1">
+                                      {fc.subTypes.map((st: any, si: number) => (
+                                        <details key={si} className="w-full">
+                                          <summary className={`flex gap-1 items-center cursor-pointer list-none text-[9px] ${st.passes ? "text-green-700" : "text-red-500"}`}>
+                                            <span>{st.passes ? "\u2713" : "\u2717"}</span>
+                                            <span className="font-medium underline decoration-dotted">{st.label}</span>
+                                            <span className="opacity-60 ml-1">(Click)</span>
+                                          </summary>
+                                          <ul className="ml-4 mt-0.5 space-y-0.5 text-[9px] bg-white/50 p-1 rounded border border-black/5 text-slate-700">
+                                            {st.subRows.map((row: string, ri: number) => (
+                                              <li key={ri}>{row}</li>
+                                            ))}
+                                          </ul>
+                                        </details>
+                                      ))}
+                                    </div>
+                                </details>
+                              ) : fc.subRows ? (
                                 <details className="group/sub w-full">
                                     <summary className="flex gap-1 items-center cursor-pointer list-none">
                                         <span>{fc.passes ? "\u2713" : "\u2717"}</span>
