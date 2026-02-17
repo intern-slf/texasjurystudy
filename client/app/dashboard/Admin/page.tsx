@@ -306,7 +306,7 @@ export default async function AdminDashboardPage({
                         </span>
                       ) : c.schedule_status === "accepted" ? (
                         <span className="inline-flex items-center rounded-full bg-green-400/10 px-2 py-1 text-xs font-medium text-green-500 ring-1 ring-inset ring-green-400/20">
-                          Confirmed
+                          Accepted
                         </span>
                       ) : (
                         <span className="inline-flex items-center rounded-full bg-red-400/10 px-2 py-1 text-xs font-medium text-red-500 ring-1 ring-inset ring-red-400/20">

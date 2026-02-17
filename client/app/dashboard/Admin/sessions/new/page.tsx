@@ -511,7 +511,7 @@ export default async function NewSessionPage({
 
     const selectedParticipants = formData.getAll("participants") as string[];
     if (selectedParticipants.length) {
-      await inviteParticipants(sessionId, selectedParticipants);
+      await inviteParticipants(sessionId, selectedParticipants, date);
     }
   }
 
