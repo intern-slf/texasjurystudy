@@ -4,12 +4,15 @@ import Link from "next/link";
 import { getPendingInvites } from "@/lib/participant/getPendingInvites";
 import { updateInviteStatus } from "@/lib/participant/updateInviteStatus";
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
+import { unstable_noStore as noStore } from "next/cache";
 
 export default async function ParticipantDashboard({
   searchParams,
 }: {
   searchParams: Promise<{ inviteId?: string; status?: string }>;
 }) {
+  noStore();
   const { inviteId, status } = await searchParams;
   const supabase = await createClient();
 
@@ -17,8 +20,14 @@ export default async function ParticipantDashboard({
      HANDLE EMAIL ACTIONS (If present)
      ========================= */
   if (inviteId && (status === "accepted" || status === "declined")) {
-    await updateInviteStatus(inviteId, status as "accepted" | "declined");
-    // Redirect to clean the URL so refresh doesn't re-trigger
+    console.log(`[ParticipantDashboard] Handling URL invite response: ID=${inviteId}, status=${status}`);
+    try {
+      await updateInviteStatus(inviteId, status as "accepted" | "declined");
+      console.log(`[ParticipantDashboard] Update success, preparing to redirect...`);
+    } catch (err: any) {
+      console.error(`[ParticipantDashboard] Failed to handle URL invite response:`, err.message);
+    }
+    // Redirect must be OUTSIDE try/catch because trigger an internal Next.js error
     redirect("/dashboard/participant?success=true");
   }
 
@@ -105,7 +114,36 @@ export default async function ParticipantDashboard({
                 <div>
                   <p className="font-medium">Session Invite</p>
                   <p className="text-sm text-slate-500">
-                    Date: {invite.sessions?.[0]?.session_date}
+                    Date: {(() => {
+                      const session = Array.isArray(invite.sessions) ? invite.sessions[0] : invite.sessions;
+                      return session?.session_date;
+                    })()}
+                  </p>
+                  <p className="text-sm text-slate-500">
+                    Time: {(() => {
+                      const session = Array.isArray(invite.sessions) ? invite.sessions[0] : invite.sessions;
+                      const cases = session?.session_cases || [];
+                      if (cases.length === 0) return "TBD";
+
+                      const startTimes = cases.map((c: any) => c.start_time).filter(Boolean).sort();
+                      const endTimes = cases.map((c: any) => c.end_time).filter(Boolean).sort();
+
+                      if (startTimes.length === 0 || endTimes.length === 0) return "TBD";
+
+                      return `${startTimes[0]} - ${endTimes[endTimes.length - 1]}`;
+                    })()}
+                  </p>
+                  <p className="text-sm text-slate-500">
+                    Cases: {(() => {
+                      const session = Array.isArray(invite.sessions) ? invite.sessions[0] : invite.sessions;
+                      const cases = session?.session_cases || [];
+                      if (cases.length === 0) return "None";
+
+                      return cases.map((c: any) => {
+                        const caseDetail = Array.isArray(c.cases) ? c.cases[0] : c.cases;
+                        return caseDetail?.title;
+                      }).filter(Boolean).join(", ");
+                    })()}
                   </p>
                 </div>
 
@@ -114,6 +152,7 @@ export default async function ParticipantDashboard({
                     formAction={async () => {
                       "use server";
                       await updateInviteStatus(invite.id, "accepted");
+                      revalidatePath("/dashboard/participant");
                     }}
                     className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700"
                   >
@@ -124,6 +163,7 @@ export default async function ParticipantDashboard({
                     formAction={async () => {
                       "use server";
                       await updateInviteStatus(invite.id, "declined");
+                      revalidatePath("/dashboard/participant");
                     }}
                     className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700"
                   >
