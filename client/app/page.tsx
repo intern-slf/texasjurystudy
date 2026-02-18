@@ -1,28 +1,52 @@
+"use client";
+
 import Link from "next/link";
-import { ArrowRight, Gavel, Scale, Users } from "lucide-react"; // CheckCircle2 removed
+import { ArrowRight, Gavel, Scale, Users } from "lucide-react";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 
 export default function Home() {
+  const router = useRouter();
+
+  useEffect(() => {
+    const handleAuthHash = async () => {
+      const supabase = createClient();
+      // Supabase client automatically picks up the hash on initialization
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        // If we landed here with a session (likely from a magic link hash),
+        // redirect to the dashboard.
+        router.push("/dashboard");
+      }
+    };
+
+    if (typeof window !== "undefined" && window.location.hash) {
+      handleAuthHash();
+    }
+  }, [router]);
+
   return (
     <div className="flex flex-col min-h-[calc(100vh-4rem)]">
       {/* Hero Section */}
       <section className="relative flex flex-col items-center justify-center py-20 text-center md:py-32 bg-gradient-to-b from-background to-secondary/20">
         <div className="absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/5 via-background to-background" />
-        
+
         <div className="space-y-6 max-w-5xl px-6">
           <div className="inline-flex items-center rounded-full border px-3 py-1 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80">
             <span className="flex h-2 w-2 rounded-full bg-primary mr-2 animate-pulse" />
             Now accepting new participants
           </div>
-          
+
           <h1 className="text-4xl font-extrabold tracking-tight sm:text-6xl md:text-7xl">
             Influence the Course of <br className="hidden md:block" />
             <span className="text-primary">Justice from Home</span>
           </h1>
-          
+
           <p className="mx-auto max-w-2xl text-lg text-muted-foreground md:text-xl leading-relaxed">
             Join paid virtual focus groups for real legal cases. Your unbiased opinion helps lawyers and clients understand how juries think—all from the comfort of your home.
           </p>
-          
+
           <div className="flex flex-col items-center justify-center gap-4 sm:flex-row pt-4">
             <Link
               href="/auth/signup?role=participant"
@@ -31,7 +55,7 @@ export default function Home() {
               Join as Participant
               <ArrowRight className="ml-2 h-4 w-4" />
             </Link>
-            
+
             <Link
               href="/auth/signup?role=presenter"
               className="inline-flex h-12 items-center justify-center rounded-md border border-input bg-background px-8 text-sm font-medium shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
@@ -39,7 +63,7 @@ export default function Home() {
               Run a Focus Group
             </Link>
           </div>
-          
+
           <p className="text-sm text-muted-foreground pt-4">
             Secure • Anonymous • Paid Compensation
           </p>
@@ -58,7 +82,7 @@ export default function Home() {
               Participate deeply in important cases from the comfort of your home via protected Zoom sessions. No travel required.
             </p>
           </div>
-          
+
           <div className="group relative overflow-hidden rounded-2xl border bg-background p-8 transition-all hover:shadow-lg">
             <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10 text-primary">
               <Scale className="h-6 w-6" />
@@ -68,7 +92,7 @@ export default function Home() {
               We value your time. Receive competitive payment for your honest feedback and attention during case presentations.
             </p>
           </div>
-          
+
           <div className="group relative overflow-hidden rounded-2xl border bg-background p-8 transition-all hover:shadow-lg">
             <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10 text-primary">
               <Gavel className="h-6 w-6" />
@@ -88,7 +112,7 @@ export default function Home() {
             <h2 className="text-3xl font-bold tracking-tight md:text-4xl">How It Works</h2>
             <p className="mt-4 text-lg text-muted-foreground">Simple steps to start contributing to the justice system.</p>
           </div>
-          
+
           <div className="grid gap-12 md:grid-cols-3">
             {[
               {
@@ -138,7 +162,7 @@ export default function Home() {
               </Link>
             </div>
           </div>
-          
+
           {/* Decorative circles */}
           <div className="absolute left-1/2 top-1/2 -z-0 h-[500px] w-[500px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/10 blur-3xl" />
         </div>
