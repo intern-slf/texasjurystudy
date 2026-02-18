@@ -1,15 +1,13 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
 
 export async function updateInviteStatus(
   sessionParticipantId: string,
   status: "accepted" | "declined"
 ) {
-  const supabase = await createClient();
-
-  const { error } = await supabase
+  const { error } = await supabaseAdmin
     .from("session_participants")
     .update({
       invite_status: status,

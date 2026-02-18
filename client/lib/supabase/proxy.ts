@@ -51,7 +51,9 @@ export async function updateSession(request: NextRequest) {
     request.nextUrl.pathname !== "/" &&
     !user &&
     !request.nextUrl.pathname.startsWith("/login") &&
-    !request.nextUrl.pathname.startsWith("/auth")
+    !request.nextUrl.pathname.startsWith("/auth") &&
+    // Allow invitation responses to hit the dashboard directly
+    !(request.nextUrl.pathname === "/dashboard/participant" && request.nextUrl.searchParams.has("inviteId"))
   ) {
     // no user, potentially respond by redirecting the user to the login page
     const url = request.nextUrl.clone();

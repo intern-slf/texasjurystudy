@@ -3,9 +3,25 @@ import ParticipantForm from "@/components/ParticipantForm";
 import Link from "next/link";
 import { getPendingInvites } from "@/lib/participant/getPendingInvites";
 import { updateInviteStatus } from "@/lib/participant/updateInviteStatus";
+import { redirect } from "next/navigation";
 
-export default async function ParticipantDashboard() {
+export default async function ParticipantDashboard({
+  searchParams,
+}: {
+  searchParams: Promise<{ inviteId?: string; status?: string }>;
+}) {
+  const { inviteId, status } = await searchParams;
   const supabase = await createClient();
+
+  /* =========================
+     HANDLE EMAIL ACTIONS (If present)
+     ========================= */
+  if (inviteId && (status === "accepted" || status === "declined")) {
+    await updateInviteStatus(inviteId, status as "accepted" | "declined");
+    // Redirect to clean the URL so refresh doesn't re-trigger
+    redirect("/dashboard/participant?success=true");
+  }
+
 
   /* =========================
      AUTH
@@ -15,7 +31,24 @@ export default async function ParticipantDashboard() {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    return <p className="p-8">Not authenticated</p>;
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center p-8">
+        <div className="max-w-md w-full text-center space-y-6 bg-white border border-green-100 rounded-2xl p-10 shadow-sm">
+          <div className="mx-auto w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+          <div>
+            <h2 className="text-2xl font-bold text-slate-900 mb-2">Response Recorded!</h2>
+            <p className="text-slate-600">Your choice has been saved. Please log in to your dashboard to see your full schedule and next steps.</p>
+          </div>
+          <Link href="/auth/login" className="inline-flex h-12 w-full items-center justify-center rounded-xl bg-blue-600 text-sm font-semibold text-white transition-all hover:bg-blue-700">
+            Log In to Your Dashboard
+          </Link>
+        </div>
+      </div>
+    );
   }
 
   /* =========================
