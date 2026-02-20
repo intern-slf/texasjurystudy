@@ -17,6 +17,17 @@ export default function Footer() {
           © {year ?? "—"} Texas Jury Study. All rights reserved.
         </p>
 
+        {/* Support Email */}
+        <p className="text-sm text-muted-foreground">
+          Support:{" "}
+          <a
+            href="mailto:intern@scottlawfirmtx.com"
+            className="transition-colors hover:text-primary"
+          >
+            intern@scottlawfirmtx.com
+          </a>
+        </p>
+
         {/* Links */}
         <div className="flex items-center gap-8 text-sm">
           <a
