@@ -429,6 +429,14 @@ export default async function NewSessionPage({
   let participants: any[] = [];
   const minRequired = 50;
   const seenIds = new Set<string>();
+  const nowIso = new Date().toISOString();
+
+  // Fetch blacklisted user IDs from roles table (role = 'blacklisted')
+  const { data: blacklistedRoles } = await supabase
+    .from("roles")
+    .select("user_id")
+    .eq("role", "blacklisted");
+  const blacklistedIds = (blacklistedRoles ?? []).map((r: any) => r.user_id as string);
 
   for (let level = 0; level <= FILTER_PRIORITY.length; level++) {
     if (participants.length >= minRequired) break;
@@ -440,6 +448,17 @@ export default async function NewSessionPage({
       .select("*"); // Fetch all columns so we can compare against filters
 
     query = applyCaseFilters(query, currentFilters);
+
+    // ── Hard exclusions (never relaxed) ──────────────────────────────
+    // 1. Skip participants whose role = 'blacklisted' in the roles table
+    if (blacklistedIds.length > 0) {
+      // @ts-ignore
+      query = query.not("user_id", "in", `(${blacklistedIds.map(id => `"${id}"`).join(",")})`);
+    }
+    // 2. Skip participants still in cooldown (eligible_after_at in the future)
+    //    Only set when they ACCEPT an invite — null means no cooldown yet
+    query = query.or(`eligible_after_at.is.null,eligible_after_at.lte.${nowIso}`);
+    // ─────────────────────────────────────────────────────────────────
 
     if (seenIds.size > 0) {
       // @ts-ignore
@@ -709,7 +728,7 @@ export default async function NewSessionPage({
                       </details>
                     )}
 
-{/* Partial / Mismatch Details requested to be visible but red */}
+                    {/* Partial / Mismatch Details requested to be visible but red */}
                     {p.matchLevel > 0 && (
                       <details className="inline-block">
                         <summary className="bg-red-50 text-red-700 px-1.5 py-0.5 rounded border border-red-200 text-[10px] font-semibold cursor-pointer select-none list-none hover:bg-red-100 transition-colors">

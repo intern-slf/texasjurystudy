@@ -2,6 +2,7 @@
 
 import { useState, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { autoBlacklistIfIneligible } from "@/lib/actions/autoBlacklist";
 import { Upload, X, CreditCard } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -187,6 +188,9 @@ export default function ParticipantForm({ userId }: Props) {
       setLoading(false);
       return;
     }
+
+    // Auto-blacklist if convicted felon or non-US citizen
+    await autoBlacklistIfIneligible(userId, convictedFelon, usCitizen);
 
     window.location.reload();
   }

@@ -2,6 +2,7 @@
 
 import { useState, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { autoBlacklistIfIneligible } from "@/lib/actions/autoBlacklist";
 import { Pencil, Upload, X, CreditCard } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -204,6 +205,9 @@ export default function EditProfileForm({ participant }: Props) {
       setLoading(false);
       return;
     }
+
+    // Auto-blacklist (or restore) based on latest answers
+    await autoBlacklistIfIneligible(participant.user_id, convictedFelon, usCitizen);
 
     setSuccess(true);
     setLoading(false);
