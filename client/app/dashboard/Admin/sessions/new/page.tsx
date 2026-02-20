@@ -354,16 +354,21 @@ function checkFilterMatch(
 export default async function NewSessionPage({
   searchParams,
 }: {
-  searchParams: Promise<{ selectedCases?: string | string[]; test_table?: string }>;
+  searchParams: Promise<{
+    selectedCases?: string | string[];
+    test_table?: string;
+    limit?: string;
+  }>;
 }) {
   const supabase = await createClient();
 
   /* =========================
-     READ SELECTED IDS
+     READ PARAMS
   ========================= */
   const params = await searchParams;
   const isOldData = params?.test_table === "oldData";
   const testTable = isOldData ? "oldData" : "jury_participants";
+  const minRequired = params?.limit ? parseInt(params.limit) : 50;
 
   const selectedIds = params?.selectedCases
     ? Array.isArray(params.selectedCases)
@@ -427,7 +432,6 @@ export default async function NewSessionPage({
 
   // Participants (Soft Filtered)
   let participants: any[] = [];
-  const minRequired = 50;
   const seenIds = new Set<string>();
   const nowIso = new Date().toISOString();
 
@@ -450,19 +454,22 @@ export default async function NewSessionPage({
     query = applyCaseFilters(query, currentFilters);
 
     // ── Hard exclusions (never relaxed) ──────────────────────────────
-    // 1. Skip participants whose role = 'blacklisted' in the roles table
-    if (blacklistedIds.length > 0) {
-      // @ts-ignore
-      query = query.not("user_id", "in", `(${blacklistedIds.map(id => `"${id}"`).join(",")})`);
+    // Skip modern exclusions for legacy tables (e.g. oldData)
+    if (!isOldData) {
+      // 1. Skip participants whose role = 'blacklisted' in the roles table
+      if (blacklistedIds.length > 0) {
+        // @ts-ignore
+        query = query.not("user_id", "in", `(${blacklistedIds.map(id => `"${id}"`).join(",")})`);
+      }
+      // 2. Skip participants still in cooldown (eligible_after_at in the future)
+      query = query.or(`eligible_after_at.is.null,eligible_after_at.lte.${nowIso}`);
     }
-    // 2. Skip participants still in cooldown (eligible_after_at in the future)
-    //    Only set when they ACCEPT an invite — null means no cooldown yet
-    query = query.or(`eligible_after_at.is.null,eligible_after_at.lte.${nowIso}`);
     // ─────────────────────────────────────────────────────────────────
 
     if (seenIds.size > 0) {
       // @ts-ignore
-      query = query.not('user_id', 'in', `(${Array.from(seenIds).map(id => `"${id}"`).join(',')})`);
+      const idField = isOldData ? 'id' : 'user_id';
+      query = query.not(idField, 'in', `(${Array.from(seenIds).map(id => `"${id}"`).join(',')})`);
     }
 
     // @ts-ignore
@@ -474,11 +481,15 @@ export default async function NewSessionPage({
     // });
 
     if (batch && batch.length > 0) {
-      let newPeeps = batch.filter((p: any) => !seenIds.has(p.user_id));
+      let newPeeps = batch.filter((p: any) => {
+        const pId = p.user_id || p.id;
+        return !seenIds.has(pId);
+      });
       newPeeps = newPeeps.sort(() => Math.random() - 0.5);
 
       newPeeps.forEach((p: any) => {
-        seenIds.add(p.user_id);
+        const pId = p.user_id || p.id;
+        seenIds.add(pId);
         p.matchLevel = level;
 
         // Check each filter against participant's actual data
@@ -607,26 +618,26 @@ export default async function NewSessionPage({
                 <div className="flex justify-between items-start w-full">
                   <div className="font-medium text-base">{c.title}</div>
                   {c.scheduled_at ? (
-                     <div className="text-xs text-right">
-                        <div className="text-slate-500 mb-1">
-                          {new Date(c.scheduled_at).toLocaleString()}
-                        </div>
-                        {(!c.schedule_status || c.schedule_status === "pending") && (
-                          <span className="inline-block text-yellow-700 bg-yellow-50 border border-yellow-200 px-2 py-0.5 rounded text-[10px] font-semibold">
-                            Waiting response
-                          </span>
-                        )}
-                        {c.schedule_status === "accepted" && (
-                          <span className="inline-block text-green-700 bg-green-50 border border-green-200 px-2 py-0.5 rounded text-[10px] font-semibold">
-                            Accepted
-                          </span>
-                        )}
-                        {c.schedule_status === "rejected" && (
-                          <span className="inline-block text-red-700 bg-red-50 border border-red-200 px-2 py-0.5 rounded text-[10px] font-semibold">
-                            Rejected
-                          </span>
-                        )}
-                     </div>
+                    <div className="text-xs text-right">
+                      <div className="text-slate-500 mb-1">
+                        {new Date(c.scheduled_at).toLocaleString()}
+                      </div>
+                      {(!c.schedule_status || c.schedule_status === "pending") && (
+                        <span className="inline-block text-yellow-700 bg-yellow-50 border border-yellow-200 px-2 py-0.5 rounded text-[10px] font-semibold">
+                          Waiting response
+                        </span>
+                      )}
+                      {c.schedule_status === "accepted" && (
+                        <span className="inline-block text-green-700 bg-green-50 border border-green-200 px-2 py-0.5 rounded text-[10px] font-semibold">
+                          Accepted
+                        </span>
+                      )}
+                      {c.schedule_status === "rejected" && (
+                        <span className="inline-block text-red-700 bg-red-50 border border-red-200 px-2 py-0.5 rounded text-[10px] font-semibold">
+                          Rejected
+                        </span>
+                      )}
+                    </div>
                   ) : (
                     <div className="text-xs text-slate-400 italic">No time proposed</div>
                   )}
@@ -650,100 +661,42 @@ export default async function NewSessionPage({
           <h2 className="font-semibold">Recommended Participants</h2>
 
           <div className="border rounded divide-y max-h-[500px] overflow-y-auto">
-            {participants?.map((p) => (
-              <div
-                key={p.user_id}
-                className="flex items-center justify-between p-3 hover:bg-slate-50"
-              >
-                <div className="flex-1 min-w-0">
-                  <a
-                    href={`/dashboard/participant/${p.id}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="font-medium text-blue-600 hover:underline"
-                  >
-                    {p.first_name} {p.last_name}
-                  </a>
-                  <div className="text-xs text-slate-500 mt-1">
-                    Age {p.age} &bull; {p.city} &bull; {p.political_affiliation ?? "N/A"}
-                  </div>
+            {participants?.map((p) => {
+              const pId = p.user_id || p.id;
+              return (
+                <div
+                  key={pId}
+                  className="flex items-center justify-between p-3 hover:bg-slate-50"
+                >
+                  <div className="flex-1 min-w-0">
+                    <a
+                      href={`/dashboard/participant/${p.id}${isOldData ? "?test_table=oldData" : ""}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-medium text-blue-600 hover:underline"
+                    >
+                      {p.first_name} {p.last_name}
+                    </a>
+                    <div className="text-xs text-slate-500 mt-1">
+                      Age {p.age} &bull; {p.city} &bull; {p.political_affiliation ?? "N/A"}
+                    </div>
 
-                  {/* ====== MATCH BADGE (clickable to expand) ====== */}
-                  <div className="mt-1">
-                    {p.matchLevel === 0 && (
-                      <details className="inline-block">
-                        <summary className="bg-green-100 text-green-800 px-1.5 py-0.5 rounded border border-green-200 text-[10px] font-semibold cursor-pointer select-none list-none">
-                          Exact Match
-                        </summary>
-                        <div className="mt-1 p-2 bg-green-50 border border-green-200 rounded text-[10px] space-y-0.5">
-                          {(p.filterChecks as any[]).map((fc: any) => (
-                            <div key={fc.key} className={`flex flex-col gap-0.5 ${fc.passes ? "" : "text-red-500"}`}>
-                              {fc.subTypes ? (
-                                <details className="group/sub w-full">
-                                  <summary className="flex gap-1 items-center cursor-pointer list-none">
-                                    <span>{fc.passes ? "\u2713" : "\u2717"}</span>
-                                    <span className="font-semibold underline decoration-dotted underline-offset-2">{fc.label}</span>
-                                    <span className="text-[9px] opacity-70 ml-1">(Click)</span>
-                                  </summary>
-                                  <div className="ml-4 mt-1 space-y-1">
-                                    {fc.subTypes.map((st: any, si: number) => (
-                                      <details key={si} className="w-full">
-                                        <summary className={`flex gap-1 items-center cursor-pointer list-none text-[9px] ${st.passes ? "text-green-700" : "text-red-500"}`}>
-                                          <span>{st.passes ? "\u2713" : "\u2717"}</span>
-                                          <span className="font-medium underline decoration-dotted">{st.label}</span>
-                                          <span className="opacity-60 ml-1">(Click)</span>
-                                        </summary>
-                                        <ul className="ml-4 mt-0.5 space-y-0.5 text-[9px] bg-white/50 p-1 rounded border border-black/5 text-slate-700">
-                                          {st.subRows.map((row: string, ri: number) => (
-                                            <li key={ri}>{row}</li>
-                                          ))}
-                                        </ul>
-                                      </details>
-                                    ))}
-                                  </div>
-                                </details>
-                              ) : fc.subRows ? (
-                                <details className="group/sub w-full">
-                                  <summary className="flex gap-1 items-center cursor-pointer list-none">
-                                    <span>{fc.passes ? "\u2713" : "\u2717"}</span>
-                                    <span className="font-semibold underline decoration-dotted underline-offset-2">{fc.label}</span>
-                                    <span className="text-[9px] opacity-70 ml-1">(Click)</span>
-                                  </summary>
-                                  <ul className="ml-4 mt-1 space-y-0.5 text-[9px] bg-white/50 p-1.5 rounded border border-black/5 text-slate-700">
-                                    {fc.subRows.map((row: string, i: number) => (
-                                      <li key={i}>{row}</li>
-                                    ))}
-                                  </ul>
-                                </details>
-                              ) : (
-                                <div className="flex gap-1">
-                                  <span>{fc.passes ? "\u2713" : "\u2717"}</span>
-                                  <span className="font-semibold">{fc.label}:</span>
-                                  <span>{fc.detail}</span>
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      </details>
-                    )}
-
-                    {/* Partial / Mismatch Details requested to be visible but red */}
-                    {p.matchLevel > 0 && (
-                      <details className="inline-block">
-                        <summary className="bg-red-50 text-red-700 px-1.5 py-0.5 rounded border border-red-200 text-[10px] font-semibold cursor-pointer select-none list-none hover:bg-red-100 transition-colors">
-                          Mismatch Details
-                        </summary>
-                        <div className="mt-1 p-2 bg-red-50/50 border border-red-100 rounded text-[10px] space-y-0.5">
-                          {(p.filterChecks as any[]).map((fc: any) => (
-                            <div key={fc.key} className={`flex flex-col gap-0.5 ${fc.passes ? "text-green-700" : "text-red-500"}`}>
-
-                              {fc.subTypes ? (
-                                <details className="group/sub w-full">
+                    {/* ====== MATCH BADGE (clickable to expand) ====== */}
+                    <div className="mt-1">
+                      {p.matchLevel === 0 && (
+                        <details className="inline-block">
+                          <summary className="bg-green-100 text-green-800 px-1.5 py-0.5 rounded border border-green-200 text-[10px] font-semibold cursor-pointer select-none list-none">
+                            Exact Match
+                          </summary>
+                          <div className="mt-1 p-2 bg-green-50 border border-green-200 rounded text-[10px] space-y-0.5">
+                            {(p.filterChecks as any[]).map((fc: any) => (
+                              <div key={fc.key} className={`flex flex-col gap-0.5 ${fc.passes ? "" : "text-red-500"}`}>
+                                {fc.subTypes ? (
+                                  <details className="group/sub w-full">
                                     <summary className="flex gap-1 items-center cursor-pointer list-none">
-                                        <span>{fc.passes ? "\u2713" : "\u2717"}</span>
-                                        <span className="font-semibold underline decoration-dotted underline-offset-2">{fc.label}</span>
-                                        <span className="text-[9px] opacity-70 ml-1">(Click)</span>
+                                      <span>{fc.passes ? "\u2713" : "\u2717"}</span>
+                                      <span className="font-semibold underline decoration-dotted underline-offset-2">{fc.label}</span>
+                                      <span className="text-[9px] opacity-70 ml-1">(Click)</span>
                                     </summary>
                                     <div className="ml-4 mt-1 space-y-1">
                                       {fc.subTypes.map((st: any, si: number) => (
@@ -761,46 +714,120 @@ export default async function NewSessionPage({
                                         </details>
                                       ))}
                                     </div>
-                                </details>
-                              ) : fc.subRows ? (
-                                <details className="group/sub w-full">
+                                  </details>
+                                ) : fc.subRows ? (
+                                  <details className="group/sub w-full">
                                     <summary className="flex gap-1 items-center cursor-pointer list-none">
-                                        <span>{fc.passes ? "\u2713" : "\u2717"}</span>
-                                        <span className="font-semibold underline decoration-dotted underline-offset-2">{fc.label}</span>
-                                        <span className="text-[9px] opacity-70 ml-1">(Click)</span>
+                                      <span>{fc.passes ? "\u2713" : "\u2717"}</span>
+                                      <span className="font-semibold underline decoration-dotted underline-offset-2">{fc.label}</span>
+                                      <span className="text-[9px] opacity-70 ml-1">(Click)</span>
                                     </summary>
                                     <ul className="ml-4 mt-1 space-y-0.5 text-[9px] bg-white/50 p-1.5 rounded border border-black/5 text-slate-700">
-                                        {fc.subRows.map((row: string, i: number) => (
-                                            <li key={i}>{row}</li>
-                                        ))}
+                                      {fc.subRows.map((row: string, i: number) => (
+                                        <li key={i}>{row}</li>
+                                      ))}
                                     </ul>
-                                </details>
-                              ) : (
-                                <div className="flex gap-1 items-center">
+                                  </details>
+                                ) : (
+                                  <div className="flex gap-1">
                                     <span>{fc.passes ? "\u2713" : "\u2717"}</span>
                                     <span className="font-semibold">{fc.label}:</span>
                                     <span>{fc.detail}</span>
-                                </div>
-                              )}
-                            
-                            </div>
-                          ))}
-                        </div>
-                      </details>
-                    )}
-                  </div>
-                </div>
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </details>
+                      )}
 
-                <label className="cursor-pointer p-1">
-                  <input
-                    type="checkbox"
-                    name="participants"
-                    value={p.user_id}
-                    className="h-4 w-4 ml-2 flex-shrink-0"
-                  />
-                </label>
-              </div>
-            ))}
+                      {/* Partial / Mismatch Details requested to be visible but red */}
+                      {p.matchLevel > 0 && (
+                        <details className="inline-block">
+                          <summary className="bg-red-50 text-red-700 px-1.5 py-0.5 rounded border border-red-200 text-[10px] font-semibold cursor-pointer select-none list-none hover:bg-red-100 transition-colors">
+                            Mismatch Details
+                          </summary>
+                          <div className="mt-1 p-2 bg-red-50/50 border border-red-100 rounded text-[10px] space-y-0.5">
+                            {(p.filterChecks as any[]).map((fc: any) => (
+                              <div key={fc.key} className={`flex flex-col gap-0.5 ${fc.passes ? "text-green-700" : "text-red-500"}`}>
+
+                                {fc.subTypes ? (
+                                  <details className="group/sub w-full">
+                                    <summary className="flex gap-1 items-center cursor-pointer list-none">
+                                      <span>{fc.passes ? "\u2713" : "\u2717"}</span>
+                                      <span className="font-semibold underline decoration-dotted underline-offset-2">{fc.label}</span>
+                                      <span className="text-[9px] opacity-70 ml-1">(Click)</span>
+                                    </summary>
+                                    <div className="ml-4 mt-1 space-y-1">
+                                      {fc.subTypes.map((st: any, si: number) => (
+                                        <details key={si} className="w-full">
+                                          <summary className={`flex gap-1 items-center cursor-pointer list-none text-[9px] ${st.passes ? "text-green-700" : "text-red-500"}`}>
+                                            <span>{st.passes ? "\u2713" : "\u2717"}</span>
+                                            <span className="font-medium underline decoration-dotted">{st.label}</span>
+                                            <span className="opacity-60 ml-1">(Click)</span>
+                                          </summary>
+                                          <ul className="ml-4 mt-0.5 space-y-0.5 text-[9px] bg-white/50 p-1 rounded border border-black/5 text-slate-700">
+                                            {st.subRows.map((row: string, ri: number) => (
+                                              <li key={ri}>{row}</li>
+                                            ))}
+                                          </ul>
+                                        </details>
+                                      ))}
+                                    </div>
+                                  </details>
+                                ) : fc.subRows ? (
+                                  <details className="group/sub w-full">
+                                    <summary className="flex gap-1 items-center cursor-pointer list-none">
+                                      <span>{fc.passes ? "\u2713" : "\u2717"}</span>
+                                      <span className="font-semibold underline decoration-dotted underline-offset-2">{fc.label}</span>
+                                      <span className="text-[9px] opacity-70 ml-1">(Click)</span>
+                                    </summary>
+                                    <ul className="ml-4 mt-1 space-y-0.5 text-[9px] bg-white/50 p-1.5 rounded border border-black/5 text-slate-700">
+                                      {fc.subRows.map((row: string, i: number) => (
+                                        <li key={i}>{row}</li>
+                                      ))}
+                                    </ul>
+                                  </details>
+                                ) : (
+                                  <div className="flex gap-1 items-center">
+                                    <span>{fc.passes ? "\u2713" : "\u2717"}</span>
+                                    <span className="font-semibold">{fc.label}:</span>
+                                    <span>{fc.detail}</span>
+                                  </div>
+                                )}
+
+                              </div>
+                            ))}
+                          </div>
+                        </details>
+                      )}
+                    </div>
+                  </div>
+
+                  <label className="cursor-pointer p-1">
+                    <input
+                      type="checkbox"
+                      name="participants"
+                      value={pId}
+                      className="h-4 w-4 ml-2 flex-shrink-0"
+                    />
+                  </label>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* ====== SHOW MORE BUTTON ====== */}
+          <div className="mt-2">
+            <Link
+              href={{
+                query: { ...params, limit: minRequired + 50 },
+              }}
+              scroll={false}
+              className="block w-full text-center py-2 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded border border-blue-200 transition-colors"
+            >
+              Show More Participants... (currently {participants.length})
+            </Link>
           </div>
         </div>
       </div>
