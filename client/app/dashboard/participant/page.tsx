@@ -176,13 +176,21 @@ export default async function ParticipantDashboard({
         </section>
       )}
 
-      {/* VIEW PROFILE */}
-      <Link
-        href={`/dashboard/participant/${participant.id}`}
-        className="inline-block bg-blue-600 text-white px-4 py-2 rounded-lg"
-      >
-        View Full Profile
-      </Link>
+      {/* VIEW / EDIT PROFILE */}
+      <div className="flex gap-3">
+        <Link
+          href={`/dashboard/participant/${participant.id}`}
+          className="inline-block bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+        >
+          View Full Profile
+        </Link>
+        <Link
+          href="/dashboard/participant/edit"
+          className="inline-block bg-white border border-blue-600 text-blue-600 px-4 py-2 rounded-lg hover:bg-blue-50 transition-colors"
+        >
+          Edit Profile
+        </Link>
+      </div>
     </div>
   );
 }
