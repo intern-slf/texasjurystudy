@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { Upload, X, CreditCard } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -55,6 +56,38 @@ export default function ParticipantForm({ userId }: Props) {
   const [servedArmedForces, setServedArmedForces] = useState("");
   const [internetAccess, setInternetAccess] = useState("");
 
+  // Driver's license / ID fields
+  const [idFile, setIdFile] = useState<File | null>(null);
+  const [idPreview, setIdPreview] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  function handleIdFileChange(file: File | null) {
+    if (!file) {
+      setIdFile(null);
+      setIdPreview(null);
+      return;
+    }
+    // Validate: only images, max 10MB
+    if (!file.type.startsWith("image/")) {
+      setError("Please upload an image file (JPG, PNG, etc.).");
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setError("Image must be under 10 MB.");
+      return;
+    }
+    setIdFile(file);
+    setIdPreview(URL.createObjectURL(file));
+    setError(null);
+  }
+
+  function removeIdFile() {
+    setIdFile(null);
+    setIdPreview(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
   const yesNoFields = [
     { label: "Served on a jury?", value: servedOnJury, setter: setServedOnJury },
     { label: "Convicted felon?", value: convictedFelon, setter: setConvictedFelon },
@@ -82,6 +115,30 @@ export default function ParticipantForm({ userId }: Props) {
 
     const form = new FormData(e.currentTarget);
     const isEmployed = currentlyEmployed === "Yes" || currentlyEmployed === "Self-employed";
+
+    // Upload ID image to Supabase Storage if provided
+    let idImagePath: string | null = null;
+    if (idFile) {
+      setUploadProgress(true);
+      const fileExt = idFile.name.split(".").pop() || "jpg";
+      const filePath = `${userId}/${Date.now()}-id.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("id-documents")
+        .upload(filePath, idFile, { upsert: true });
+
+      if (uploadError) {
+        setError(`Failed to upload ID image: ${uploadError.message}`);
+        setLoading(false);
+        setUploadProgress(false);
+        return;
+      }
+
+      idImagePath = filePath;
+      setUploadProgress(false);
+    }
+
+    const driverLicenseNumber = (form.get("driver_license_number") as string) || null;
 
     const payload = {
       user_id: userId,
@@ -115,6 +172,8 @@ export default function ParticipantForm({ userId }: Props) {
       industry: isEmployed ? form.get("industry") : "N/A",
       family_income: familyIncome, 
       heard_about_us: referralSource,
+      driver_license_number: driverLicenseNumber,
+      driver_license_image_url: idImagePath,
       entry_date: new Date().toISOString(),
       date_updated: new Date().toISOString(),
     };
@@ -221,6 +280,86 @@ export default function ParticipantForm({ userId }: Props) {
           <div className="space-y-2">
             <Label>ZIP Code</Label>
             <Input name="zip_code" required />
+          </div>
+        </div>
+      </div>
+
+      {/* IDENTIFICATION */}
+      <div className="space-y-4 border-t pt-4">
+        <div className="flex items-center gap-2">
+          <CreditCard className="h-5 w-5 text-slate-600" />
+          <h3 className="font-semibold text-lg">Identification</h3>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Driver's License / ID Number */}
+          <div className="space-y-2">
+            <Label htmlFor="driver_license_number">Driver&apos;s License / State ID Number</Label>
+            <Input
+              id="driver_license_number"
+              name="driver_license_number"
+              placeholder="e.g. 12345678 (TX format)"
+            />
+            <p className="text-xs text-slate-400">Enter your U.S. state-issued driver&apos;s license or ID card number</p>
+          </div>
+
+          {/* ID Image Upload */}
+          <div className="space-y-2">
+            <Label>Upload Driver&apos;s License / State ID Photo</Label>
+            <div
+              className={`relative border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-all duration-200 ${
+                idPreview
+                  ? "border-blue-300 bg-blue-50/50"
+                  : "border-slate-300 hover:border-blue-400 hover:bg-blue-50/30"
+              }`}
+              onClick={() => fileInputRef.current?.click()}
+              onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+              onDrop={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const file = e.dataTransfer.files?.[0];
+                if (file) handleIdFileChange(file);
+              }}
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => handleIdFileChange(e.target.files?.[0] || null)}
+              />
+
+              {idPreview ? (
+                <div className="space-y-2">
+                  <img
+                    src={idPreview}
+                    alt="ID preview"
+                    className="mx-auto max-h-32 rounded-lg object-contain"
+                  />
+                  <p className="text-xs text-slate-500 truncate">{idFile?.name}</p>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      removeIdFile();
+                    }}
+                    className="inline-flex items-center gap-1 text-xs text-red-500 hover:text-red-700 transition-colors"
+                  >
+                    <X className="h-3 w-3" /> Remove
+                  </button>
+                </div>
+              ) : (
+                <div className="py-4 space-y-2">
+                  <Upload className="h-8 w-8 mx-auto text-slate-400" />
+                  <p className="text-sm text-slate-500">
+                    Click or drag &amp; drop to upload
+                  </p>
+                  <p className="text-xs text-slate-400">
+                    JPG, PNG — Max 10 MB
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -352,8 +491,8 @@ export default function ParticipantForm({ userId }: Props) {
         </div>
       </div>
 
-      <Button type="submit" disabled={loading} className="w-full h-12 text-lg">
-        {loading ? "Submitting..." : "Submit Profile"}
+      <Button type="submit" disabled={loading || uploadProgress} className="w-full h-12 text-lg">
+        {uploadProgress ? "Uploading ID..." : loading ? "Submitting..." : "Submit Profile"}
       </Button>
 
       {error && (
