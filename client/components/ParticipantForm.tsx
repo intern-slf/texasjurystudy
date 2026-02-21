@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { autoBlacklistIfIneligible } from "@/lib/actions/autoBlacklist";
 import { Upload, X, CreditCard } from "lucide-react";
@@ -56,6 +56,38 @@ export default function ParticipantForm({ userId }: Props) {
   const [hasChildren, setHasChildren] = useState("");
   const [servedArmedForces, setServedArmedForces] = useState("");
   const [internetAccess, setInternetAccess] = useState("");
+
+  // Date of birth fetched from agreement & auto-calculated age
+  const [dob, setDob] = useState<string | null>(null);
+  const [dobLoading, setDobLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchDob() {
+      const { data, error } = await supabase
+        .from("confidentiality_agreements")
+        .select("date_of_birth")
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      if (!error && data?.date_of_birth) {
+        setDob(data.date_of_birth);
+      }
+      setDobLoading(false);
+    }
+    fetchDob();
+  }, [userId, supabase]);
+
+  const calculatedAge = useMemo(() => {
+    if (!dob) return null;
+    const birth = new Date(dob + "T00:00:00");
+    const today = new Date();
+    let age = today.getFullYear() - birth.getFullYear();
+    const monthDiff = today.getMonth() - birth.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+      age--;
+    }
+    return age >= 0 ? age : null;
+  }, [dob]);
 
   // Driver's license / ID fields
   const [idFile, setIdFile] = useState<File | null>(null);
@@ -145,7 +177,7 @@ export default function ParticipantForm({ userId }: Props) {
       user_id: userId,
       first_name: form.get("first_name"),
       last_name: form.get("last_name"),
-      age: Number(form.get("age")),
+      age: calculatedAge ?? 0,
       gender,
       race,
       county: form.get("county"),
@@ -210,8 +242,17 @@ export default function ParticipantForm({ userId }: Props) {
           <Input id="last_name" name="last_name" required />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="age">Age</Label>
-          <Input id="age" name="age" type="number" min={18} max={99} required />
+          <Label>Age</Label>
+          {dobLoading ? (
+            <p className="text-sm text-slate-400 py-2">Loading...</p>
+          ) : calculatedAge !== null ? (
+            <div className="flex items-center gap-2 h-10 px-3 rounded-md border bg-slate-50">
+              <span className="text-base font-semibold text-slate-900">{calculatedAge}</span>
+              <span className="text-xs text-slate-500"></span>
+            </div>
+          ) : (
+            <p className="text-sm text-red-500 py-2">DOB not found — please complete the agreement first.</p>
+          )}
         </div>
         <div className="space-y-2">
           <Label>Gender</Label>
