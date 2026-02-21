@@ -68,17 +68,17 @@ export default async function SessionsPage() {
 
             const { data: caseDetails } = caseIds.length
               ? await supabase
-                  .from("cases")
-                  .select("id, title, admin_status")
-                  .in("id", caseIds)
+                .from("cases")
+                .select("id, title, admin_status")
+                .in("id", caseIds)
               : { data: [] };
 
             /* =========================
                FETCH PARTICIPANTS
             ========================= */
             const alreadySubmitted = Boolean(
-                caseDetails?.length &&
-                caseDetails.every((c) => c.admin_status === "submitted")
+              caseDetails?.length &&
+              caseDetails.every((c) => c.admin_status === "submitted")
             );
             const { data: sParticipants } = await supabase
               .from("session_participants")
@@ -88,12 +88,34 @@ export default async function SessionsPage() {
             const participantIds =
               sParticipants?.map((p) => p.participant_id) ?? [];
 
-            const { data: participantDetails } = participantIds.length
-              ? await supabase
-                  .from("jury_participants")
-                  .select("user_id, first_name, last_name")
-                  .in("user_id", participantIds)
-              : { data: [] };
+            let participantDetails: any[] = [];
+            if (participantIds.length) {
+              const { data: jData } = await supabase
+                .from("jury_participants")
+                .select("user_id, first_name, last_name")
+                .in("user_id", participantIds);
+
+              participantDetails = jData ?? [];
+
+              // Fallback to oldData for missing participants
+              const foundIds = new Set(participantDetails.map(p => p.user_id));
+              const missingIds = participantIds.filter(id => !foundIds.has(id));
+
+              if (missingIds.length > 0) {
+                const { data: oData } = await supabase
+                  .from("oldData")
+                  .select("id, first_name, last_name")
+                  .in("id", missingIds);
+
+                if (oData) {
+                  participantDetails.push(...oData.map(od => ({
+                    user_id: od.id,
+                    first_name: od.first_name,
+                    last_name: od.last_name
+                  })));
+                }
+              }
+            }
 
             return (
               <div
@@ -175,18 +197,17 @@ export default async function SessionsPage() {
                   </div>
                 </div>
                 <form action={submitSession} className="flex justify-end">
-                    <input type="hidden" name="sessionId" value={s.id} />
+                  <input type="hidden" name="sessionId" value={s.id} />
 
-                    <button
-                        disabled={alreadySubmitted}
-                        className={`px-4 py-2 rounded text-sm text-white ${
-                        alreadySubmitted
-                            ? "bg-gray-400 cursor-not-allowed"
-                            : "bg-green-600 hover:bg-green-700"
-                        }`}
-                    >
-                        {alreadySubmitted ? "Already Submitted" : "Submit Session"}
-                    </button>
+                  <button
+                    disabled={alreadySubmitted}
+                    className={`px-4 py-2 rounded text-sm text-white ${alreadySubmitted
+                      ? "bg-gray-400 cursor-not-allowed"
+                      : "bg-green-600 hover:bg-green-700"
+                      }`}
+                  >
+                    {alreadySubmitted ? "Already Submitted" : "Submit Session"}
+                  </button>
                 </form>
 
               </div>

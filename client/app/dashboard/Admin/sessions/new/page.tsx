@@ -14,6 +14,7 @@ import {
   attachMultiCaseScores,
   sortParticipantsByMultiCaseMatch
 } from "@/lib/filter-utils";
+import { getAncestorCaseIds, getLineageParticipantIds } from "@/lib/case-lineage";
 import Link from "next/link";
 
 /* =========================
@@ -363,11 +364,23 @@ export default async function NewSessionPage({
   const supabase = await createClient();
 
   /* =========================
-     READ PARAMS
+     READ PARAMS & TABLE SELECTION
   ========================= */
   const params = await searchParams;
-  const isOldData = params?.test_table === "oldData";
-  const testTable = isOldData ? "oldData" : "jury_participants";
+  let preferredTable = params?.test_table;
+
+  // AUTO-DETECTION: If no table specified, check if the modern table has any data
+  if (!preferredTable) {
+    const { count } = await supabase
+      .from("jury_participants")
+      .select("*", { count: "exact", head: true });
+
+    // If modern table is empty, default to oldData
+    preferredTable = (count === 0 || count === null) ? "oldData" : "jury_participants";
+  }
+
+  const isOldData = preferredTable === "oldData";
+  const testTable = preferredTable;
   const minRequired = params?.limit ? parseInt(params.limit) : 50;
 
   const selectedIds = params?.selectedCases
@@ -442,6 +455,18 @@ export default async function NewSessionPage({
     .eq("role", "blacklisted");
   const blacklistedIds = (blacklistedRoles ?? []).map((r: any) => r.user_id as string);
 
+  // --- NEW: Lineage Exclusion Logic ---
+  const allLineageParticipantIds: string[] = [];
+  if (selectedIds.length > 0) {
+    const ancestorIdsBatch = await Promise.all(
+      selectedIds.map(id => getAncestorCaseIds(id))
+    );
+    const uniqueAncestorIds = Array.from(new Set(ancestorIdsBatch.flat()));
+    const lineageParticipantIds = await getLineageParticipantIds(uniqueAncestorIds);
+    allLineageParticipantIds.push(...lineageParticipantIds);
+  }
+  // ------------------------------------
+
   for (let level = 0; level <= FILTER_PRIORITY.length; level++) {
     if (participants.length >= minRequired) break;
 
@@ -456,10 +481,11 @@ export default async function NewSessionPage({
     // ── Hard exclusions (never relaxed) ──────────────────────────────
     // Skip modern exclusions for legacy tables (e.g. oldData)
     if (!isOldData) {
-      // 1. Skip participants whose role = 'blacklisted' in the roles table
-      if (blacklistedIds.length > 0) {
+      // 1. Skip participants whose role = 'blacklisted' OR in lineage
+      const combinedExclusions = Array.from(new Set([...blacklistedIds, ...allLineageParticipantIds]));
+      if (combinedExclusions.length > 0) {
         // @ts-ignore
-        query = query.not("user_id", "in", `(${blacklistedIds.map(id => `"${id}"`).join(",")})`);
+        query = query.not("user_id", "in", `(${combinedExclusions.map(id => `"${id}"`).join(",")})`);
       }
       // 2. Skip participants still in cooldown (eligible_after_at in the future)
       query = query.or(`eligible_after_at.is.null,eligible_after_at.lte.${nowIso}`);

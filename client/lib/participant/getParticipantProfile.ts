@@ -25,9 +25,7 @@ export async function getParticipantProfile(
     .eq("user_id", user.id)
     .single();
 
-  if (!roleRow) throw new Error("Role not found");
-
-  const role = roleRow.role;
+  const role = roleRow?.role || user.user_metadata?.role || "participant";
 
   /* =========================
      PARTICIPANT SELF VIEW
@@ -79,13 +77,48 @@ export async function getParticipantProfile(
   /* =========================
      FETCH PARTICIPANT
      ========================= */
-  const { data: participant } = await supabase
-    .from(testTable)
+  // Default to jury_participants unless specifically testing oldData
+  let targetTable = context?.testTable === "oldData" ? "oldData" : "jury_participants";
+
+  let { data: participant } = await supabase
+    .from(targetTable)
     .select("*")
     .eq("id", finalParticipantId)
     .single();
 
-  
+  // FALLBACK 1: If not found by UUID pk, try looking up by user_id field
+  if (!participant) {
+    const { data: fallbackParticipant } = await supabase
+      .from(targetTable)
+      .select("*")
+      .eq("user_id", finalParticipantId)
+      .single();
+    
+    if (fallbackParticipant) {
+      participant = fallbackParticipant;
+    }
+  }
+
+  // FALLBACK 2: If still not found and no specific table was requested, try the OTHER table
+  if (!participant && !context?.testTable) {
+    const altTable = targetTable === "jury_participants" ? "oldData" : "jury_participants";
+    const { data: altPart } = await supabase
+      .from(altTable)
+      .select("*")
+      .eq("id", finalParticipantId)
+      .single();
+    
+    if (altPart) {
+      participant = altPart;
+    } else {
+      const { data: altFallback } = await supabase
+        .from(altTable)
+        .select("*")
+        .eq("user_id", finalParticipantId)
+        .single();
+      if (altFallback) participant = altFallback;
+    }
+  }
 
   if (!participant) {
     return {

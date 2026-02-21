@@ -26,51 +26,54 @@ export async function updateInviteStatus(
   console.log(`[updateInviteStatus] Success:`, updatedRows);
 
   // 2. Only set cooldown when participant ACCEPTS
-  if (status === "accepted" && updatedRows && updatedRows.length > 0) {
+  if (status === "accepted" && updatedRows?.length) {
     const { session_id, participant_id } = updatedRows[0];
 
     try {
-      // Fetch session date
       const { data: session } = await supabaseAdmin
         .from("sessions")
         .select("session_date")
         .eq("id", session_id)
         .single();
 
-      // Fetch all case end times for this session
       const { data: sessionCases } = await supabaseAdmin
         .from("session_cases")
         .select("end_time")
         .eq("session_id", session_id);
 
-      if (session && sessionCases && sessionCases.length > 0) {
-        // Find the latest end_time (stored as HH:MM or HH:MM:SS)
-        const latestEndTime = sessionCases
-          .map((sc) => sc.end_time as string)
-          .sort()
-          .at(-1)!;
+      if (!session || !sessionCases?.length) return;
 
-        // Build full datetime: session_date + latestEndTime + 24h
-        const sessionDateStr = (session.session_date as string).split("T")[0];
-        const combinedDatetime = new Date(`${sessionDateStr}T${latestEndTime}`);
-        combinedDatetime.setHours(combinedDatetime.getHours() + 24);
-        const eligibleAfterAt = combinedDatetime.toISOString();
+      const latestEndTime = sessionCases
+      .map((sc) => sc.end_time as string)
+      .sort((a, b) => a.localeCompare(b))
+      .at(-1)!;
 
-        // Update eligible_after_at on the participant
-        const { error: updateErr } = await supabaseAdmin
-          .from("jury_participants")
-          .update({ eligible_after_at: eligibleAfterAt })
-          .eq("user_id", participant_id);
+      const sessionDateStr = (session.session_date as string).split("T")[0];
 
-        if (updateErr) {
-          console.error(`[updateInviteStatus] Failed to set eligible_after_at:`, updateErr.message);
-        } else {
-          console.log(`[updateInviteStatus] Set eligible_after_at to ${eligibleAfterAt} for participant ${participant_id}`);
-        }
+      // ✅ Build UTC safely (ONLY version that exists now)
+      const [year, month, day] = sessionDateStr.split("-").map(Number);
+      const [hours, minutes, seconds] = latestEndTime.split(":").map(Number);
+
+      const utcDate = new Date(
+        Date.UTC(year, month - 1, day, hours, minutes, seconds || 0)
+      );
+
+      utcDate.setUTCDate(utcDate.getUTCDate() + 1);
+
+      const eligibleAfterAt = utcDate.toISOString();
+
+      console.log("Cooldown set to:", eligibleAfterAt);
+
+      const { error: cooldownErr } = await supabaseAdmin
+        .from("jury_participants")
+        .update({ eligible_after_at: eligibleAfterAt })
+        .eq("user_id", participant_id);
+
+      if (cooldownErr) {
+        console.error("Cooldown update failed:", cooldownErr.message);
       }
     } catch (err) {
-      console.error(`[updateInviteStatus] Error computing cooldown:`, err);
-      // Don't throw — invite status already updated
+      console.error("Cooldown computation error:", err);
     }
   }
 }

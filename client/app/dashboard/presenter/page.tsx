@@ -1,6 +1,7 @@
 import CaseDocumentUploader from "@/components/CaseDocumentUploader";
 import { revalidatePath } from "next/cache";
 import CaseActions from "@/components/CaseActions";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import PresenterSidebar from "@/components/PresenterSidebar";
@@ -15,7 +16,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Calendar, Clock, AlertCircle, FileText, Upload } from "lucide-react";
+import { Calendar, Clock, AlertCircle, FileText, Upload, ArrowRight } from "lucide-react";
+import { getAncestorCaseIds } from "@/lib/case-lineage";
+import PreviousParticipantsModal from "@/components/PreviousParticipantsModal";
 
 // Define a proper interface for your case object to replace 'any'
 interface Case {
@@ -24,6 +27,7 @@ interface Case {
   description: string;
   scheduled_at: string | null;
   schedule_status: string | null;
+  parent_case_id: string | null;
   [key: string]: unknown; // Allow for dynamic fields from Supabase
 }
 
@@ -46,19 +50,34 @@ export default async function PresenterDashboard({
   if (user.user_metadata?.role !== "presenter") redirect("/dashboard");
 
   /* ===========================
-      AUTO-MOVE EXPIRED CASES
-      =========================== */
-  const sixtyMinutesAgo = new Date(
-    Date.now() - 60 * 60 * 1000
-  ).toISOString();
+    AUTO-MOVE EXPIRED APPROVED CASES
+  =========================== */
 
-  await supabase
+  const nowIso = new Date().toISOString();
+
+  console.log("Checking for expired approved cases at:", nowIso);
+
+  // Move expired approved cases to previous
+  const { data: expiredApproved, error: expiredError } = await supabase
     .from("cases")
-    .update({ status: "previous" })
+    .update({
+      status: "previous",
+      admin_status: null, // remove approval state
+    })
     .eq("user_id", user.id)
-    .eq("status", "current")
-    .lte("scheduled_at", sixtyMinutesAgo);
+    .eq("admin_status", "approved")
+    .not("scheduled_at", "is", null)
+    .lte("scheduled_at", nowIso)
+    .select("id");
 
+  if (expiredError) {
+    console.error("Error moving expired approved cases:", expiredError.message);
+  }
+
+  if (expiredApproved?.length) {
+    console.log("Moved expired approved cases:", expiredApproved);
+  }
+  
   /* ===========================
       TAB HANDLING
       =========================== */
@@ -87,7 +106,9 @@ export default async function PresenterDashboard({
   }
 
   if (tab === "approved") {
-    caseQuery = caseQuery.eq("admin_status", "approved");
+    caseQuery = caseQuery
+      .eq("admin_status", "approved")
+      .eq("status", "current");
   }
 
   if (tab === "previous") {
@@ -95,6 +116,14 @@ export default async function PresenterDashboard({
   }
 
   const { data: cases } = await caseQuery;
+
+  // Pre-fetch ancestor IDs for previous cases to avoid await in map
+  const ancestorMap: Record<string, string[]> = {};
+  if (tab === "previous" && cases) {
+    for (const c of cases) {
+      ancestorMap[c.id] = await getAncestorCaseIds(c.id);
+    }
+  }
 
   /* ===========================
       SERVER ACTIONS
@@ -406,7 +435,8 @@ export default async function PresenterDashboard({
 
                   {/* PREVIOUS */}
                   {tab === "previous" && (
-                     <div className="flex items-center gap-3 pt-2">
+                    <div className="flex flex-col gap-4 pt-2">
+                      <div className="flex items-center gap-3">
                       {/* Restore only if not expired */}
                       {(!c.scheduled_at ||
                         new Date(c.scheduled_at).getTime() > Date.now()) && (
@@ -424,6 +454,26 @@ export default async function PresenterDashboard({
                             Permanently Delete
                         </Button>
                       </form>
+                      </div>
+
+                      <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg border">
+                        <PreviousParticipantsModal
+                          caseId={c.id}
+                          ancestorIds={ancestorMap[c.id] || []}
+                        />
+
+                        <Button
+                          asChild
+                          size="sm"
+                          variant="default"
+                          className="bg-primary hover:bg-primary/90 flex items-center gap-2"
+                        >
+                          <Link href={`/dashboard/presenter/new?parent_id=${c.id}`}>
+                            Request Follow-up
+                            <ArrowRight className="h-4 w-4" />
+                          </Link>
+                        </Button>
+                      </div>
                     </div>
                   )}
                   

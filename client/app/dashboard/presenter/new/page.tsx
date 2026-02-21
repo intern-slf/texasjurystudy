@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import PresenterSidebar from "@/components/PresenterSidebar";
 import CaseDocumentUploader from "@/components/CaseDocumentUploader";
@@ -54,6 +55,36 @@ export default function NewCasePage() {
 
   const [caseId, setCaseId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const searchParams = useSearchParams();
+  const parentId = searchParams.get("parent_id");
+
+  useEffect(() => {
+    if (parentId) {
+      const fetchParent = async () => {
+        setLoading(true);
+        const { data, error } = await supabase
+          .from("cases")
+          .select("*")
+          .eq("id", parentId)
+          .single();
+
+        if (data && !error) {
+          setForm({
+            title: `Follow-up: ${data.title}`,
+            description: data.description,
+            number_of_attendees: data.number_of_attendees || 10,
+            documentation_type: data.documentation_type || "Legal Brief",
+            scheduled_at: "", // Don't pre-fill date
+          });
+          if (data.filters) {
+            setFilters(data.filters);
+          }
+        }
+        setLoading(false);
+      };
+      fetchParent();
+    }
+  }, [parentId]);
 
   async function createCaseAndUpload() {
     if (!form.title.trim()) {
@@ -107,6 +138,7 @@ export default function NewCasePage() {
         status: "current",
         scheduled_at: form.scheduled_at ? new Date(form.scheduled_at).toISOString() : null,
         filters: softFilterPayload,
+        parent_case_id: parentId || null,
       })
       .select()
       .single();
