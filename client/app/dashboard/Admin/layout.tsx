@@ -46,6 +46,26 @@ export default async function AdminLayout({
     .from("sessions")
     .select("*", { count: "exact", head: true });
 
+  // Count approved participants (not blacklisted)
+  const { count: approvedParticipantsCount } = await supabase
+    .from("jury_participants")
+    .select("*", { count: "exact", head: true })
+    .eq("approved_by_admin", true)
+    .is("blacklisted_at", null);
+
+  // Count new participants (not approved and not blacklisted)
+  const { count: newParticipantsCount } = await supabase
+    .from("jury_participants")
+    .select("*", { count: "exact", head: true })
+    .eq("approved_by_admin", false)
+    .is("blacklisted_at", null);
+
+  // Count blacklisted participants
+  const { count: blacklistedParticipantsCount } = await supabase
+    .from("jury_participants")
+    .select("*", { count: "exact", head: true })
+    .not("blacklisted_at", "is", null);
+
   // Sidebar badge counts
   const counts = {
     all: allCases?.length || 0,
@@ -54,6 +74,9 @@ export default async function AdminLayout({
     submitted:
       allCases?.filter((c) => c.admin_status === "submitted").length || 0,
     sessions: sessionsCount || 0,
+    approvedParticipants: approvedParticipantsCount || 0,
+    newParticipants: newParticipantsCount || 0,
+    blacklistedParticipants: blacklistedParticipantsCount || 0,
   };
 
   return (
