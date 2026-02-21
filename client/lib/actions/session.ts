@@ -39,7 +39,8 @@ export async function createSession(sessionDate: string) {
 ========================= */
 export async function addCasesToSession(
   sessionId: string,
-  cases: { caseId: string; start: string; end: string }[]
+  cases: { caseId: string; start: string; end: string }[],
+  sessionDate?: string
 ) {
   const supabase = await createClient();
 
@@ -52,6 +53,20 @@ export async function addCasesToSession(
 
   const { error } = await supabase.from("session_cases").insert(rows);
   if (error) throw error;
+
+  // Compute and store admin_scheduled_at on each case
+  // by combining session_date + case end_time
+  if (sessionDate) {
+    for (const c of cases) {
+      // sessionDate is "YYYY-MM-DD", c.end is "HH:MM"
+      const adminScheduledAt = new Date(`${sessionDate}T${c.end}:00`).toISOString();
+
+      await supabase
+        .from("cases")
+        .update({ admin_scheduled_at: adminScheduledAt })
+        .eq("id", c.caseId);
+    }
+  }
 }
 
 /* =========================
@@ -98,11 +113,11 @@ export async function inviteParticipants(
       const participantEmail = userData.user.email;
       const dateStr = sessionDate
         ? new Date(sessionDate).toLocaleDateString("en-US", {
-            weekday: "long",
-            year: "numeric",
-            month: "long",
-            day: "numeric",
-          })
+          weekday: "long",
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+        })
         : "TBD";
 
       const acceptLink = `${appUrl}/dashboard/participant?inviteId=${inviteRecordId}&status=accepted`;

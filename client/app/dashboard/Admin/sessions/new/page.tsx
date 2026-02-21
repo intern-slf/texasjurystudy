@@ -562,7 +562,7 @@ export default async function NewSessionPage({
       .filter(Boolean) as { caseId: string; start: string; end: string }[];
 
     if (selectedCases.length) {
-      await addCasesToSession(sessionId, selectedCases);
+      await addCasesToSession(sessionId, selectedCases, date);
     }
 
     const selectedParticipants = formData.getAll("participants") as string[];

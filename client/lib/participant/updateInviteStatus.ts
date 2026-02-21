@@ -44,23 +44,18 @@ export async function updateInviteStatus(
       if (!session || !sessionCases?.length) return;
 
       const latestEndTime = sessionCases
-      .map((sc) => sc.end_time as string)
-      .sort((a, b) => a.localeCompare(b))
-      .at(-1)!;
+        .map((sc) => sc.end_time as string)
+        .sort((a, b) => a.localeCompare(b))
+        .at(-1)!;
 
       const sessionDateStr = (session.session_date as string).split("T")[0];
 
-      // ✅ Build UTC safely (ONLY version that exists now)
-      const [year, month, day] = sessionDateStr.split("-").map(Number);
-      const [hours, minutes, seconds] = latestEndTime.split(":").map(Number);
+      // Treat session date + end time as local time (admin enters local time)
+      const eligibleDate = new Date(`${sessionDateStr}T${latestEndTime}`);
 
-      const utcDate = new Date(
-        Date.UTC(year, month - 1, day, hours, minutes, seconds || 0)
-      );
+      eligibleDate.setDate(eligibleDate.getDate() + 1);
 
-      utcDate.setUTCDate(utcDate.getUTCDate() + 1);
-
-      const eligibleAfterAt = utcDate.toISOString();
+      const eligibleAfterAt = eligibleDate.toISOString();
 
       console.log("Cooldown set to:", eligibleAfterAt);
 
