@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useMemo } from "react";
+import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
 import { autoBlacklistIfIneligible } from "@/lib/actions/autoBlacklist";
 import { Upload, X, CreditCard } from "lucide-react";
@@ -376,10 +377,12 @@ export default function ParticipantForm({ userId }: Props) {
 
               {idPreview ? (
                 <div className="space-y-2">
-                  <img
+                  <Image
                     src={idPreview}
                     alt="ID preview"
-                    className="mx-auto max-h-32 rounded-lg object-contain"
+                    width={128}
+                    height={128}
+                    className="mx-auto rounded-lg object-contain"
                   />
                   <p className="text-xs text-slate-500 truncate">{idFile?.name}</p>
                   <button
