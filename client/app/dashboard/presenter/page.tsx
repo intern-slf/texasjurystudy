@@ -50,29 +50,32 @@ export default async function PresenterDashboard({
   if (user.user_metadata?.role !== "presenter") redirect("/dashboard");
 
   /* ===========================
-    AUTO-MOVE EXPIRED SCHEDULED CASES
+    AUTO-MOVE EXPIRED APPROVED CASES
   =========================== */
 
   const nowIso = new Date().toISOString();
 
-  // Move ALL current cases with an expired schedule to "previous"
-  const { data: expiredCases, error: expiredError } = await supabase
+  console.log("Checking for expired approved cases at:", nowIso);
+
+  // Move expired approved cases to previous
+  const { data: expiredApproved, error: expiredError } = await supabase
     .from("cases")
     .update({
       status: "previous",
+      admin_status: null, // remove approval state
     })
     .eq("user_id", user.id)
-    .eq("status", "current")
+    .eq("admin_status", "approved")
     .not("scheduled_at", "is", null)
     .lte("scheduled_at", nowIso)
     .select("id");
 
   if (expiredError) {
-    console.error("Error moving expired cases:", expiredError.message);
+    console.error("Error moving expired approved cases:", expiredError.message);
   }
 
-  if (expiredCases?.length) {
-    console.log("Moved expired cases to previous:", expiredCases);
+  if (expiredApproved?.length) {
+    console.log("Moved expired approved cases:", expiredApproved);
   }
   
   /* ===========================
