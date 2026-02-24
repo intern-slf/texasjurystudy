@@ -261,10 +261,12 @@ export default async function PresenterDashboard({
           <div className="flex items-center justify-between mb-8">
             <div>
               <h1 className="text-3xl font-bold tracking-tight capitalize">
-                {tab} Focus Groups
+                {tab === "current" ? "Request Cases" : tab} Focus Groups
               </h1>
               <p className="text-muted-foreground mt-2">
-                Manage your {tab} cases and sessions.
+                {tab === "current"
+                  ? "Your requested focus group cases pending admin review."
+                  : `Manage your ${tab} cases and sessions.`}
               </p>
             </div>
             

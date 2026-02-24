@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 
 type Props = {
-  activeTab?: "current" | "approved" | "previous" | "new";
+  activeTab?: "current" | "request" | "approved" | "previous" | "new";
 };
 
 export default function PresenterSidebar({ activeTab }: Props) {
@@ -21,7 +21,7 @@ export default function PresenterSidebar({ activeTab }: Props) {
 
   const navItems = [
     {
-      label: "Current Cases",
+      label: "Request Cases",
       href: "/dashboard/presenter?tab=current",
       id: "current",
       icon: PlayCircle,
