@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { autoBlacklistIfIneligible } from "@/lib/actions/autoBlacklist";
 import { Pencil, Upload, X, CreditCard } from "lucide-react";
@@ -39,13 +39,30 @@ export default function EditProfileForm({ participant }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
-  // Basic info
-  const [firstName, setFirstName] = useState(participant.first_name || "");
-  const [lastName, setLastName] = useState(participant.last_name || "");
+  // Names fetched from confidentiality agreement
+  const [firstName, setFirstName] = useState<string | null>(null);
+  const [lastName, setLastName] = useState<string | null>(null);
+  const [namesLoading, setNamesLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchFromAgreement() {
+      const { data, error } = await supabase
+        .from("confidentiality_agreements")
+        .select("first_name, last_name")
+        .eq("user_id", participant.user_id)
+        .maybeSingle();
+
+      if (!error && data) {
+        if (data.first_name) setFirstName(data.first_name);
+        if (data.last_name) setLastName(data.last_name);
+      }
+      setNamesLoading(false);
+    }
+    fetchFromAgreement();
+  }, [participant.user_id, supabase]);
   const [age, setAge] = useState(participant.age?.toString() || "");
   const [gender, setGender] = useState(participant.gender || "");
   const [race, setRace] = useState(participant.race || "");
-  const [email, setEmail] = useState(participant.email || "");
   const [phone, setPhone] = useState(participant.phone || "");
 
   // Address
@@ -166,7 +183,7 @@ export default function EditProfileForm({ participant }: Props) {
       age: Number(age),
       gender,
       race,
-      email,
+      email: participant.email,
       phone,
       street_address: streetAddress,
       address_line_2: addressLine2,
@@ -227,11 +244,27 @@ export default function EditProfileForm({ participant }: Props) {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label>First Name</Label>
-          <Input value={firstName} onChange={(e) => setFirstName(e.target.value)} required />
+          {namesLoading ? (
+            <p className="text-sm text-slate-400 py-2">Loading...</p>
+          ) : firstName ? (
+            <div className="flex h-10 items-center rounded-md border bg-slate-50 px-3 text-sm text-slate-700">
+              {firstName}
+            </div>
+          ) : (
+            <p className="text-sm text-red-500 py-2">Not found — please complete the agreement first.</p>
+          )}
         </div>
         <div className="space-y-2">
           <Label>Last Name</Label>
-          <Input value={lastName} onChange={(e) => setLastName(e.target.value)} required />
+          {namesLoading ? (
+            <p className="text-sm text-slate-400 py-2">Loading...</p>
+          ) : lastName ? (
+            <div className="flex h-10 items-center rounded-md border bg-slate-50 px-3 text-sm text-slate-700">
+              {lastName}
+            </div>
+          ) : (
+            <p className="text-sm text-red-500 py-2">Not found — please complete the agreement first.</p>
+          )}
         </div>
         <div className="space-y-2">
           <Label>Age</Label>
@@ -270,7 +303,9 @@ export default function EditProfileForm({ participant }: Props) {
         </div>
         <div className="space-y-2">
           <Label>Email</Label>
-          <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+          <div className="flex h-10 items-center rounded-md border bg-slate-50 px-3 text-sm text-slate-700">
+            {participant.email}
+          </div>
         </div>
         <div className="space-y-2">
           <Label>Phone Number</Label>

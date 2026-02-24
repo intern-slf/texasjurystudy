@@ -75,7 +75,7 @@ export default async function ParticipantDashboard({
   if (!participant) {
     return (
       <div className="max-w-3xl mx-auto p-8">
-        <ParticipantForm userId={user.id} />
+        <ParticipantForm userId={user.id} email={user.email!} />
       </div>
     );
   }

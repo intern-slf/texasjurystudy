@@ -31,9 +31,10 @@ const US_STATES = [
 
 type Props = {
   userId: string;
+  email: string;
 };
 
-export default function ParticipantForm({ userId }: Props) {
+export default function ParticipantForm({ userId, email }: Props) {
   const supabase = createClient();
 
   const [loading, setLoading] = useState(false);
@@ -58,24 +59,28 @@ export default function ParticipantForm({ userId }: Props) {
   const [servedArmedForces, setServedArmedForces] = useState("");
   const [internetAccess, setInternetAccess] = useState("");
 
-  // Date of birth fetched from agreement & auto-calculated age
+  // Fields fetched from confidentiality agreement
+  const [firstName, setFirstName] = useState<string | null>(null);
+  const [lastName, setLastName] = useState<string | null>(null);
   const [dob, setDob] = useState<string | null>(null);
   const [dobLoading, setDobLoading] = useState(true);
 
   useEffect(() => {
-    async function fetchDob() {
+    async function fetchFromAgreement() {
       const { data, error } = await supabase
         .from("confidentiality_agreements")
-        .select("date_of_birth")
+        .select("first_name, last_name, date_of_birth")
         .eq("user_id", userId)
         .maybeSingle();
 
-      if (!error && data?.date_of_birth) {
-        setDob(data.date_of_birth);
+      if (!error && data) {
+        if (data.first_name) setFirstName(data.first_name);
+        if (data.last_name) setLastName(data.last_name);
+        if (data.date_of_birth) setDob(data.date_of_birth);
       }
       setDobLoading(false);
     }
-    fetchDob();
+    fetchFromAgreement();
   }, [userId, supabase]);
 
   const calculatedAge = useMemo(() => {
@@ -176,15 +181,15 @@ export default function ParticipantForm({ userId }: Props) {
 
     const payload = {
       user_id: userId,
-      first_name: form.get("first_name"),
-      last_name: form.get("last_name"),
+      first_name: firstName,
+      last_name: lastName,
       age: calculatedAge ?? 0,
       gender,
       race,
       county: form.get("county"),
       availability_weekdays: form.get("availability_weekdays") ? "Yes" : "No",
       availability_weekends: form.get("availability_weekends") ? "Yes" : "No",
-      email: form.get("email"),
+      email: email,
       phone: form.get("phone"),
       street_address: form.get("street_address"),
       address_line_2: form.get("address_line_2"),
@@ -235,12 +240,28 @@ export default function ParticipantForm({ userId }: Props) {
       {/* BASIC INFO */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label htmlFor="first_name">First Name</Label>
-          <Input id="first_name" name="first_name" required />
+          <Label>First Name</Label>
+          {dobLoading ? (
+            <p className="text-sm text-slate-400 py-2">Loading...</p>
+          ) : firstName ? (
+            <div className="flex h-10 items-center rounded-md border bg-slate-50 px-3 text-sm text-slate-700">
+              {firstName}
+            </div>
+          ) : (
+            <p className="text-sm text-red-500 py-2">Not found — please complete the agreement first.</p>
+          )}
         </div>
         <div className="space-y-2">
-          <Label htmlFor="last_name">Last Name</Label>
-          <Input id="last_name" name="last_name" required />
+          <Label>Last Name</Label>
+          {dobLoading ? (
+            <p className="text-sm text-slate-400 py-2">Loading...</p>
+          ) : lastName ? (
+            <div className="flex h-10 items-center rounded-md border bg-slate-50 px-3 text-sm text-slate-700">
+              {lastName}
+            </div>
+          ) : (
+            <p className="text-sm text-red-500 py-2">Not found — please complete the agreement first.</p>
+          )}
         </div>
         <div className="space-y-2">
           <Label>Age</Label>
@@ -288,7 +309,9 @@ export default function ParticipantForm({ userId }: Props) {
         </div>
         <div className="space-y-2">
           <Label htmlFor="email">Email</Label>
-          <Input id="email" name="email" type="email" required />
+          <div className="flex h-10 items-center rounded-md border bg-slate-50 px-3 text-sm text-slate-700">
+            {email}
+          </div>
         </div>
         <div className="space-y-2">
           <Label htmlFor="phone">Phone Number</Label>
