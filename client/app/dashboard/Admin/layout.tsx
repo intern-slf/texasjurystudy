@@ -68,7 +68,7 @@ export default async function AdminLayout({
 
   // Sidebar badge counts
   const counts = {
-    all: allCases?.length || 0,
+    requested: allCases?.filter((c) => c.admin_status === "all").length || 0,
     approved:
       allCases?.filter((c) => c.admin_status === "approved").length || 0,
     submitted:
@@ -82,7 +82,7 @@ export default async function AdminLayout({
   return (
     <div className="flex min-h-screen bg-muted/10 font-sans">
       {/* SIDEBAR */}
-      <AdminSidebar active="all" counts={counts} />
+      <AdminSidebar active="requested" counts={counts} />
 
       {/* MAIN AREA */}
       <div className="flex flex-col flex-1 overflow-hidden">

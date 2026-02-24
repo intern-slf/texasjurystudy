@@ -39,9 +39,10 @@ interface JuryCase {
   case_documents: CaseDocument[];
   scheduled_at: string | null;
   schedule_status: string | null;
+  admin_scheduled_at: string | null;
 }
 
-type AdminTab = "all" | "approved" | "submitted";
+type AdminTab = "requested" | "approved" | "submitted";
 
 /* =========================
    SERVER ACTIONS
@@ -120,7 +121,7 @@ export default async function AdminDashboardPage({
   const supabase = await createClient();
 
   const resolvedParams = await searchParams;
-  const tab: AdminTab = resolvedParams?.tab ?? "all";
+  const tab: AdminTab = resolvedParams?.tab ?? "requested";
   const isOldData = resolvedParams?.test_table === "oldData";
   const testTable = isOldData ? "oldData" : "jury_participants";
 
@@ -138,13 +139,14 @@ export default async function AdminDashboardPage({
       number_of_attendees,
       scheduled_at,
       schedule_status,
+      admin_scheduled_at,
       case_documents (
         id,
         original_name,
         storage_path
       )
     `)
-    .eq("admin_status", tab)
+    .eq("admin_status", tab === "requested" ? "all" : tab)
     .order("created_at", { ascending: false });
 
   /* =========================
@@ -173,13 +175,22 @@ export default async function AdminDashboardPage({
     })
   );
 
+  // On the approved tab, show unscheduled cases first
+  if (tab === "approved") {
+    cases.sort((a, b) => {
+      if (!a.admin_scheduled_at && b.admin_scheduled_at) return -1;
+      if (a.admin_scheduled_at && !b.admin_scheduled_at) return 1;
+      return 0;
+    });
+  }
+
   return (
     <div className="space-y-6">
       {/* ================= HEADER ================= */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-3xl font-bold tracking-tight">
-            {tab === "all" && "All Cases"}
+            {tab === "requested" && "Requested Cases"}
             {tab === "approved" && "Approved Cases"}
             {tab === "submitted" && "Submitted Cases"}
           </h2>
@@ -272,7 +283,11 @@ export default async function AdminDashboardPage({
                 return (
                   <TableRow
                     key={c.id}
-                    className="group hover:bg-muted/40 transition-colors"
+                    className={`group transition-colors ${
+                      c.admin_scheduled_at
+                        ? "opacity-50 bg-muted/20 hover:bg-muted/20 cursor-not-allowed"
+                        : "hover:bg-muted/40"
+                    }`}
                   >
                     {/* SELECT */}
                     {tab === "approved" && (
@@ -282,7 +297,8 @@ export default async function AdminDashboardPage({
                           name="selectedCases"
                           value={c.id}
                           form="buildSessionForm"
-                          className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                          disabled={!!c.admin_scheduled_at}
+                          className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
                         />
                       </TableCell>
                     )}
@@ -296,6 +312,11 @@ export default async function AdminDashboardPage({
                        <FileText className="h-4 w-4 text-muted-foreground" />
                         {c.title}
                       </Link>
+                      {c.admin_scheduled_at && (
+                        <span className="ml-2 inline-block text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded px-2 py-0.5">
+                          Scheduled
+                        </span>
+                      )}
                     </TableCell>
 
                     {/* STATUS */}
@@ -370,7 +391,7 @@ export default async function AdminDashboardPage({
                     {/* ACTIONS */}
                     <TableCell className="text-right py-4 pr-6">
                       <div className="flex justify-end flex-wrap gap-2">
-                        {tab === "all" && (
+                        {tab === "requested" && (
                           <form action={approveCase}>
                             <input type="hidden" name="caseId" value={c.id} />
                             <AdminActionButton

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useSearchParams, usePathname } from "next/navigation";
 
 type Counts = {
-  all: number;
+  requested: number;
   approved: number;
   submitted: number;
   sessions: number;
@@ -14,8 +14,8 @@ type Counts = {
 };
 
 const caseItems = [
-  { id: "all", label: "All Cases", countKey: "all" },
-  { id: "approved", label: "Approved", countKey: "approved" },
+  { id: "requested", label: "Requested Cases", countKey: "requested" },
+  { id: "approved", label: "Approved Cases", countKey: "approved" },
   { id: "sessions", label: "Sessions", countKey: "sessions" },
   { id: "submitted", label: "Upcoming Sessions", countKey: "submitted" },
 ] as const;
@@ -60,7 +60,7 @@ export default function AdminSidebar({
   active,
   counts,
 }: {
-  active: "all" | "approved" | "submitted";
+  active: "requested" | "approved" | "submitted";
   counts: Counts;
 }) {
   const searchParams = useSearchParams();
@@ -81,7 +81,7 @@ export default function AdminSidebar({
       {/* ====== MODE TOGGLE ====== */}
       <div className="flex bg-slate-200/70 p-1 rounded-lg mb-6">
         <Link
-          href="/dashboard/Admin?tab=all"
+          href="/dashboard/Admin?tab=requested"
           className={`flex-1 text-center py-1.5 text-xs font-semibold rounded-md transition-all ${
             activeMode === "cases"
               ? "bg-white text-slate-900 shadow-sm"
