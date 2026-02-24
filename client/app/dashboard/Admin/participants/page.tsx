@@ -1,15 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { Card, CardContent } from "@/components/ui/card";
 import Link from "next/link";
 import NewParticipantsList from "@/components/NewParticipantsList";
+import ParticipantsTable from "@/components/ParticipantsTable";
 
 /* =========================
    TYPES
@@ -115,118 +107,10 @@ export default async function ParticipantsPage({
         <NewParticipantsList participants={enrichedParticipants} />
       ) : (
         /* TABLE VIEW for approved or blacklisted participants */
-        <Card className="border-muted/60 shadow-md">
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader className="bg-muted/30">
-                <TableRow className="hover:bg-muted/30">
-                  <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground pl-6">
-                    Name
-                  </TableHead>
-                  <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Email
-                  </TableHead>
-                  <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Age
-                  </TableHead>
-                  <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Gender
-                  </TableHead>
-                  <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Location
-                  </TableHead>
-                  <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Phone
-                  </TableHead>
-                  {tab === "blacklisted" ? (
-                    <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Reason
-                    </TableHead>
-                  ) : (
-                    <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Registered
-                    </TableHead>
-                  )}
-                  <TableHead className="text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground pr-6">
-                    Status
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-
-              <TableBody>
-                {(enrichedParticipants ?? []).map((p) => {
-                  const regDate = p.entry_date
-                    ? new Date(p.entry_date).toLocaleDateString()
-                    : "—";
-
-                  return (
-                    <TableRow
-                      key={p.user_id}
-                      className="group hover:bg-muted/40 transition-colors"
-                    >
-                      <TableCell className="font-medium text-foreground py-4 pl-6">
-                        <Link
-                          href={`/dashboard/participant/${p.user_id}`}
-                          className="text-primary hover:text-primary/80 hover:underline"
-                        >
-                          {p.first_name} {p.last_name}
-                        </Link>
-                      </TableCell>
-                      <TableCell className="py-4 text-sm text-muted-foreground">
-                        {p.email || "—"}
-                      </TableCell>
-                      <TableCell className="py-4 text-sm">
-                        {p.age || "—"}
-                      </TableCell>
-                      <TableCell className="py-4 text-sm capitalize">
-                        {p.gender || "—"}
-                      </TableCell>
-                      <TableCell className="py-4 text-sm text-muted-foreground">
-                        {[p.city, p.state].filter(Boolean).join(", ") || "—"}
-                      </TableCell>
-                      <TableCell className="py-4 text-sm text-muted-foreground">
-                        {p.phone || "—"}
-                      </TableCell>
-                      {tab === "blacklisted" ? (
-                        <TableCell className="py-4 text-sm text-red-600 max-w-[200px] truncate" title={p.blacklist_reason || ""}>
-                          {p.blacklist_reason || "—"}
-                        </TableCell>
-                      ) : (
-                        <TableCell className="py-4 text-sm text-muted-foreground">
-                          {regDate}
-                        </TableCell>
-                      )}
-                      <TableCell className="text-right py-4 pr-6">
-                        {tab === "blacklisted" ? (
-                          <span className="inline-flex items-center rounded-full bg-red-400/10 px-2 py-1 text-xs font-medium text-red-500 ring-1 ring-inset ring-red-400/20">
-                            Blacklisted
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center rounded-full bg-green-400/10 px-2 py-1 text-xs font-medium text-green-500 ring-1 ring-inset ring-green-400/20">
-                            Verified
-                          </span>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-
-                {!enrichedParticipants?.length && (
-                  <TableRow>
-                    <TableCell
-                      colSpan={8}
-                      className="text-center py-16 text-muted-foreground italic"
-                    >
-                      {tab === "blacklisted"
-                        ? "No blacklisted participants."
-                        : "No approved participants yet."}
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+        <ParticipantsTable
+          participants={enrichedParticipants}
+          tab={tab === "blacklisted" ? "blacklisted" : "approved"}
+        />
       )}
     </div>
   );
