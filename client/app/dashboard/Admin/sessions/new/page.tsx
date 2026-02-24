@@ -6,6 +6,7 @@ import {
 } from "@/lib/actions/session";
 import { redirect } from "next/navigation";
 import CreateSessionButton from "@/components/CreateSessionButton";
+import CaseTimeInputs from "@/components/CaseTimeInputs";
 import {
   combineCaseFilters,
   applyCaseFilters,
@@ -675,12 +676,7 @@ export default async function NewSessionPage({
                   )}
                 </div>
 
-                <div className="flex items-center gap-2 text-sm w-full mt-1 bg-slate-50 p-2 rounded border border-slate-100">
-                  <span className="text-slate-500 text-xs font-semibold uppercase mr-auto">Session Time:</span>
-                  <input type="time" name={`start_${c.id}`} className="border rounded px-2 py-1 bg-white" required />
-                  <span className="text-slate-400">&rarr;</span>
-                  <input type="time" name={`end_${c.id}`} className="border rounded px-2 py-1 bg-white" required />
-                </div>
+                <CaseTimeInputs caseId={c.id} />
               </div>
             ))
           ) : (
