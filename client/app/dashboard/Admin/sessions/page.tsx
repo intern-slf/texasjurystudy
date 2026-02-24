@@ -29,8 +29,14 @@ async function submitSession(formData: FormData) {
 }
 
 
-export default async function SessionsPage() {
+export default async function SessionsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ created?: string }>;
+}) {
   const supabase = await createClient();
+  const params = await searchParams;
+  const showSuccess = params?.created === "1";
 
   /* =========================
      FETCH SESSIONS
@@ -43,6 +49,17 @@ export default async function SessionsPage() {
 
   return (
     <div className="space-y-8">
+      {/* ====== SUCCESS BANNER ====== */}
+      {showSuccess && (
+        <div className="flex items-center gap-3 rounded-xl border border-green-200 bg-green-50 px-5 py-4 text-green-800 shadow-sm animate-in fade-in slide-in-from-top-2 duration-500">
+          <span className="text-xl">✅</span>
+          <div>
+            <p className="font-semibold text-sm">Session created successfully!</p>
+            <p className="text-xs text-green-600 mt-0.5">Invitations have been sent to all selected participants.</p>
+          </div>
+        </div>
+      )}
+
       {/* HEADER */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Sessions</h1>

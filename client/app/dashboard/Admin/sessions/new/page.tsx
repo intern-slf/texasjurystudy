@@ -4,6 +4,8 @@ import {
   addCasesToSession,
   inviteParticipants,
 } from "@/lib/actions/session";
+import { redirect } from "next/navigation";
+import CreateSessionButton from "@/components/CreateSessionButton";
 import {
   combineCaseFilters,
   applyCaseFilters,
@@ -569,6 +571,10 @@ export default async function NewSessionPage({
     if (selectedParticipants.length) {
       await inviteParticipants(sessionId, selectedParticipants, date);
     }
+
+    // Redirect to sessions list with a success flag.
+    // This also prevents re-submission if the admin refreshes the page.
+    redirect("/dashboard/Admin/sessions?created=1");
   }
 
   /* =========================
@@ -858,9 +864,7 @@ export default async function NewSessionPage({
         </div>
       </div>
 
-      <button type="submit" className="bg-black text-white px-4 py-2 rounded">
-        Create Session &amp; Send Invites
-      </button>
+      <CreateSessionButton />
     </form>
   );
 }
