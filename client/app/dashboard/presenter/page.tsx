@@ -114,9 +114,9 @@ export default async function PresenterDashboard({
 
   const { data: cases } = await caseQuery;
 
-  // Pre-fetch ancestor IDs for previous cases to avoid await in map
+  // Pre-fetch ancestor IDs for previous and approved cases to avoid await in map
   const ancestorMap: Record<string, string[]> = {};
-  if (tab === "previous" && cases) {
+  if ((tab === "previous" || tab === "approved") && cases) {
     for (const c of cases) {
       ancestorMap[c.id] = await getAncestorCaseIds(c.id);
     }
@@ -362,6 +362,13 @@ export default async function PresenterDashboard({
                             </form>
                           </div>
                         )}
+
+                      <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg border">
+                        <PreviousParticipantsModal
+                          caseId={c.id}
+                          ancestorIds={ancestorMap[c.id] || []}
+                        />
+                      </div>
                     </div>
                   )}
 
