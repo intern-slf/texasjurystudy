@@ -71,8 +71,6 @@ export default async function AdminLayout({
     requested: allCases?.filter((c) => c.admin_status === "all").length || 0,
     approved:
       allCases?.filter((c) => c.admin_status === "approved").length || 0,
-    submitted:
-      allCases?.filter((c) => c.admin_status === "submitted").length || 0,
     sessions: sessionsCount || 0,
     approvedParticipants: approvedParticipantsCount || 0,
     newParticipants: newParticipantsCount || 0,

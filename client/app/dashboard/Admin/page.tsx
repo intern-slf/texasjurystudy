@@ -42,7 +42,7 @@ interface JuryCase {
   admin_scheduled_at: string | null;
 }
 
-type AdminTab = "requested" | "approved" | "submitted";
+type AdminTab = "requested" | "approved";
 
 /* =========================
    SERVER ACTIONS
@@ -192,7 +192,6 @@ export default async function AdminDashboardPage({
           <h2 className="text-3xl font-bold tracking-tight">
             {tab === "requested" && "Requested Cases"}
             {tab === "approved" && "Approved Cases"}
-            {tab === "submitted" && "Submitted Cases"}
           </h2>
           <p className="text-muted-foreground mt-1">
             Manage and oversee case submissions and approvals.
@@ -430,11 +429,6 @@ export default async function AdminDashboardPage({
                           </>
                         )}
 
-                        {tab === "submitted" && (
-                          <span className="text-xs text-muted-foreground font-medium italic bg-muted px-2 py-1 rounded">
-                            Finalized
-                          </span>
-                        )}
                       </div>
                     </TableCell>
                   </TableRow>

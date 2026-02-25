@@ -6,7 +6,6 @@ import { useSearchParams, usePathname } from "next/navigation";
 type Counts = {
   requested: number;
   approved: number;
-  submitted: number;
   sessions: number;
   approvedParticipants: number;
   newParticipants: number;
@@ -17,7 +16,6 @@ const caseItems = [
   { id: "requested", label: "Requested Cases", countKey: "requested" },
   { id: "approved", label: "Approved Cases", countKey: "approved" },
   { id: "sessions", label: "Sessions", countKey: "sessions" },
-  { id: "submitted", label: "Upcoming Sessions", countKey: "submitted" },
 ] as const;
 
 const participantItems = [
@@ -60,7 +58,7 @@ export default function AdminSidebar({
   active,
   counts,
 }: {
-  active: "requested" | "approved" | "submitted";
+  active: "requested" | "approved";
   counts: Counts;
 }) {
   const searchParams = useSearchParams();
