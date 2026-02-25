@@ -242,9 +242,19 @@ export default async function PresenterDashboard({
 
     if (!activeUser) return;
 
+    const updatePayload: Record<string, string | null> = { schedule_status: response };
+    if (response === "accepted") {
+      const { data: caseData } = await supabase
+        .from("cases")
+        .select("admin_scheduled_at")
+        .eq("id", caseId)
+        .single();
+      updatePayload.scheduled_at = caseData?.admin_scheduled_at ?? null;
+    }
+
     await supabase
       .from("cases")
-      .update({ schedule_status: response })
+      .update(updatePayload)
       .eq("id", caseId)
       .eq("user_id", activeUser.id);
 
@@ -283,9 +293,17 @@ export default async function PresenterDashboard({
     const supabase = await createClient();
     const { data: { user: activeUser } } = await supabase.auth.getUser();
     if (!activeUser) return;
+    const { data: caseData } = await supabase
+      .from("cases")
+      .select("admin_scheduled_at")
+      .eq("id", caseId)
+      .single();
     await supabase
       .from("cases")
-      .update({ schedule_status: "accepted" })
+      .update({
+        schedule_status: "accepted",
+        scheduled_at: caseData?.admin_scheduled_at ?? null,
+      })
       .eq("id", caseId)
       .eq("user_id", activeUser.id);
     revalidatePath("/dashboard/presenter");

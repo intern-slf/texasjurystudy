@@ -59,8 +59,8 @@ async function proposeSchedule(formData: FormData) {
   await supabase
     .from("cases")
     .update({
-      scheduled_at: date,
-      schedule_status: "pending",
+      admin_scheduled_at: date,
+      schedule_status: null,
     })
     .eq("id", caseId);
 
@@ -266,6 +266,12 @@ export default async function AdminDashboardPage({
                 </TableHead>
 
                 <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Scheduled
+                  <br />
+                  by Admin
+                </TableHead>
+
+                <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   Documents
                 </TableHead>
 
@@ -278,6 +284,7 @@ export default async function AdminDashboardPage({
             <TableBody>
               {cases.map((c) => {
                 const date = c.scheduled_at ? new Date(c.scheduled_at) : null;
+                const adminDate = c.admin_scheduled_at ? new Date(c.admin_scheduled_at) : null;
 
                 return (
                   <TableRow
@@ -364,6 +371,27 @@ export default async function AdminDashboardPage({
                       )}
                     </TableCell>
 
+                    {/* ADMIN SCHEDULE */}
+                    <TableCell className="py-4">
+                      {adminDate ? (
+                        <div className="flex items-center gap-2 text-sm text-foreground">
+                          <Calendar className="h-4 w-4 text-muted-foreground" />
+                          <div className="flex flex-col">
+                            <span className="font-medium">
+                              {adminDate.toLocaleDateString()}
+                            </span>
+                            <span className="text-muted-foreground text-xs">
+                              {adminDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                            </span>
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground italic">
+                          Not set
+                        </span>
+                      )}
+                    </TableCell>
+
                     {/* DOCS */}
                     <TableCell className="py-4 space-y-1">
                       {c.case_documents.length ? (
@@ -438,7 +466,7 @@ export default async function AdminDashboardPage({
               {!cases.length && (
                 <TableRow>
                   <TableCell
-                    colSpan={8}
+                    colSpan={9}
                     className="text-center py-16 text-muted-foreground italic"
                   >
                     No cases found in this section.
