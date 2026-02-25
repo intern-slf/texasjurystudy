@@ -1,6 +1,19 @@
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import Link from "next/link";
+import {
+  combineCaseFilters,
+  applyCaseFilters,
+  relaxFilters,
+  FILTER_PRIORITY,
+  FILTER_LABELS,
+  CaseFilters,
+  checkFilterMatch,
+  attachMultiCaseScores,
+  sortParticipantsByMultiCaseMatch,
+} from "@/lib/filter-utils";
+import { getAncestorCaseIds, getLineageParticipantIds } from "@/lib/case-lineage";
+import InviteMoreModal, { type Candidate } from "@/components/InviteMoreModal";
 
 
 async function submitSession(formData: FormData) {
@@ -28,6 +41,132 @@ async function submitSession(formData: FormData) {
   revalidatePath("/dashboard/Admin/sessions");
 }
 
+/* =========================
+   HELPER: fetch recommended candidates for a session
+   Excludes already-invited participant IDs.
+========================= */
+async function fetchCandidates(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  caseIds: string[],
+  alreadyInvitedIds: Set<string>
+): Promise<Candidate[]> {
+  if (!caseIds.length) return [];
+
+  const { data: cases } = await supabase
+    .from("cases")
+    .select("id, title, filters")
+    .in("id", caseIds);
+
+  const filtersList = (cases ?? []).map((c: any) => c.filters as CaseFilters);
+  const combinedFilters = combineCaseFilters(filtersList);
+
+  if (combinedFilters.ageRanges && cases) {
+    combinedFilters.ageRanges = combinedFilters.ageRanges.map((r) => ({
+      ...r,
+      caseLabel:
+        r.caseIndex !== undefined && cases[r.caseIndex]
+          ? cases[r.caseIndex].title
+          : r.caseLabel,
+    }));
+  }
+  if (combinedFilters._perCaseFilters && cases) {
+    combinedFilters._perCaseFilters = combinedFilters._perCaseFilters.map((pc) => ({
+      ...pc,
+      caseTitle:
+        pc.caseIndex !== undefined && cases[pc.caseIndex]
+          ? cases[pc.caseIndex].title
+          : pc.caseTitle,
+    }));
+  }
+
+  // Determine table
+  const { count } = await supabase
+    .from("jury_participants")
+    .select("*", { count: "exact", head: true });
+  const testTable = count === 0 || count === null ? "oldData" : "jury_participants";
+  const isOldData = testTable === "oldData";
+
+  // Blacklisted IDs
+  const { data: blacklistedRoles } = await supabase
+    .from("roles")
+    .select("user_id")
+    .eq("role", "blacklisted");
+  const blacklistedIds = (blacklistedRoles ?? []).map((r: any) => r.user_id as string);
+
+  // Lineage exclusions
+  const allLineageIds: string[] = [];
+  if (caseIds.length > 0) {
+    const ancestorBatch = await Promise.all(caseIds.map((id) => getAncestorCaseIds(id)));
+    const uniqueAncestorIds = Array.from(new Set(ancestorBatch.flat()));
+    const lineageIds = await getLineageParticipantIds(uniqueAncestorIds);
+    allLineageIds.push(...lineageIds);
+  }
+
+  const nowIso = new Date().toISOString();
+  const seenIds = new Set<string>(alreadyInvitedIds);
+  let rawParticipants: any[] = [];
+  const minRequired = 50;
+
+  for (let level = 0; level <= FILTER_PRIORITY.length; level++) {
+    if (rawParticipants.length >= minRequired) break;
+
+    const currentFilters = relaxFilters(combinedFilters, level);
+    let query = supabase.from(testTable).select("*");
+    query = applyCaseFilters(query, currentFilters);
+
+    if (!isOldData) {
+      const exclusions = Array.from(new Set([...blacklistedIds, ...allLineageIds]));
+      if (exclusions.length > 0) {
+        // @ts-ignore
+        query = query.not("user_id", "in", `(${exclusions.map((id) => `"${id}"`).join(",")})`);
+      }
+      query = query.or(`eligible_after_at.is.null,eligible_after_at.lte.${nowIso}`);
+      query = query.eq("approved_by_admin", true).is("blacklisted_at", null);
+    }
+
+    if (seenIds.size > 0) {
+      const idField = isOldData ? "id" : "user_id";
+      // @ts-ignore
+      query = query.not(idField, "in", `(${Array.from(seenIds).map((id) => `"${id}"`).join(",")})`);
+    }
+
+    // @ts-ignore
+    const { data: batch } = await query.limit(minRequired - rawParticipants.length + 20);
+
+    if (batch && batch.length > 0) {
+      const shuffled = batch.sort(() => Math.random() - 0.5);
+      for (const p of shuffled) {
+        const pId = p.user_id || p.id;
+        if (seenIds.has(pId)) continue;
+        seenIds.add(pId);
+        p.matchLevel = level;
+        p.filterChecks = FILTER_PRIORITY.map((key) => ({
+          key,
+          label: FILTER_LABELS[key] || key,
+          ...checkFilterMatch(p, combinedFilters, key),
+        }));
+        const allFiltersPassed = p.filterChecks.every((fc: any) => fc.passes);
+        if (!allFiltersPassed && p.matchLevel === 0) p.matchLevel = 1;
+        rawParticipants.push(p);
+      }
+    }
+  }
+
+  rawParticipants = attachMultiCaseScores(rawParticipants, filtersList);
+  rawParticipants = sortParticipantsByMultiCaseMatch(rawParticipants);
+
+  return rawParticipants.map((p): Candidate => ({
+    id: p.user_id || p.id,
+    first_name: p.first_name,
+    last_name: p.last_name,
+    age: p.age,
+    city: p.city,
+    political_affiliation: p.political_affiliation,
+    matchLevel: p.matchLevel,
+    filterChecks: p.filterChecks,
+  }));
+}
+
 
 export default async function SessionsPage({
   searchParams,
@@ -46,6 +185,77 @@ export default async function SessionsPage({
     .from("sessions")
     .select("id, session_date, created_by")
     .order("session_date", { ascending: false });
+
+  /* =========================
+     ENRICH SESSIONS
+  ========================= */
+
+  const enrichedSessions = await Promise.all(
+    (sessions ?? []).map(async (s) => {
+      const { data: scases } = await supabase
+        .from("session_cases")
+        .select("case_id, start_time, end_time")
+        .eq("session_id", s.id);
+
+      const caseIds = scases?.map((c) => c.case_id) ?? [];
+
+      const { data: caseDetails } = caseIds.length
+        ? await supabase
+          .from("cases")
+          .select("id, title, admin_status")
+          .in("id", caseIds)
+        : { data: [] };
+
+      const alreadySubmitted = Boolean(
+        caseDetails?.length &&
+        caseDetails.every((c) => c.admin_status === "submitted")
+      );
+
+      const { data: sParticipants } = await supabase
+        .from("session_participants")
+        .select("participant_id, invite_status")
+        .eq("session_id", s.id);
+
+      const participantIds = sParticipants?.map((p) => p.participant_id) ?? [];
+
+      let participantDetails: any[] = [];
+      if (participantIds.length) {
+        const { data: jData } = await supabase
+          .from("jury_participants")
+          .select("user_id, first_name, last_name")
+          .in("user_id", participantIds);
+
+        participantDetails = jData ?? [];
+
+        const foundIds = new Set(participantDetails.map(p => p.user_id));
+        const missingIds = participantIds.filter(id => !foundIds.has(id));
+
+        if (missingIds.length > 0) {
+          const { data: oData } = await supabase
+            .from("oldData")
+            .select("id, first_name, last_name")
+            .in("id", missingIds);
+
+          if (oData) {
+            participantDetails.push(...oData.map(od => ({
+              user_id: od.id,
+              first_name: od.first_name,
+              last_name: od.last_name
+            })));
+          }
+        }
+      }
+
+      // Fetch recommended candidates (excluding already-invited)
+      const alreadyInvitedSet = new Set(participantIds);
+      const candidates = await fetchCandidates(supabase, caseIds, alreadyInvitedSet);
+
+      return { s, scases, caseDetails, alreadySubmitted, sParticipants, participantDetails, candidates };
+    })
+  );
+
+  // Sort: unnotified sessions first
+  enrichedSessions.sort((a, b) => Number(a.alreadySubmitted) - Number(b.alreadySubmitted));
 
   return (
     <div className="space-y-8">
@@ -70,75 +280,12 @@ export default async function SessionsPage({
       </div>
 
       {/* LIST */}
-      {sessions?.length ? (
-        await Promise.all(
-          sessions.map(async (s) => {
-            /* =========================
-               FETCH CASES OF SESSION
-            ========================= */
-            const { data: scases } = await supabase
-              .from("session_cases")
-              .select("case_id, start_time, end_time")
-              .eq("session_id", s.id);
-
-            const caseIds = scases?.map((c) => c.case_id) ?? [];
-
-            const { data: caseDetails } = caseIds.length
-              ? await supabase
-                .from("cases")
-                .select("id, title, admin_status")
-                .in("id", caseIds)
-              : { data: [] };
-
-            /* =========================
-               FETCH PARTICIPANTS
-            ========================= */
-            const alreadySubmitted = Boolean(
-              caseDetails?.length &&
-              caseDetails.every((c) => c.admin_status === "submitted")
-            );
-            const { data: sParticipants } = await supabase
-              .from("session_participants")
-              .select("participant_id, invite_status")
-              .eq("session_id", s.id);
-
-            const participantIds =
-              sParticipants?.map((p) => p.participant_id) ?? [];
-
-            let participantDetails: any[] = [];
-            if (participantIds.length) {
-              const { data: jData } = await supabase
-                .from("jury_participants")
-                .select("user_id, first_name, last_name")
-                .in("user_id", participantIds);
-
-              participantDetails = jData ?? [];
-
-              // Fallback to oldData for missing participants
-              const foundIds = new Set(participantDetails.map(p => p.user_id));
-              const missingIds = participantIds.filter(id => !foundIds.has(id));
-
-              if (missingIds.length > 0) {
-                const { data: oData } = await supabase
-                  .from("oldData")
-                  .select("id, first_name, last_name")
-                  .in("id", missingIds);
-
-                if (oData) {
-                  participantDetails.push(...oData.map(od => ({
-                    user_id: od.id,
-                    first_name: od.first_name,
-                    last_name: od.last_name
-                  })));
-                }
-              }
-            }
-
-            return (
-              <div
-                key={s.id}
-                className="border rounded p-6 space-y-6 bg-white shadow-sm"
-              >
+      {enrichedSessions.length ? (
+        enrichedSessions.map(({ s, scases, caseDetails, alreadySubmitted, sParticipants, participantDetails, candidates }) => (
+          <div
+            key={s.id}
+            className="border rounded p-6 space-y-6 bg-white shadow-sm"
+          >
                 {/* SESSION INFO */}
                 <div>
                   <div className="text-lg font-semibold">
@@ -213,24 +360,33 @@ export default async function SessionsPage({
                     )}
                   </div>
                 </div>
-                <form action={submitSession} className="flex justify-end">
-                  <input type="hidden" name="sessionId" value={s.id} />
 
-                  <button
-                    disabled={alreadySubmitted}
-                    className={`px-4 py-2 rounded text-sm text-white ${alreadySubmitted
-                      ? "bg-gray-400 cursor-not-allowed"
-                      : "bg-green-600 hover:bg-green-700"
-                      }`}
-                  >
-                    {alreadySubmitted ? "Already Submitted" : "Submit Session"}
-                  </button>
-                </form>
+                {/* ACTIONS */}
+                <div className="flex justify-end gap-3">
+                  {!alreadySubmitted && (
+                    <InviteMoreModal
+                      sessionId={s.id}
+                      sessionDate={s.session_date}
+                      candidates={candidates}
+                    />
+                  )}
+
+                  <form action={submitSession}>
+                    <input type="hidden" name="sessionId" value={s.id} />
+                    <button
+                      disabled={alreadySubmitted}
+                      className={`px-4 py-2 rounded text-sm text-white ${alreadySubmitted
+                        ? "bg-gray-400 cursor-not-allowed"
+                        : "bg-green-600 hover:bg-green-700"
+                        }`}
+                    >
+                      {alreadySubmitted ? "Already Notified" : "Notify Presenter"}
+                    </button>
+                  </form>
+                </div>
 
               </div>
-            );
-          })
-        )
+        ))
       ) : (
         <div className="text-slate-400 italic">
           No sessions created yet.
