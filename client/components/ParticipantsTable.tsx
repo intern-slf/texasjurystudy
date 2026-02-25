@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useTransition } from "react";
 import {
   Table,
   TableBody,
@@ -13,6 +13,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
 import { Search, X } from "lucide-react";
+import { unblacklistParticipant } from "@/lib/actions/adminParticipant";
 
 type Participant = {
   user_id: string;
@@ -39,6 +40,8 @@ type Props = {
 
 export default function ParticipantsTable({ participants, tab }: Props) {
   const [query, setQuery] = useState("");
+  const [isPending, startTransition] = useTransition();
+  const [pendingId, setPendingId] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -62,6 +65,14 @@ export default function ParticipantsTable({ participants, tab }: Props) {
       );
     });
   }, [participants, query]);
+
+  function handleUnblacklist(userId: string) {
+    setPendingId(userId);
+    startTransition(async () => {
+      await unblacklistParticipant(userId);
+      setPendingId(null);
+    });
+  }
 
   return (
     <div className="space-y-4">
@@ -138,6 +149,7 @@ export default function ParticipantsTable({ participants, tab }: Props) {
                 const regDate = p.entry_date
                   ? new Date(p.entry_date).toLocaleDateString()
                   : "—";
+                const isThisPending = isPending && pendingId === p.user_id;
 
                 return (
                   <TableRow
@@ -179,11 +191,22 @@ export default function ParticipantsTable({ participants, tab }: Props) {
                         {regDate}
                       </TableCell>
                     )}
+
+                    {/* ── ACTIONS ── */}
                     <TableCell className="text-right py-4 pr-6">
                       {tab === "blacklisted" ? (
-                        <span className="inline-flex items-center rounded-full bg-red-400/10 px-2 py-1 text-xs font-medium text-red-500 ring-1 ring-inset ring-red-400/20">
-                          Blacklisted
-                        </span>
+                        <div className="flex items-center justify-end gap-2">
+                          <span className="inline-flex items-center rounded-full bg-red-400/10 px-2 py-1 text-xs font-medium text-red-500 ring-1 ring-inset ring-red-400/20">
+                            Blacklisted
+                          </span>
+                          <button
+                            onClick={() => handleUnblacklist(p.user_id)}
+                            disabled={isThisPending}
+                            className="inline-flex items-center rounded-md bg-blue-600 px-3 py-1 text-xs font-medium text-white shadow-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                          >
+                            {isThisPending ? "Moving…" : "Unblacklist"}
+                          </button>
+                        </div>
                       ) : (
                         <span className="inline-flex items-center rounded-full bg-green-400/10 px-2 py-1 text-xs font-medium text-green-500 ring-1 ring-inset ring-green-400/20">
                           Verified

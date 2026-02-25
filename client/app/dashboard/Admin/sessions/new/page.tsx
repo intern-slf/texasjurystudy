@@ -492,6 +492,8 @@ export default async function NewSessionPage({
       }
       // 2. Skip participants still in cooldown (eligible_after_at in the future)
       query = query.or(`eligible_after_at.is.null,eligible_after_at.lte.${nowIso}`);
+      // 3. Only show verified (approved) participants — exclude new/unapproved and blacklisted
+      query = query.eq("approved_by_admin", true).is("blacklisted_at", null);
     }
     // ─────────────────────────────────────────────────────────────────
 

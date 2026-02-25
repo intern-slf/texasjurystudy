@@ -52,7 +52,7 @@ function isActive(id: string, pathname: string, currentTab: string) {
     case "blacklisted":
       return pathname.startsWith("/dashboard/Admin/participants") && currentTab === "blacklisted";
     default:
-      return currentTab === id;
+      return pathname === "/dashboard/Admin" && currentTab === id;
   }
 }
 

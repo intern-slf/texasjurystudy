@@ -2,6 +2,7 @@ import { getParticipantProfile } from "@/lib/participant/getParticipantProfile";
 import { createClient } from "@/lib/supabase/server";
 import ParticipantForm from "@/components/ParticipantForm";
 import Link from "next/link";
+import AdminParticipantControls from "@/components/AdminParticipantControls";
 
 export default async function ParticipantProfilePage({
   params,
@@ -138,12 +139,14 @@ export default async function ParticipantProfilePage({
         )}
 
         {/* ADMIN AREA */}
-        {role !== "participant" && (
+        {role === "admin" && (
           <section className="bg-slate-50 border rounded-xl p-6">
-            <h2 className="font-bold text-lg mb-2">Admin / Presenter Area</h2>
-            <p className="text-slate-500 text-sm">
-              Actions will appear here later.
-            </p>
+            <h2 className="font-bold text-lg mb-4">Admin Controls</h2>
+            <AdminParticipantControls
+              userId={participant.user_id}
+              approvedByAdmin={participant.approved_by_admin ?? null}
+              blacklistedAt={participant.blacklisted_at ?? null}
+            />
           </section>
         )}
       </div>

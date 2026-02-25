@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import VerifyParticipantModal from "@/components/VerifyParticipantModal";
 import { useRouter } from "next/navigation";
+import { Input } from "@/components/ui/input";
+import { Search, X } from "lucide-react";
 
 type Participant = {
   user_id: string;
@@ -25,17 +27,59 @@ export default function NewParticipantsList({
   participants: Participant[];
 }) {
   const [selected, setSelected] = useState<Participant | null>(null);
+  const [query, setQuery] = useState("");
   const router = useRouter();
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return participants;
+    return participants.filter((p) => {
+      const name = `${p.first_name} ${p.last_name}`.toLowerCase();
+      const email = (p.email ?? "").toLowerCase();
+      const location = `${p.city ?? ""} ${p.state ?? ""}`.toLowerCase();
+      const phone = (p.phone ?? "").toLowerCase();
+      const age = String(p.age ?? "");
+      return name.includes(q) || email.includes(q) || location.includes(q) || phone.includes(q) || age.includes(q);
+    });
+  }, [participants, query]);
 
   return (
     <>
-      {participants.length === 0 ? (
+      {/* ── SEARCH BAR ── */}
+      <div className="relative max-w-sm mb-4">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+        <Input
+          type="text"
+          placeholder="Search by name, email, location…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          className="pl-9 pr-9 h-9 text-sm bg-white"
+        />
+        {query && (
+          <button
+            onClick={() => setQuery("")}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
+
+      {query && (
+        <p className="text-xs text-muted-foreground mb-4">
+          {filtered.length === 0
+            ? "No participants found."
+            : `Showing ${filtered.length} of ${participants.length} participants`}
+        </p>
+      )}
+
+      {filtered.length === 0 ? (
         <div className="text-center py-20 text-muted-foreground italic">
-          No new participants awaiting approval.
+          {query ? `No results for "${query}"` : "No new participants awaiting approval."}
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {participants.map((p) => (
+          {filtered.map((p) => (
             <button
               key={p.user_id}
               onClick={() => setSelected(p)}

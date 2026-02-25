@@ -36,6 +36,7 @@ export async function autoBlacklistIfIneligible(
       .update({
         blacklist_reason: blacklistReason,
         blacklisted_at: blacklistedAt,
+        approved_by_admin: false,
       })
       .eq("user_id", userId);
 

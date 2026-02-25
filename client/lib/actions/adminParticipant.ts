@@ -46,3 +46,29 @@ export async function blacklistParticipant(userId: string, reason: string) {
 
     revalidatePath("/dashboard/Admin/participants");
 }
+
+/* =========================
+   UNBLACKLIST (VERIFY) PARTICIPANT
+========================= */
+
+export async function unblacklistParticipant(userId: string) {
+    // 1. Restore role → 'participant'
+    await supabaseAdmin
+        .from("roles")
+        .update({ role: "participant" })
+        .eq("user_id", userId);
+
+    // 2. Clear blacklist fields — send back to new requests (not auto-approved)
+    await supabaseAdmin
+        .from("jury_participants")
+        .update({
+            blacklist_reason: null,
+            blacklisted_at: null,
+            approved_by_admin: false,
+        })
+        .eq("user_id", userId);
+
+    console.log(`[unblacklistParticipant] Unblacklisted user ${userId} — moved back to requests.`);
+
+    revalidatePath("/dashboard/Admin/participants");
+}
