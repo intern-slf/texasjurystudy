@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { sendEmail } from "@/lib/mail";
+import { sendEmail, sendRescheduleEmail } from "@/lib/mail";
 import { revalidatePath } from "next/cache";
 
 /* =========================
@@ -216,6 +216,105 @@ export async function inviteParticipants(
         emailError
       );
       // Don't throw — we still want the invite record saved even if email fails
+    }
+  }
+
+  revalidatePath("/dashboard/Admin/sessions");
+}
+
+/* =========================
+   RESCHEDULE SESSION
+========================= */
+export async function rescheduleSession(
+  sessionId: string,
+  newDate: string, // "YYYY-MM-DD"
+  caseUpdates: { caseId: string; start: string; end: string }[]
+) {
+  const supabase = await createClient();
+
+  // 1. Update session date
+  const { error: sessionError } = await supabase
+    .from("sessions")
+    .update({ session_date: newDate })
+    .eq("id", sessionId);
+
+  if (sessionError) throw sessionError;
+
+  // 2. Update session_cases times + cases.admin_scheduled_at
+  for (const cu of caseUpdates) {
+    await supabase
+      .from("session_cases")
+      .update({ start_time: cu.start, end_time: cu.end })
+      .eq("session_id", sessionId)
+      .eq("case_id", cu.caseId);
+
+    const endHHMM = cu.end?.slice(0, 5); // guard against "HH:MM:SS" from Postgres
+    if (endHHMM && newDate) {
+      const adminScheduledAt = new Date(`${newDate}T${endHHMM}:00`).toISOString();
+      await supabase
+        .from("cases")
+        .update({ admin_scheduled_at: adminScheduledAt })
+        .eq("id", cu.caseId);
+    }
+  }
+
+  // Reset schedule_status so presenter must re-confirm the new date
+  if (caseUpdates.length) {
+    await supabase
+      .from("cases")
+      .update({ schedule_status: null })
+      .in("id", caseUpdates.map((cu) => cu.caseId));
+  }
+
+  // Human-readable date for emails
+  const newDateStr = new Date(newDate).toLocaleDateString("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+
+  // 3. Notify accepted participants
+  const { data: acceptedRows } = await supabase
+    .from("session_participants")
+    .select("participant_id")
+    .eq("session_id", sessionId)
+    .eq("invite_status", "accepted");
+
+  for (const row of acceptedRows ?? []) {
+    try {
+      const { data: userData } = await supabaseAdmin.auth.admin.getUserById(
+        row.participant_id
+      );
+      if (userData?.user?.email) {
+        await sendRescheduleEmail(userData.user.email, newDateStr, "participant");
+      }
+    } catch (e) {
+      console.error(`Reschedule email failed for participant ${row.participant_id}:`, e);
+    }
+  }
+
+  // 4. Notify presenter(s) — deduplicated by user_id
+  const caseIds = caseUpdates.map((cu) => cu.caseId);
+  if (caseIds.length) {
+    const { data: caseRows } = await supabase
+      .from("cases")
+      .select("user_id")
+      .in("id", caseIds);
+
+    const uniquePresenterIds = Array.from(
+      new Set((caseRows ?? []).map((c) => c.user_id).filter(Boolean))
+    );
+
+    for (const presenterId of uniquePresenterIds) {
+      try {
+        const { data: userData } = await supabaseAdmin.auth.admin.getUserById(presenterId);
+        if (userData?.user?.email) {
+          await sendRescheduleEmail(userData.user.email, newDateStr, "presenter");
+        }
+      } catch (e) {
+        console.error(`Reschedule email failed for presenter ${presenterId}:`, e);
+      }
     }
   }
 

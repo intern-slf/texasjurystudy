@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 import ParticipantForm from "@/components/ParticipantForm";
 import Link from "next/link";
 import { getPendingInvites } from "@/lib/participant/getPendingInvites";
@@ -6,6 +7,7 @@ import { updateInviteStatus } from "@/lib/participant/updateInviteStatus";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { unstable_noStore as noStore } from "next/cache";
+import ReschedulePopup, { type RescheduleItem } from "@/components/ReschedulePopup";
 
 export default async function ParticipantDashboard({
   searchParams,
@@ -86,10 +88,56 @@ export default async function ParticipantDashboard({
   const pendingInvites = await getPendingInvites(participant.user_id);
 
   /* =========================
+     FETCH ACCEPTED SESSIONS (for reschedule popup)
+     ========================= */
+  const { data: acceptedInvites } = await supabaseAdmin
+    .from("session_participants")
+    .select("id, session_id, sessions(session_date)")
+    .eq("participant_id", participant.user_id)
+    .eq("invite_status", "accepted");
+
+  const rescheduleItems: RescheduleItem[] = (acceptedInvites ?? []).flatMap((inv) => {
+    const session = Array.isArray(inv.sessions) ? inv.sessions[0] : inv.sessions;
+    const date: string = (session as any)?.session_date ?? "";
+    if (!date) return [];
+    return [{
+      id: inv.session_id,       // localStorage key
+      actionId: inv.id,          // invite record id for updateInviteStatus
+      title: `Session on ${date}`,
+      newDate: date,
+      displayDate: new Date(date).toLocaleDateString("en-US", {
+        weekday: "long", year: "numeric", month: "long", day: "numeric",
+      }),
+    }];
+  });
+
+  async function acceptReschedule(inviteId: string) {
+    "use server";
+    await updateInviteStatus(inviteId, "accepted");
+    revalidatePath("/dashboard/participant");
+  }
+
+  async function declineReschedule(inviteId: string) {
+    "use server";
+    await updateInviteStatus(inviteId, "declined");
+    revalidatePath("/dashboard/participant");
+  }
+
+  /* =========================
      DASHBOARD VIEW
      ========================= */
   return (
     <div className="max-w-5xl mx-auto p-8 space-y-8">
+      {/* RESCHEDULE POPUP */}
+      {rescheduleItems.length > 0 && (
+        <ReschedulePopup
+          items={rescheduleItems}
+          role="participant"
+          onAccept={acceptReschedule}
+          onDecline={declineReschedule}
+        />
+      )}
+
       {/* HEADER */}
       <div className="bg-white border rounded-xl p-6">
         <h1 className="text-2xl font-bold">

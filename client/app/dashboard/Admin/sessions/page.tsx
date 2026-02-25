@@ -14,6 +14,7 @@ import {
 } from "@/lib/filter-utils";
 import { getAncestorCaseIds, getLineageParticipantIds } from "@/lib/case-lineage";
 import InviteMoreModal, { type Candidate } from "@/components/InviteMoreModal";
+import RescheduleModal from "@/components/RescheduleModal";
 
 
 async function submitSession(formData: FormData) {
@@ -202,7 +203,7 @@ export default async function SessionsPage({
       const { data: caseDetails } = caseIds.length
         ? await supabase
           .from("cases")
-          .select("id, title, admin_status")
+          .select("id, title, admin_status, schedule_status")
           .in("id", caseIds)
         : { data: [] };
 
@@ -287,13 +288,25 @@ export default async function SessionsPage({
             className="border rounded p-6 space-y-6 bg-white shadow-sm"
           >
                 {/* SESSION INFO */}
-                <div>
-                  <div className="text-lg font-semibold">
-                    {s.session_date}
+                <div className="flex justify-between items-start">
+                  <div>
+                    <div className="text-lg font-semibold">
+                      {s.session_date}
+                    </div>
+                    <div className="text-xs text-slate-500">
+                      Session ID: {s.id}
+                    </div>
                   </div>
-                  <div className="text-xs text-slate-500">
-                    Session ID: {s.id}
-                  </div>
+                  <RescheduleModal
+                    sessionId={s.id}
+                    sessionDate={s.session_date}
+                    cases={(scases ?? []).map((sc) => ({
+                      case_id: sc.case_id,
+                      title: caseDetails?.find((cd) => cd.id === sc.case_id)?.title ?? "Unknown",
+                      start_time: sc.start_time,
+                      end_time: sc.end_time,
+                    }))}
+                  />
                 </div>
 
                 {/* CASES */}
@@ -310,12 +323,25 @@ export default async function SessionsPage({
                         return (
                           <div
                             key={i}
-                            className="text-sm flex justify-between border rounded px-3 py-2"
+                            className="text-sm flex justify-between border rounded px-3 py-2 items-center"
                           >
                             <span>{detail?.title ?? "Unknown case"}</span>
-                            <span>
-                              {c.start_time} → {c.end_time}
-                            </span>
+                            <div className="flex items-center gap-2">
+                              {detail?.schedule_status && (
+                                <span className={`text-xs font-semibold capitalize px-2 py-0.5 rounded-full ${
+                                  detail.schedule_status === "accepted"
+                                    ? "bg-green-100 text-green-700"
+                                    : detail.schedule_status === "rejected"
+                                    ? "bg-red-100 text-red-700"
+                                    : "bg-slate-100 text-slate-500"
+                                }`}>
+                                  Presenter: {detail.schedule_status}
+                                </span>
+                              )}
+                              <span className="text-slate-500">
+                                {c.start_time} → {c.end_time}
+                              </span>
+                            </div>
                           </div>
                         );
                       })

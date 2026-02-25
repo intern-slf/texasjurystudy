@@ -19,6 +19,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Calendar, Clock, AlertCircle, FileText, Upload, ArrowRight } from "lucide-react";
 import { getAncestorCaseIds } from "@/lib/case-lineage";
 import PreviousParticipantsModal from "@/components/PreviousParticipantsModal";
+import ReschedulePopup, { type RescheduleItem } from "@/components/ReschedulePopup";
 
 // Define a proper interface for your case object to replace 'any'
 interface Case {
@@ -26,6 +27,7 @@ interface Case {
   title: string;
   description: string;
   scheduled_at: string | null;
+  admin_scheduled_at: string | null;
   schedule_status: string | null;
   parent_case_id: string | null;
   [key: string]: unknown; // Allow for dynamic fields from Supabase
@@ -252,8 +254,67 @@ export default async function PresenterDashboard({
   /* ===========================
       UI
       =========================== */
+
+  // Build reschedule popup items for approved tab (cases pending presenter re-confirmation)
+  const presenterRescheduleItems: RescheduleItem[] =
+    tab === "approved"
+      ? (cases ?? [])
+          .filter(
+            (c) =>
+              (c.schedule_status === null || c.schedule_status === "pending") &&
+              c.admin_scheduled_at
+          )
+          .map((c) => ({
+            id: c.id,
+            actionId: c.id,  // caseId used for respondToSchedule
+            title: c.title,
+            newDate: c.admin_scheduled_at!,
+            displayDate: new Date(c.admin_scheduled_at!).toLocaleDateString("en-US", {
+              weekday: "long",
+              year: "numeric",
+              month: "long",
+              day: "numeric",
+            }),
+          }))
+      : [];
+
+  async function acceptScheduleFromPopup(caseId: string) {
+    "use server";
+    const supabase = await createClient();
+    const { data: { user: activeUser } } = await supabase.auth.getUser();
+    if (!activeUser) return;
+    await supabase
+      .from("cases")
+      .update({ schedule_status: "accepted" })
+      .eq("id", caseId)
+      .eq("user_id", activeUser.id);
+    revalidatePath("/dashboard/presenter");
+  }
+
+  async function declineScheduleFromPopup(caseId: string) {
+    "use server";
+    const supabase = await createClient();
+    const { data: { user: activeUser } } = await supabase.auth.getUser();
+    if (!activeUser) return;
+    await supabase
+      .from("cases")
+      .update({ schedule_status: "rejected" })
+      .eq("id", caseId)
+      .eq("user_id", activeUser.id);
+    revalidatePath("/dashboard/presenter");
+  }
+
   return (
     <div className="flex min-h-screen bg-muted/10 font-sans">
+      {presenterRescheduleItems.length > 0 && (
+        <ReschedulePopup
+          items={presenterRescheduleItems}
+          role="presenter"
+          onAccept={acceptScheduleFromPopup}
+          onDecline={declineScheduleFromPopup}
+        />
+      )}
+
       <PresenterSidebar activeTab={tab} />
 
       <main className="flex-1 overflow-y-auto">
@@ -302,10 +363,10 @@ export default async function PresenterDashboard({
                                 {c.description}
                             </CardDescription>
                         </div>
-                         {c.scheduled_at && (
+                         {(c.admin_scheduled_at || c.scheduled_at) && (
                             <Badge variant="secondary" className="flex items-center gap-1.5 font-medium">
                                 <Calendar className="h-3 w-3" />
-                                {new Date(c.scheduled_at).toLocaleDateString()}
+                                {new Date((c.admin_scheduled_at || c.scheduled_at) as string).toLocaleDateString()}
                             </Badge>
                         )}
                     </div>
@@ -320,21 +381,31 @@ export default async function PresenterDashboard({
                             <span className="text-sm font-medium">Approved by Admin</span>
                         </div>
 
-                      {/* proposed date */}
-                      {c.scheduled_at && (
+                      {/* Reschedule / pending-confirmation notice */}
+                      {(c.schedule_status === null || c.schedule_status === "pending") &&
+                        c.admin_scheduled_at && (
+                          <div className="flex items-center gap-2 p-3 bg-amber-50 text-amber-800 rounded-lg border border-amber-200">
+                            <Clock className="h-4 w-4 shrink-0" />
+                            <span className="text-sm font-medium">
+                              Session date has been set — please confirm your attendance below.
+                            </span>
+                          </div>
+                        )}
+
+                      {/* Admin scheduled date */}
+                      {c.admin_scheduled_at && (
                         <div className="flex items-center justify-between p-4 border rounded-lg bg-card">
                             <div className="flex items-center gap-3">
                                 <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
-                                    <Clock className="h-5 w-5" />
+                                    <Calendar className="h-5 w-5" />
                                 </div>
                                 <div>
-                                    <p className="text-sm font-medium">Proposed Schedule</p>
+                                    <p className="text-sm font-medium">Session Date (Admin Scheduled)</p>
                                     <p className="text-xs text-muted-foreground">
-                                        {new Date(c.scheduled_at).toLocaleString()}
+                                        {new Date(c.admin_scheduled_at).toLocaleString()}
                                     </p>
                                 </div>
                             </div>
-                            
                             <Badge variant={c.schedule_status === "accepted" ? "default" : c.schedule_status === "rejected" ? "destructive" : "outline"} className="capitalize">
                                 {c.schedule_status || "Pending Action"}
                             </Badge>
@@ -343,7 +414,7 @@ export default async function PresenterDashboard({
 
                       {(c.schedule_status === null ||
                         c.schedule_status === "pending") &&
-                        c.scheduled_at && (
+                        c.admin_scheduled_at && (
                           <div className="flex gap-3 pt-2">
                             <form action={respondToSchedule}>
                               <input type="hidden" name="caseId" value={c.id} />

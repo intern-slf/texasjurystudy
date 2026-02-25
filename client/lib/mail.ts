@@ -42,6 +42,48 @@ export async function sendEmail({ to, subject, html }: SendEmailOptions) {
   }
 }
 
+export async function sendRescheduleEmail(
+  to: string,
+  newDateStr: string,
+  role: "participant" | "presenter"
+) {
+  const dashboardPath =
+    role === "presenter" ? "/dashboard/presenter" : "/dashboard/participant";
+
+  const html = `
+    <html>
+      <body style="font-family: sans-serif; padding: 20px; color: #333; line-height: 1.5;">
+        <div style="border: 1px solid #eee; border-radius: 12px; max-width: 550px; padding: 30px; background-color: #ffffff; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+          <h2 style="color: #d97706; margin-top: 0; font-size: 24px;">Session Rescheduled</h2>
+          <p style="font-size: 16px;">Your <strong>Texas Jury Study</strong> session has been rescheduled to a new date.</p>
+
+          <div style="background-color: #fffbeb; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #d97706;">
+            <p style="margin: 0; color: #92400e; font-size: 14px; text-transform: uppercase; font-weight: bold; letter-spacing: 0.05em;">New Session Date</p>
+            <p style="margin: 5px 0 0 0; font-size: 18px; font-weight: 600; color: #78350f;">${newDateStr}</p>
+          </div>
+
+          <p style="font-size: 15px; color: #64748b;">Please note this updated date. No action is required — your ${role === "participant" ? "acceptance remains valid" : "session details have been updated"}.</p>
+
+          <div style="margin-top: 25px; text-align: center;">
+            <a href="${process.env.NEXT_PUBLIC_APP_URL}${dashboardPath}"
+               style="background-color: #d97706; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; display: inline-block; font-weight: bold; font-size: 14px;">
+              View Dashboard
+            </a>
+          </div>
+
+          <p style="margin-top: 25px; font-size: 12px; color: #94a3b8; text-align: center;">If you did not expect this email, please ignore it.</p>
+        </div>
+      </body>
+    </html>
+  `;
+
+  await sendEmail({
+    to,
+    subject: `Session Rescheduled – New Date: ${newDateStr}`,
+    html,
+  });
+}
+
 export async function sendApprovalEmail(to: string, caseTitle: string) {
   const html = `
     <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 8px;">
