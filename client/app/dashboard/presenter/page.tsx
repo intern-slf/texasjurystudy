@@ -116,6 +116,16 @@ export default async function PresenterDashboard({
 
   const { data: cases } = await caseQuery;
 
+  // Always fetch cases pending schedule confirmation (regardless of current tab)
+  const { data: pendingConfirmCases } = await supabase
+    .from("cases")
+    .select("id, title, admin_scheduled_at")
+    .eq("user_id", user.id)
+    .eq("admin_status", "approved")
+    .eq("status", "current")
+    .not("admin_scheduled_at", "is", null)
+    .or("schedule_status.is.null,schedule_status.eq.pending");
+
   // Pre-fetch ancestor IDs for previous and approved cases to avoid await in map
   const ancestorMap: Record<string, string[]> = {};
   if ((tab === "previous" || tab === "approved") && cases) {
@@ -265,28 +275,19 @@ export default async function PresenterDashboard({
       UI
       =========================== */
 
-  // Build reschedule popup items for approved tab (cases pending presenter re-confirmation)
-  const presenterRescheduleItems: RescheduleItem[] =
-    tab === "approved"
-      ? (cases ?? [])
-          .filter(
-            (c) =>
-              (c.schedule_status === null || c.schedule_status === "pending") &&
-              c.admin_scheduled_at
-          )
-          .map((c) => ({
-            id: c.id,
-            actionId: c.id,  // caseId used for respondToSchedule
-            title: c.title,
-            newDate: c.admin_scheduled_at!,
-            displayDate: new Date(c.admin_scheduled_at!).toLocaleDateString("en-US", {
-              weekday: "long",
-              year: "numeric",
-              month: "long",
-              day: "numeric",
-            }),
-          }))
-      : [];
+  // Build reschedule popup items from all approved cases awaiting confirmation (any tab)
+  const presenterRescheduleItems: RescheduleItem[] = (pendingConfirmCases ?? []).map((c) => ({
+    id: c.id,
+    actionId: c.id,
+    title: c.title,
+    newDate: c.admin_scheduled_at!,
+    displayDate: new Date(c.admin_scheduled_at!).toLocaleDateString("en-US", {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    }),
+  }));
 
   async function acceptScheduleFromPopup(caseId: string) {
     "use server";

@@ -47,13 +47,10 @@ export function LoginForm({
         .from("roles")
         .select("role")
         .eq("user_id", authData.user.id)
-        .single();
+        .maybeSingle();
 
       if (roleError) {
         console.error("Role fetch error:", roleError.message);
-        // Default redirect if role check fails
-        router.push("/dashboard");
-        return;
       }
 
       // 3. Conditional redirection based on role

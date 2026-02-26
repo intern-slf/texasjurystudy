@@ -354,7 +354,7 @@ export default async function SessionsPage({
                                   Presenter: {detail.schedule_status}
                                 </span>
                               )}
-                              {detail?.schedule_status === "rejected" && (
+                              {detail && detail.schedule_status !== "accepted" && (
                                 <ReplaceCaseModal
                                   sessionId={s.id}
                                   oldCaseId={c.case_id}

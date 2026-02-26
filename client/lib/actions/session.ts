@@ -397,12 +397,38 @@ export async function replaceCaseInSession(
     .from("session_cases")
     .insert({ session_id: sessionId, case_id: newCaseId, start_time: startTime, end_time: endTime });
 
-  // 4. Notify new presenter: set admin_scheduled_at and reset schedule_status
-  const adminScheduledAt = new Date(`${sessionDate}T${endTime}:00`).toISOString();
+  // 4. Set admin_scheduled_at and reset schedule_status for new case
+  const endHHMM = endTime?.slice(0, 5); // guard against "HH:MM:SS" from Postgres
+  const adminScheduledAt = new Date(`${sessionDate}T${endHHMM}:00`).toISOString();
   await supabase
     .from("cases")
     .update({ admin_scheduled_at: adminScheduledAt, schedule_status: null })
     .eq("id", newCaseId);
+
+  // 5. Notify new presenter — same as rescheduleSession
+  const newDateStr = new Date(sessionDate).toLocaleDateString("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+
+  const { data: caseRow } = await supabase
+    .from("cases")
+    .select("user_id")
+    .eq("id", newCaseId)
+    .single();
+
+  if (caseRow?.user_id) {
+    try {
+      const { data: userData } = await supabaseAdmin.auth.admin.getUserById(caseRow.user_id);
+      if (userData?.user?.email) {
+        await sendRescheduleEmail(userData.user.email, newDateStr, "presenter");
+      }
+    } catch (e) {
+      console.error(`Notification email failed for new presenter ${caseRow.user_id}:`, e);
+    }
+  }
 
   revalidatePath("/dashboard/Admin/sessions");
 }
