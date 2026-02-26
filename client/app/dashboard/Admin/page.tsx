@@ -40,6 +40,7 @@ interface JuryCase {
   scheduled_at: string | null;
   schedule_status: string | null;
   admin_scheduled_at: string | null;
+  is_in_session: boolean;
 }
 
 type AdminTab = "requested" | "approved";
@@ -60,7 +61,7 @@ async function proposeSchedule(formData: FormData) {
     .from("cases")
     .update({
       admin_scheduled_at: date,
-      schedule_status: null,
+      schedule_status: "pending",
     })
     .eq("id", caseId);
 
@@ -144,6 +145,9 @@ export default async function AdminDashboardPage({
         id,
         original_name,
         storage_path
+      ),
+      session_cases (
+        session_id
       )
     `)
     .eq("admin_status", tab === "requested" ? "all" : tab)
@@ -171,6 +175,7 @@ export default async function AdminDashboardPage({
       return {
         ...c,
         case_documents: docsWithUrls,
+        is_in_session: (c.session_cases ?? []).length > 0,
       };
     })
   );
@@ -178,8 +183,8 @@ export default async function AdminDashboardPage({
   // On the approved tab, show unscheduled cases first
   if (tab === "approved") {
     cases.sort((a, b) => {
-      if (!a.admin_scheduled_at && b.admin_scheduled_at) return -1;
-      if (a.admin_scheduled_at && !b.admin_scheduled_at) return 1;
+      if (!a.is_in_session && b.is_in_session) return -1;
+      if (a.is_in_session && !b.is_in_session) return 1;
       return 0;
     });
   }
@@ -290,7 +295,7 @@ export default async function AdminDashboardPage({
                   <TableRow
                     key={c.id}
                     className={`group transition-colors ${
-                      c.admin_scheduled_at
+                      c.is_in_session
                         ? "opacity-50 bg-muted/20 hover:bg-muted/20 cursor-not-allowed"
                         : "hover:bg-muted/40"
                     }`}
@@ -303,7 +308,7 @@ export default async function AdminDashboardPage({
                           name="selectedCases"
                           value={c.id}
                           form="buildSessionForm"
-                          disabled={!!c.admin_scheduled_at}
+                          disabled={c.is_in_session}
                           className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
                         />
                       </TableCell>
@@ -318,7 +323,7 @@ export default async function AdminDashboardPage({
                        <FileText className="h-4 w-4 text-muted-foreground" />
                         {c.title}
                       </Link>
-                      {c.admin_scheduled_at && (
+                      {c.is_in_session && (
                         <span className="ml-2 inline-block text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded px-2 py-0.5">
                           Scheduled
                         </span>

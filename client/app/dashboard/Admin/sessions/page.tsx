@@ -15,6 +15,7 @@ import {
 import { getAncestorCaseIds, getLineageParticipantIds } from "@/lib/case-lineage";
 import InviteMoreModal, { type Candidate } from "@/components/InviteMoreModal";
 import RescheduleModal from "@/components/RescheduleModal";
+import ReplaceCaseModal, { type ReplacementCandidate } from "@/components/ReplaceCaseModal";
 
 
 async function submitSession(formData: FormData) {
@@ -182,6 +183,21 @@ export default async function SessionsPage({
      FETCH SESSIONS
   ========================= */
 
+  // Fetch all case IDs already in any session
+  const { data: allSessionCaseRows } = await supabase
+    .from("session_cases")
+    .select("case_id");
+  const scheduledCaseIds = new Set((allSessionCaseRows ?? []).map((r) => r.case_id));
+
+  // Fetch approved cases not yet in any session (replacement candidates)
+  const { data: rawCandidates } = await supabase
+    .from("cases")
+    .select("id, title")
+    .eq("admin_status", "approved");
+  const replacementCandidates: ReplacementCandidate[] = (rawCandidates ?? []).filter(
+    (c) => !scheduledCaseIds.has(c.id)
+  );
+
   const { data: sessions } = await supabase
     .from("sessions")
     .select("id, session_date, created_by")
@@ -337,6 +353,17 @@ export default async function SessionsPage({
                                 }`}>
                                   Presenter: {detail.schedule_status}
                                 </span>
+                              )}
+                              {detail?.schedule_status === "rejected" && (
+                                <ReplaceCaseModal
+                                  sessionId={s.id}
+                                  oldCaseId={c.case_id}
+                                  oldCaseTitle={detail?.title ?? "Unknown"}
+                                  startTime={c.start_time}
+                                  endTime={c.end_time}
+                                  sessionDate={s.session_date}
+                                  candidates={replacementCandidates}
+                                />
                               )}
                               <span className="text-slate-500">
                                 {c.start_time} → {c.end_time}

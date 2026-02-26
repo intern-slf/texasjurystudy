@@ -57,13 +57,36 @@ export async function addCasesToSession(
   // Compute and store admin_scheduled_at on each case
   // by combining session_date + case end_time
   if (sessionDate) {
+    // Fetch current scheduled_at for all cases in one query
+    const { data: existingCases } = await supabase
+      .from("cases")
+      .select("id, scheduled_at")
+      .in("id", cases.map((c) => c.caseId));
+
+    const scheduledAtMap = Object.fromEntries(
+      (existingCases ?? []).map((c) => [c.id, c.scheduled_at as string | null])
+    );
+
     for (const c of cases) {
-      // sessionDate is "YYYY-MM-DD", c.end is "HH:MM"
       const adminScheduledAt = new Date(`${sessionDate}T${c.end}:00`).toISOString();
+      const presenterScheduledAt = scheduledAtMap[c.caseId] ?? null;
+
+      // If admin time differs from presenter's preferred time, reset status so
+      // presenter must re-confirm via the notification popup
+      const timesMatch =
+        presenterScheduledAt !== null &&
+        new Date(presenterScheduledAt).getTime() === new Date(adminScheduledAt).getTime();
+
+      const updatePayload: Record<string, string | null> = {
+        admin_scheduled_at: adminScheduledAt,
+      };
+      if (!timesMatch) {
+        updatePayload.schedule_status = null;
+      }
 
       await supabase
         .from("cases")
-        .update({ admin_scheduled_at: adminScheduledAt })
+        .update(updatePayload)
         .eq("id", c.caseId);
     }
   }
@@ -343,4 +366,43 @@ export async function respondToInvite(
   if (error) throw error;
 }
 
+/* =========================
+   REPLACE CASE IN SESSION
+========================= */
+export async function replaceCaseInSession(
+  sessionId: string,
+  oldCaseId: string,
+  newCaseId: string,
+  startTime: string,
+  endTime: string,
+  sessionDate: string
+) {
+  const supabase = await createClient();
 
+  // 1. Remove old case from session
+  await supabase
+    .from("session_cases")
+    .delete()
+    .eq("session_id", sessionId)
+    .eq("case_id", oldCaseId);
+
+  // 2. Reset old case back to unscheduled state
+  await supabase
+    .from("cases")
+    .update({ admin_scheduled_at: null, schedule_status: null })
+    .eq("id", oldCaseId);
+
+  // 3. Add new case to session with the same time slot
+  await supabase
+    .from("session_cases")
+    .insert({ session_id: sessionId, case_id: newCaseId, start_time: startTime, end_time: endTime });
+
+  // 4. Notify new presenter: set admin_scheduled_at and reset schedule_status
+  const adminScheduledAt = new Date(`${sessionDate}T${endTime}:00`).toISOString();
+  await supabase
+    .from("cases")
+    .update({ admin_scheduled_at: adminScheduledAt, schedule_status: null })
+    .eq("id", newCaseId);
+
+  revalidatePath("/dashboard/Admin/sessions");
+}

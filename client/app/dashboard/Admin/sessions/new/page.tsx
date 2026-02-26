@@ -69,7 +69,7 @@ export default async function NewSessionPage({
   const { data: cases } = selectedIds.length
     ? await supabase
       .from("cases")
-      .select("id, title, scheduled_at, schedule_status, filters")
+      .select("id, title, scheduled_at, admin_scheduled_at, schedule_status, filters")
       .in("id", selectedIds)
       .order("created_at", { ascending: false })
     : { data: [] };
@@ -322,30 +322,43 @@ export default async function NewSessionPage({
               <div key={c.id} className="border rounded p-4 flex flex-col gap-3">
                 <div className="flex justify-between items-start w-full">
                   <div className="font-medium text-base">{c.title}</div>
-                  {c.scheduled_at ? (
-                    <div className="text-xs text-right">
-                      <div className="text-slate-500 mb-1">
-                        {new Date(c.scheduled_at).toLocaleString()}
+                  <div className="text-xs text-right space-y-1">
+                    {c.admin_scheduled_at && (
+                      <div>
+                        <span className="text-slate-400 text-[10px]">Admin proposed: </span>
+                        <span className="text-slate-600 font-medium">
+                          {new Date(c.admin_scheduled_at).toLocaleString()}
+                        </span>
                       </div>
-                      {(!c.schedule_status || c.schedule_status === "pending") && (
-                        <span className="inline-block text-yellow-700 bg-yellow-50 border border-yellow-200 px-2 py-0.5 rounded text-[10px] font-semibold">
-                          Waiting response
+                    )}
+                    {c.scheduled_at ? (
+                      <div>
+                        <span className="text-slate-400 text-[10px]">Presenter preferred: </span>
+                        <span className="text-slate-600">
+                          {new Date(c.scheduled_at).toLocaleString()}
                         </span>
-                      )}
-                      {c.schedule_status === "accepted" && (
-                        <span className="inline-block text-green-700 bg-green-50 border border-green-200 px-2 py-0.5 rounded text-[10px] font-semibold">
-                          Accepted
-                        </span>
-                      )}
-                      {c.schedule_status === "rejected" && (
-                        <span className="inline-block text-red-700 bg-red-50 border border-red-200 px-2 py-0.5 rounded text-[10px] font-semibold">
-                          Rejected
-                        </span>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="text-xs text-slate-400 italic">No time proposed</div>
-                  )}
+                        <div className="mt-0.5">
+                          {(!c.schedule_status || c.schedule_status === "pending") && (
+                            <span className="inline-block text-yellow-700 bg-yellow-50 border border-yellow-200 px-2 py-0.5 rounded text-[10px] font-semibold">
+                              Waiting response
+                            </span>
+                          )}
+                          {c.schedule_status === "accepted" && (
+                            <span className="inline-block text-green-700 bg-green-50 border border-green-200 px-2 py-0.5 rounded text-[10px] font-semibold">
+                              Accepted
+                            </span>
+                          )}
+                          {c.schedule_status === "rejected" && (
+                            <span className="inline-block text-red-700 bg-red-50 border border-red-200 px-2 py-0.5 rounded text-[10px] font-semibold">
+                              Rejected
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-slate-400 italic">No presenter preference</div>
+                    )}
+                  </div>
                 </div>
 
                 <CaseTimeInputs caseId={c.id} />
