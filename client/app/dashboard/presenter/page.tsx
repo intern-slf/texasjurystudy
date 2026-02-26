@@ -20,6 +20,7 @@ import { Calendar, Clock, AlertCircle, FileText, Upload, ArrowRight } from "luci
 import { getAncestorCaseIds } from "@/lib/case-lineage";
 import PreviousParticipantsModal from "@/components/PreviousParticipantsModal";
 import ReschedulePopup, { type RescheduleItem } from "@/components/ReschedulePopup";
+import LocalDateTime from "@/components/LocalDateTime";
 
 // Define a proper interface for your case object to replace 'any'
 interface Case {
@@ -385,7 +386,7 @@ export default async function PresenterDashboard({
                          {(c.admin_scheduled_at || c.scheduled_at) && (
                             <Badge variant="secondary" className="flex items-center gap-1.5 font-medium">
                                 <Calendar className="h-3 w-3" />
-                                {new Date((c.admin_scheduled_at || c.scheduled_at) as string).toLocaleDateString()}
+                                <LocalDateTime iso={(c.admin_scheduled_at || c.scheduled_at) as string} mode="date" />
                             </Badge>
                         )}
                     </div>
@@ -421,7 +422,7 @@ export default async function PresenterDashboard({
                                 <div>
                                     <p className="text-sm font-medium">Session Date (Admin Scheduled)</p>
                                     <p className="text-xs text-muted-foreground">
-                                        {new Date(c.admin_scheduled_at).toLocaleString()}
+                                        <LocalDateTime iso={c.admin_scheduled_at} />
                                     </p>
                                 </div>
                             </div>
