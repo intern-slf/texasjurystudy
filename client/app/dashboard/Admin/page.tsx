@@ -15,8 +15,10 @@ import {
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { sendApprovalEmail } from "@/lib/mail";
+import { localToUTC } from "@/lib/timezone";
 import { AdminActionButton } from "@/components/AdminActionButton";
 import { Button } from "@/components/ui/button";
+import TimezoneInput from "@/components/TimezoneInput";
 import { Calendar, FileText, Users } from "lucide-react"; // User icon removed - unused
 
 /* =========================
@@ -53,14 +55,18 @@ async function proposeSchedule(formData: FormData) {
   "use server";
 
   const caseId = formData.get("caseId") as string;
-  const date = formData.get("scheduled_at") as string;
+  const raw = formData.get("scheduled_at") as string; // "YYYY-MM-DDTHH:MM"
+  const tz = formData.get("tz") as string || "UTC";
+
+  const [datePart, timePart] = raw.split("T");
+  const adminScheduledAt = localToUTC(datePart, timePart, tz);
 
   const supabase = await createClient();
 
   await supabase
     .from("cases")
     .update({
-      admin_scheduled_at: date,
+      admin_scheduled_at: adminScheduledAt,
       schedule_status: "pending",
     })
     .eq("id", caseId);
@@ -150,7 +156,10 @@ export default async function AdminDashboardPage({
         session_id
       )
     `)
-    .eq("admin_status", tab === "requested" ? "all" : tab)
+    .in(
+      "admin_status",
+      tab === "requested" ? ["all"] : ["approved", "submitted"]
+    )
     .order("created_at", { ascending: false });
 
   /* =========================
@@ -438,6 +447,7 @@ export default async function AdminDashboardPage({
                           <>
                             <form action={proposeSchedule} className="flex gap-2 items-center">
                               <input type="hidden" name="caseId" value={c.id} />
+                              <TimezoneInput />
                               <input
                                 type="datetime-local"
                                 name="scheduled_at"

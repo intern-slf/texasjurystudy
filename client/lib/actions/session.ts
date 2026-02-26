@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { sendEmail, sendRescheduleEmail } from "@/lib/mail";
 import { revalidatePath } from "next/cache";
+import { localToUTC, localToUTCTime } from "@/lib/timezone";
 
 /* =========================
    CREATE SESSION
@@ -40,15 +41,17 @@ export async function createSession(sessionDate: string) {
 export async function addCasesToSession(
   sessionId: string,
   cases: { caseId: string; start: string; end: string }[],
-  sessionDate?: string
+  sessionDate?: string,
+  timezone?: string
 ) {
   const supabase = await createClient();
 
+  const tz = timezone || "UTC";
   const rows = cases.map((c) => ({
     session_id: sessionId,
     case_id: c.caseId,
-    start_time: c.start,
-    end_time: c.end,
+    start_time: sessionDate ? localToUTCTime(sessionDate, c.start, tz) : c.start,
+    end_time:   sessionDate ? localToUTCTime(sessionDate, c.end,   tz) : c.end,
   }));
 
   const { error } = await supabase.from("session_cases").insert(rows);
@@ -68,7 +71,7 @@ export async function addCasesToSession(
     );
 
     for (const c of cases) {
-      const adminScheduledAt = new Date(`${sessionDate}T${c.end}:00`).toISOString();
+      const adminScheduledAt = localToUTC(sessionDate, c.end, tz);
       const presenterScheduledAt = scheduledAtMap[c.caseId] ?? null;
 
       // If admin time differs from presenter's preferred time, reset status so
@@ -251,7 +254,8 @@ export async function inviteParticipants(
 export async function rescheduleSession(
   sessionId: string,
   newDate: string, // "YYYY-MM-DD"
-  caseUpdates: { caseId: string; start: string; end: string }[]
+  caseUpdates: { caseId: string; start: string; end: string }[],
+  timezone?: string
 ) {
   const supabase = await createClient();
 
@@ -264,16 +268,19 @@ export async function rescheduleSession(
   if (sessionError) throw sessionError;
 
   // 2. Update session_cases times + cases.admin_scheduled_at
+  const tz = timezone || "UTC";
   for (const cu of caseUpdates) {
+    const startUtc = localToUTCTime(newDate, cu.start.slice(0, 5), tz);
+    const endUtc   = localToUTCTime(newDate, cu.end.slice(0, 5),   tz);
+
     await supabase
       .from("session_cases")
-      .update({ start_time: cu.start, end_time: cu.end })
+      .update({ start_time: startUtc, end_time: endUtc })
       .eq("session_id", sessionId)
       .eq("case_id", cu.caseId);
 
-    const endHHMM = cu.end?.slice(0, 5); // guard against "HH:MM:SS" from Postgres
-    if (endHHMM && newDate) {
-      const adminScheduledAt = new Date(`${newDate}T${endHHMM}:00`).toISOString();
+    if (endUtc && newDate) {
+      const adminScheduledAt = localToUTC(newDate, cu.end.slice(0, 5), tz);
       await supabase
         .from("cases")
         .update({ admin_scheduled_at: adminScheduledAt })
@@ -397,9 +404,9 @@ export async function replaceCaseInSession(
     .from("session_cases")
     .insert({ session_id: sessionId, case_id: newCaseId, start_time: startTime, end_time: endTime });
 
-  // 4. Set admin_scheduled_at and reset schedule_status for new case
-  const endHHMM = endTime?.slice(0, 5); // guard against "HH:MM:SS" from Postgres
-  const adminScheduledAt = new Date(`${sessionDate}T${endHHMM}:00`).toISOString();
+  // 4. Set admin_scheduled_at — endTime is already UTC (from session_cases)
+  const endHHMM = endTime?.slice(0, 5);
+  const adminScheduledAt = new Date(`${sessionDate}T${endHHMM}:00Z`).toISOString();
   await supabase
     .from("cases")
     .update({ admin_scheduled_at: adminScheduledAt, schedule_status: null })

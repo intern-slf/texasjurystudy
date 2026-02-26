@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { rescheduleSession } from "@/lib/actions/session";
+import { utcTimeToLocal } from "@/lib/timezone";
 
 interface CaseEntry {
   case_id: string;
@@ -18,11 +19,15 @@ interface Props {
 }
 
 export default function RescheduleModal({ sessionId, sessionDate, cases }: Props) {
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+  const toLocal = (utcTime: string) => utcTimeToLocal(sessionDate, utcTime, tz);
+
   const [isOpen, setIsOpen] = useState(false);
   const [date, setDate] = useState(sessionDate);
   const [times, setTimes] = useState<Record<string, { start: string; end: string }>>(
     Object.fromEntries(
-      cases.map((c) => [c.case_id, { start: c.start_time?.slice(0, 5), end: c.end_time?.slice(0, 5) }])
+      cases.map((c) => [c.case_id, { start: toLocal(c.start_time), end: toLocal(c.end_time) }])
     )
   );
   const [isPending, startTransition] = useTransition();
@@ -34,7 +39,7 @@ export default function RescheduleModal({ sessionId, sessionDate, cases }: Props
     setDate(sessionDate);
     setTimes(
       Object.fromEntries(
-        cases.map((c) => [c.case_id, { start: c.start_time?.slice(0, 5), end: c.end_time?.slice(0, 5) }])
+        cases.map((c) => [c.case_id, { start: toLocal(c.start_time), end: toLocal(c.end_time) }])
       )
     );
     setDone(false);
@@ -51,9 +56,10 @@ export default function RescheduleModal({ sessionId, sessionDate, cases }: Props
       start: times[c.case_id]?.start ?? c.start_time,
       end: times[c.case_id]?.end ?? c.end_time,
     }));
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
     startTransition(async () => {
-      await rescheduleSession(sessionId, date, caseUpdates);
+      await rescheduleSession(sessionId, date, caseUpdates, tz);
       setDone(true);
       router.refresh();
       setTimeout(() => {

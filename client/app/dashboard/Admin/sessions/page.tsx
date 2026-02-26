@@ -16,6 +16,7 @@ import { getAncestorCaseIds, getLineageParticipantIds } from "@/lib/case-lineage
 import InviteMoreModal, { type Candidate } from "@/components/InviteMoreModal";
 import RescheduleModal from "@/components/RescheduleModal";
 import ReplaceCaseModal, { type ReplacementCandidate } from "@/components/ReplaceCaseModal";
+import LocalTimeRange from "@/components/LocalTimeRange";
 
 
 async function submitSession(formData: FormData) {
@@ -365,9 +366,11 @@ export default async function SessionsPage({
                                   candidates={replacementCandidates}
                                 />
                               )}
-                              <span className="text-slate-500">
-                                {c.start_time} → {c.end_time}
-                              </span>
+                              <LocalTimeRange
+                                sessionDate={s.session_date}
+                                startUtc={c.start_time}
+                                endUtc={c.end_time}
+                              />
                             </div>
                           </div>
                         );

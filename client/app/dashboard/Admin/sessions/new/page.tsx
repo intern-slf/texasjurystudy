@@ -7,6 +7,7 @@ import {
 import { redirect } from "next/navigation";
 import CreateSessionButton from "@/components/CreateSessionButton";
 import CaseTimeInputs from "@/components/CaseTimeInputs";
+import TimezoneInput from "@/components/TimezoneInput";
 import {
   combineCaseFilters,
   applyCaseFilters,
@@ -223,6 +224,7 @@ export default async function NewSessionPage({
     "use server";
 
     const date = formData.get("session_date") as string;
+    const tz = formData.get("tz") as string || "UTC";
     if (!date) throw new Error("Session date required");
 
     const sessionId = await createSession(date);
@@ -237,7 +239,7 @@ export default async function NewSessionPage({
       .filter(Boolean) as { caseId: string; start: string; end: string }[];
 
     if (selectedCases.length) {
-      await addCasesToSession(sessionId, selectedCases, date);
+      await addCasesToSession(sessionId, selectedCases, date, tz);
     }
 
     const selectedParticipants = formData.getAll("participants") as string[];
@@ -263,6 +265,7 @@ export default async function NewSessionPage({
 
   return (
     <form action={handleCreate} className="space-y-8">
+      <TimezoneInput />
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Create Session</h1>
         <Link href="/dashboard/Admin" className="text-sm underline">
