@@ -28,6 +28,7 @@ export default function NewCasePage() {
     number_of_attendees: 10,
     documentation_type: "Legal Brief", // Default to prevent null constraint error
     scheduled_at: "",
+    deadline_date: "",
   });
 
   const [filters, setFilters] = useState({
@@ -42,7 +43,6 @@ export default function NewCasePage() {
       has_children: "",
       served_armed_forces: "",
       currently_employed: "",
-      internet_access: "",
     },
     socioeconomic: {
       marital_status: [] as string[],
@@ -75,6 +75,7 @@ export default function NewCasePage() {
             number_of_attendees: data.number_of_attendees || 10,
             documentation_type: data.documentation_type || "Legal Brief",
             scheduled_at: "", // Don't pre-fill date
+            deadline_date: "", // Don't pre-fill deadline
           });
           if (data.filters) {
             setFilters(data.filters);
@@ -116,7 +117,6 @@ export default function NewCasePage() {
         has_children: filters.eligibility.has_children || "Any",
         served_armed_forces: filters.eligibility.served_armed_forces || "Any",
         currently_employed: filters.eligibility.currently_employed || "Any",
-        internet_access: filters.eligibility.internet_access || "Any",
       },
       socioeconomic: {
         marital_status: filters.socioeconomic.marital_status,
@@ -137,6 +137,7 @@ export default function NewCasePage() {
         documentation_type: form.documentation_type, // Now explicitly handled
         status: "current",
         scheduled_at: form.scheduled_at ? new Date(form.scheduled_at).toISOString() : null,
+        deadline_date: form.deadline_date ? new Date(form.deadline_date).toISOString() : null,
         filters: softFilterPayload,
         parent_case_id: parentId || null,
       })
@@ -219,6 +220,11 @@ export default function NewCasePage() {
                   <label className="text-sm font-medium">Preferable Date</label>
                   <input type="datetime-local" className="input w-full" value={form.scheduled_at} onChange={(e) => setForm({ ...form, scheduled_at: e.target.value })} />
                 </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Deadline Date</label>
+                  <input type="datetime-local" className="input w-full" value={form.deadline_date} onChange={(e) => setForm({ ...form, deadline_date: e.target.value })} />
+                </div>
               </div>
               
               <div className="p-6 bg-primary/5 rounded-2xl border border-primary/10 space-y-4">
@@ -254,7 +260,6 @@ export default function NewCasePage() {
                     <YesNoSelect label="Served on a jury?" value={filters.eligibility.served_on_jury} onChange={(v) => setFilters({ ...filters, eligibility: { ...filters.eligibility, served_on_jury: v } })} />
                     <YesNoSelect label="Has children?" value={filters.eligibility.has_children} onChange={(v) => setFilters({ ...filters, eligibility: { ...filters.eligibility, has_children: v } })} />
                     <YesNoSelect label="Currently employed?" value={filters.eligibility.currently_employed} onChange={(v) => setFilters({ ...filters, eligibility: { ...filters.eligibility, currently_employed: v } })} />
-                    <YesNoSelect label="Internet access?" value={filters.eligibility.internet_access} onChange={(v) => setFilters({ ...filters, eligibility: { ...filters.eligibility, internet_access: v } })} />
                   </div>
                 </div>
 

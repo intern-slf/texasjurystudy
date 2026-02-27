@@ -57,7 +57,6 @@ export default function ParticipantForm({ userId, email }: Props) {
   const [usCitizen, setUsCitizen] = useState("");
   const [hasChildren, setHasChildren] = useState("");
   const [servedArmedForces, setServedArmedForces] = useState("");
-  const [internetAccess, setInternetAccess] = useState("");
 
   // Fields fetched from confidentiality agreement
   const [firstName, setFirstName] = useState<string | null>(null);
@@ -133,7 +132,6 @@ export default function ParticipantForm({ userId, email }: Props) {
     { label: "U.S. Citizen?", value: usCitizen, setter: setUsCitizen },
     { label: "Have children?", value: hasChildren, setter: setHasChildren },
     { label: "Served in armed forces?", value: servedArmedForces, setter: setServedArmedForces },
-    { label: "Internet access?", value: internetAccess, setter: setInternetAccess },
   ];
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -145,7 +143,7 @@ export default function ParticipantForm({ userId, email }: Props) {
     if (
       !gender || !race || !state || !maritalStatus || !politicalAffiliation || 
       !educationLevel || !currentlyEmployed || !familyIncome || !referralSource ||
-      !servedOnJury || !convictedFelon || !usCitizen || !hasChildren || !servedArmedForces || !internetAccess
+      !servedOnJury || !convictedFelon || !usCitizen || !hasChildren || !servedArmedForces
     ) {
       setError("Please complete all dropdown selections.");
       setLoading(false);
@@ -203,8 +201,7 @@ export default function ParticipantForm({ userId, email }: Props) {
       has_children: hasChildren,
       served_armed_forces: servedArmedForces,
       currently_employed: currentlyEmployed,
-      internet_access: internetAccess,
-      marital_status: maritalStatus, 
+      marital_status: maritalStatus,
       political_affiliation: politicalAffiliation,
       education_level: educationLevel,
       // Fixed logic for industry field

@@ -42,6 +42,7 @@ interface JuryCase {
   scheduled_at: string | null;
   schedule_status: string | null;
   admin_scheduled_at: string | null;
+  deadline_date: string | null; // timestamptz
   is_in_session: boolean;
 }
 
@@ -147,6 +148,7 @@ export default async function AdminDashboardPage({
       scheduled_at,
       schedule_status,
       admin_scheduled_at,
+      deadline_date,
       case_documents (
         id,
         original_name,
@@ -286,6 +288,10 @@ export default async function AdminDashboardPage({
                 </TableHead>
 
                 <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Deadline
+                </TableHead>
+
+                <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   Documents
                 </TableHead>
 
@@ -406,6 +412,29 @@ export default async function AdminDashboardPage({
                       )}
                     </TableCell>
 
+                    {/* DEADLINE */}
+                    <TableCell className="py-4">
+                      {c.deadline_date ? (() => {
+                        const dl = new Date(c.deadline_date);
+                        const isPast = dl < new Date();
+                        return (
+                          <div className="flex items-center gap-2 text-sm">
+                            <Calendar className={`h-4 w-4 ${isPast ? "text-red-500" : "text-muted-foreground"}`} />
+                            <div className="flex flex-col">
+                              <span className={`font-medium ${isPast ? "text-red-600" : "text-foreground"}`}>
+                                {dl.toLocaleDateString()}
+                              </span>
+                              <span className={`text-xs ${isPast ? "text-red-400" : "text-muted-foreground"}`}>
+                                {dl.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })() : (
+                        <span className="text-xs text-muted-foreground italic">No deadline</span>
+                      )}
+                    </TableCell>
+
                     {/* DOCS */}
                     <TableCell className="py-4 space-y-1">
                       {c.case_documents.length ? (
@@ -481,7 +510,7 @@ export default async function AdminDashboardPage({
               {!cases.length && (
                 <TableRow>
                   <TableCell
-                    colSpan={9}
+                    colSpan={10}
                     className="text-center py-16 text-muted-foreground italic"
                   >
                     No cases found in this section.

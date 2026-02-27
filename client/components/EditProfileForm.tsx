@@ -90,7 +90,6 @@ export default function EditProfileForm({ participant }: Props) {
   const [usCitizen, setUsCitizen] = useState(participant.us_citizen || "");
   const [hasChildren, setHasChildren] = useState(participant.has_children || "");
   const [servedArmedForces, setServedArmedForces] = useState(participant.served_armed_forces || "");
-  const [internetAccess, setInternetAccess] = useState(participant.internet_access || "");
 
   // Employment
   const [currentlyEmployed, setCurrentlyEmployed] = useState(participant.currently_employed || "");
@@ -111,7 +110,6 @@ export default function EditProfileForm({ participant }: Props) {
     { label: "U.S. Citizen?", value: usCitizen, setter: setUsCitizen },
     { label: "Have children?", value: hasChildren, setter: setHasChildren },
     { label: "Served in armed forces?", value: servedArmedForces, setter: setServedArmedForces },
-    { label: "Internet access?", value: internetAccess, setter: setInternetAccess },
   ];
 
   function handleIdFileChange(file: File | null) {
@@ -148,7 +146,7 @@ export default function EditProfileForm({ participant }: Props) {
     if (
       !gender || !race || !state || !maritalStatus || !politicalAffiliation ||
       !educationLevel || !currentlyEmployed || !familyIncome || !referralSource ||
-      !servedOnJury || !convictedFelon || !usCitizen || !hasChildren || !servedArmedForces || !internetAccess
+      !servedOnJury || !convictedFelon || !usCitizen || !hasChildren || !servedArmedForces
     ) {
       setError("Please complete all dropdown selections.");
       setLoading(false);
@@ -200,7 +198,6 @@ export default function EditProfileForm({ participant }: Props) {
       has_children: hasChildren,
       served_armed_forces: servedArmedForces,
       currently_employed: currentlyEmployed,
-      internet_access: internetAccess,
       marital_status: maritalStatus,
       political_affiliation: politicalAffiliation,
       education_level: educationLevel,
