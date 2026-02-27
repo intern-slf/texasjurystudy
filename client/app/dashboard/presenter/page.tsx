@@ -346,8 +346,10 @@ export default async function PresenterDashboard({
               </h1>
               <p className="text-muted-foreground mt-2">
                 {tab === "current"
-                  ? "Your requested focus group cases pending admin review."
-                  : `Manage your ${tab} cases and sessions.`}
+                  ? "Cases you've submitted are awaiting admin review. You'll be notified once approved."
+                  : tab === "approved"
+                  ? "Your cases have been approved. Once the admin assigns a session date, you'll need to confirm your availability."
+                  : "Cases from completed sessions. You can restore a case or request a follow-up."}
               </p>
             </div>
             
@@ -365,9 +367,13 @@ export default async function PresenterDashboard({
                 <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mb-4">
                     <FileText className="h-6 w-6 text-muted-foreground" />
                 </div>
-              <h3 className="text-lg font-semibold">No cases found</h3>
+              <h3 className="text-lg font-semibold">No cases here yet</h3>
               <p className="text-muted-foreground mt-1">
-                You don&apos;t have any {tab} focus groups at the moment.
+                {tab === "current"
+                  ? "Submit a new case using the sidebar to get started."
+                  : tab === "approved"
+                  ? "Cases approved by the admin will appear here, waiting for a session date."
+                  : "Completed sessions will appear here once a case has been presented."}
               </p>
             </div>
           )}
@@ -398,7 +404,7 @@ export default async function PresenterDashboard({
                     <div className="space-y-4">
                         <div className="flex items-center gap-2 p-3 bg-green-500/10 text-green-700 rounded-lg border border-green-500/20">
                             <AlertCircle className="h-4 w-4" />
-                            <span className="text-sm font-medium">Approved by Admin</span>
+                            <span className="text-sm font-medium">Admin approved this case — a session will be scheduled for you.</span>
                         </div>
 
                       {/* Reschedule / pending-confirmation notice */}
@@ -407,7 +413,7 @@ export default async function PresenterDashboard({
                           <div className="flex items-center gap-2 p-3 bg-amber-50 text-amber-800 rounded-lg border border-amber-200">
                             <Clock className="h-4 w-4 shrink-0" />
                             <span className="text-sm font-medium">
-                              Session date has been set — please confirm your attendance below.
+                              The admin has scheduled a session for this case. Please accept or reject the date below.
                             </span>
                           </div>
                         )}
@@ -420,14 +426,18 @@ export default async function PresenterDashboard({
                                     <Calendar className="h-5 w-5" />
                                 </div>
                                 <div>
-                                    <p className="text-sm font-medium">Session Date (Admin Scheduled)</p>
+                                    <p className="text-sm font-medium">Scheduled Session Date</p>
                                     <p className="text-xs text-muted-foreground">
                                         <LocalDateTime iso={c.admin_scheduled_at} />
                                     </p>
                                 </div>
                             </div>
                             <Badge variant={c.schedule_status === "accepted" ? "default" : c.schedule_status === "rejected" ? "destructive" : "outline"} className="capitalize">
-                                {c.schedule_status || "Pending Action"}
+                                {c.schedule_status === "accepted"
+                                  ? "Confirmed"
+                                  : c.schedule_status === "rejected"
+                                  ? "Rejected"
+                                  : "Awaiting Your Response"}
                             </Badge>
                         </div>
                       )}
@@ -440,7 +450,7 @@ export default async function PresenterDashboard({
                               <input type="hidden" name="caseId" value={c.id} />
                               <input type="hidden" name="response" value="accepted" />
                               <Button size="sm" className="bg-green-600 hover:bg-green-700">
-                                Accept Schedule
+                                Confirm Attendance
                               </Button>
                             </form>
 
@@ -448,7 +458,7 @@ export default async function PresenterDashboard({
                               <input type="hidden" name="caseId" value={c.id} />
                               <input type="hidden" name="response" value="rejected" />
                               <Button size="sm" variant="destructive">
-                                Reject Schedule
+                                Decline
                               </Button>
                             </form>
                           </div>

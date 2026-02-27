@@ -158,7 +158,7 @@ export default function NewCasePage() {
       <div className="flex flex-col space-y-1">
         <label className="text-sm font-medium">{label}</label>
         <select className="input mt-1" value={value} onChange={(e) => onChange(e.target.value)}>
-          <option value="">No Preferenc</option>
+          <option value="">No Preference</option>
           <option value="Yes">Yes</option>
           <option value="No">No</option>
         </select>
