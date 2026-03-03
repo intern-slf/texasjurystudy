@@ -21,10 +21,10 @@ export default function Footer() {
         <p className="text-sm text-muted-foreground">
           Support:{" "}
           <a
-            href="kumarashish91011@gmail.com"
+            href="info@texasjurystudy.com"
             className="transition-colors hover:text-primary"
           >
-            kumarashish91011@gmail.com
+            info@texasjurystudy.com
           </a>
         </p>
 
