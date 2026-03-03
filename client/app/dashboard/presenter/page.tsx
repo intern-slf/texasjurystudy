@@ -107,7 +107,7 @@ export default async function PresenterDashboard({
 
   if (tab === "approved") {
     caseQuery = caseQuery
-      .eq("admin_status", "approved")
+      .in("admin_status", ["approved", "submitted"])
       .eq("status", "current");
   }
 
