@@ -17,7 +17,12 @@ const US_STATES = [
   "Virginia","Washington","West Virginia","Wisconsin","Wyoming",
 ];
 
-const DOCUMENT_TYPES = ["Legal Brief", "Witness Statement", "Expert Report", "Evidence Summary", "Other"];
+
+function getAvailabilityFromDate(dateStr: string): string[] {
+  if (!dateStr) return [];
+  const day = new Date(dateStr).getDay(); // 0=Sun, 6=Sat
+  return day === 0 || day === 6 ? ["Weekends"] : ["Weekdays"];
+}
 
 export default function NewCasePage() {
   const supabase = createClient();
@@ -76,7 +81,13 @@ export default function NewCasePage() {
             deadline_date: "", // Don't pre-fill deadline
           });
           if (data.filters) {
-            setFilters(data.filters);
+            setFilters({
+              ...data.filters,
+              socioeconomic: {
+                ...data.filters.socioeconomic,
+                availability: [], // cleared — will be recalculated when date is set
+              },
+            });
           }
         }
         setLoading(false);
@@ -193,97 +204,101 @@ export default function NewCasePage() {
         </header>
 
         {!caseId ? (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
-            {/* CASE INFO */}
-            <div className="lg:col-span-4 space-y-6">
-              <div className="space-y-4 bg-card p-6 rounded-2xl border shadow-sm">
-                <label className="text-sm font-bold uppercase tracking-wider text-primary">Case Details</label>
-                <input className="input w-full" placeholder="Case Title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
-                <textarea className="input w-full min-h-[120px]" placeholder="Case Description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
-                
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Documentation Type</label>
-                  <select 
-                    className="input w-full" 
-                    value={form.documentation_type} 
-                    onChange={(e) => setForm({ ...form, documentation_type: e.target.value })}
-                  >
-                    {DOCUMENT_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
-                  </select>
-                </div>
+          <div className="space-y-8">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
 
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Preferable Date</label>
-                  <input type="datetime-local" className="input w-full" value={form.scheduled_at} onChange={(e) => setForm({ ...form, scheduled_at: e.target.value })} />
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Deadline Date</label>
-                  <input type="datetime-local" className="input w-full" value={form.deadline_date} onChange={(e) => setForm({ ...form, deadline_date: e.target.value })} />
-                </div>
-              </div>
-              
-              <div className="p-6 bg-primary/5 rounded-2xl border border-primary/10 space-y-4">
-                <label className="text-sm font-bold uppercase tracking-wider text-primary">Age & Identity</label>
-                <div className="flex gap-4">
-                  <input type="number" className="input flex-1" placeholder="Min" value={filters.age.min} onChange={(e) => setFilters({ ...filters, age: { ...filters.age, min: e.target.value } })} />
-                  <input type="number" className="input flex-1" placeholder="Max" value={filters.age.max} onChange={(e) => setFilters({ ...filters, age: { ...filters.age, max: e.target.value } })} />
-                </div>
-                <MultiCheckbox label="Gender" options={["Male", "Female", "Other"]} values={filters.gender} onChange={(v) => setFilters({ ...filters, gender: v })} />
-                <MultiCheckbox label="Race" options={["Caucasian", "African American", "Asian", "Native American", "Middle Eastern", "Latino/Hispanic", "Multi-racial", "Other"]} values={filters.race} onChange={(v) => setFilters({ ...filters, race: v })} />
-              </div>
-
-
-
-              <div className="p-6 bg-primary/5 rounded-2xl border border-primary/10 space-y-4">
-                <label className="text-sm font-bold uppercase tracking-wider text-primary">Number of Attendees</label>
-                <div className="flex gap-4">
-                  <input type="number" className="number_of_attendees" placeholder="10" />
-                </div>
-              </div>
-
-            </div>
-            
-
-            {/* PREFERENCES SECTION */}
-            <div className="lg:col-span-8 space-y-8">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <div className="space-y-6 bg-card p-6 rounded-2xl border shadow-sm">
-                  <h3 className="font-bold text-lg border-b pb-2">Eligibility & Status</h3>
-                  <div className="grid grid-cols-1 gap-4">
-                    <YesNoSelect label="Served on a jury?" value={filters.eligibility.served_on_jury} onChange={(v) => setFilters({ ...filters, eligibility: { ...filters.eligibility, served_on_jury: v } })} />
-                    <YesNoSelect label="Has children?" value={filters.eligibility.has_children} onChange={(v) => setFilters({ ...filters, eligibility: { ...filters.eligibility, has_children: v } })} />
-                    <YesNoSelect label="Currently employed?" value={filters.eligibility.currently_employed} onChange={(v) => setFilters({ ...filters, eligibility: { ...filters.eligibility, currently_employed: v } })} />
+              {/* COLUMN 1 — Case Details + Location */}
+              <div className="space-y-6 self-start">
+                <div className="space-y-4 bg-card p-6 rounded-2xl border shadow-sm">
+                  <label className="text-sm font-bold uppercase tracking-wider text-primary">Case Details</label>
+                  <input className="input w-full" placeholder="Case Title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
+                  <textarea className="input w-full" rows={2} placeholder="Case Description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Preferable Date</label>
+                    <input
+                      type="datetime-local"
+                      className="input w-full"
+                      value={form.scheduled_at}
+                      onChange={(e) => {
+                        setForm({ ...form, scheduled_at: e.target.value });
+                        setFilters((f) => ({
+                          ...f,
+                          socioeconomic: {
+                            ...f.socioeconomic,
+                            availability: getAvailabilityFromDate(e.target.value),
+                          },
+                        }));
+                      }}
+                    />
+                    {filters.socioeconomic.availability.length > 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        Availability filter auto-set to{" "}
+                        <span className="font-semibold text-primary">
+                          {filters.socioeconomic.availability[0]}
+                        </span>
+                      </p>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Deadline Date</label>
+                    <input type="datetime-local" className="input w-full" value={form.deadline_date} onChange={(e) => setForm({ ...form, deadline_date: e.target.value })} />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Number of Attendees</label>
+                    <input type="number" className="input w-full" placeholder="10" value={form.number_of_attendees} onChange={(e) => setForm({ ...form, number_of_attendees: Number(e.target.value) })} />
                   </div>
                 </div>
 
-                <div className="space-y-6 bg-card p-6 rounded-2xl border shadow-sm">
+                <div className="bg-card p-6 rounded-2xl border shadow-sm space-y-4">
+                  <h3 className="font-bold text-lg border-b pb-2">Location</h3>
+                  <div className="max-h-48 overflow-y-auto">
+                    <MultiCheckbox label="" options={US_STATES} values={filters.location.state} onChange={(v) => setFilters({ ...filters, location: { state: v } })} />
+                  </div>
+                </div>
+              </div>
+              
+
+              {/* COLUMN 2 — Demographics & Eligibility */}
+              <div className="space-y-6">
+                <div className="bg-card p-6 rounded-2xl border shadow-sm space-y-4">
+                  <h3 className="font-bold text-lg border-b pb-2">Age & Identity</h3>
+                  <div className="flex gap-4">
+                    <input type="number" className="input flex-1" placeholder="Min Age" value={filters.age.min} onChange={(e) => setFilters({ ...filters, age: { ...filters.age, min: e.target.value } })} />
+                    <input type="number" className="input flex-1" placeholder="Max Age" value={filters.age.max} onChange={(e) => setFilters({ ...filters, age: { ...filters.age, max: e.target.value } })} />
+                  </div>
+                  <MultiCheckbox label="Gender" options={["Male", "Female", "Other"]} values={filters.gender} onChange={(v) => setFilters({ ...filters, gender: v })} />
+                  <MultiCheckbox label="Race" options={["Caucasian", "African American", "Asian", "Native American", "Middle Eastern", "Latino/Hispanic", "Multi-racial", "Other"]} values={filters.race} onChange={(v) => setFilters({ ...filters, race: v })} />
+                </div>
+
+                <div className="bg-card p-6 rounded-2xl border shadow-sm space-y-4">
+                  <h3 className="font-bold text-lg border-b pb-2">Eligibility & Status</h3>
+                  <YesNoSelect label="Served on a jury?" value={filters.eligibility.served_on_jury} onChange={(v) => setFilters({ ...filters, eligibility: { ...filters.eligibility, served_on_jury: v } })} />
+                  <YesNoSelect label="Has children?" value={filters.eligibility.has_children} onChange={(v) => setFilters({ ...filters, eligibility: { ...filters.eligibility, has_children: v } })} />
+                  <YesNoSelect label="Currently employed?" value={filters.eligibility.currently_employed} onChange={(v) => setFilters({ ...filters, eligibility: { ...filters.eligibility, currently_employed: v } })} />
+                </div>
+              </div>
+
+              {/* COLUMN 3 — Socioeconomic, Location, Political */}
+              <div className="space-y-6">
+                <div className="bg-card p-6 rounded-2xl border shadow-sm space-y-4">
                   <h3 className="font-bold text-lg border-b pb-2">Socioeconomic Factors</h3>
                   <MultiCheckbox label="Marital Status" options={["Single / Never Married", "Married", "Divorced", "Separated", "Widowed"]} values={filters.socioeconomic.marital_status} onChange={(v) => setFilters({ ...filters, socioeconomic: { ...filters.socioeconomic, marital_status: v } })} />
                   <MultiCheckbox label="Education Level" options={["Less than High School", "High School or GED", "Associate's or Technical Degree", "Some College", "Bachelor Degree", "Graduate Degree"]} values={filters.socioeconomic.education_level} onChange={(v) => setFilters({ ...filters, socioeconomic: { ...filters.socioeconomic, education_level: v } })} />
                   <MultiCheckbox label="Family Income" options={["less than $40K", "$41-75K", "$75-100K", "$101-$150K", "$150K+"]} values={filters.socioeconomic.family_income} onChange={(v) => setFilters({ ...filters, socioeconomic: { ...filters.socioeconomic, family_income: v } })} />
                 </div>
-              </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <div className="space-y-6 bg-card p-6 rounded-2xl border shadow-sm">
-                  <h3 className="font-bold text-lg border-b pb-2">Location & Schedule</h3>
-                  <div className="max-h-48 overflow-y-auto pr-2">
-                    <MultiCheckbox label="Target States" options={US_STATES} values={filters.location.state} onChange={(v) => setFilters({ ...filters, location: { state: v } })} />
-                  </div>
-                  <MultiCheckbox label="General Availability" options={["Weekdays", "Weekends"]} values={filters.socioeconomic.availability} onChange={(v) => setFilters({ ...filters, socioeconomic: { ...filters.socioeconomic, availability: v } })} />
-                </div>
-
-                <div className="space-y-6 bg-card p-6 rounded-2xl border shadow-sm">
+                <div className="bg-card p-6 rounded-2xl border shadow-sm space-y-4">
                   <h3 className="font-bold text-lg border-b pb-2">Political Context</h3>
                   <MultiCheckbox label="Political Affiliation" options={["Republican", "Democrat", "Other"]} values={filters.political_affiliation} onChange={(v) => setFilters({ ...filters, political_affiliation: v })} />
                 </div>
               </div>
 
-              <button onClick={createCaseAndUpload} disabled={loading} className="w-full py-5 bg-primary text-primary-foreground rounded-2xl font-bold text-lg shadow-xl hover:brightness-110 active:scale-[0.98] transition-all disabled:opacity-50">
-                {loading ? "Establishing Case..." : "Save Case & Filter"}
-              </button>
             </div>
+
+            {/* SAVE BUTTON — centered under all 3 columns */}
+            <button onClick={createCaseAndUpload} disabled={loading} className="w-full py-5 bg-primary text-primary-foreground rounded-2xl font-bold text-lg shadow-xl hover:brightness-110 active:scale-[0.98] transition-all disabled:opacity-50">
+              {loading ? "Establishing Case..." : "Save Case & Filter"}
+            </button>
           </div>
         ) : (
           <div className="max-w-2xl mx-auto space-y-6 text-center animate-in zoom-in-95 duration-500">
