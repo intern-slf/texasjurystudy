@@ -38,8 +38,6 @@ export default function NewCasePage() {
     location: { state: [] as string[] },
     eligibility: {
       served_on_jury: "",
-      convicted_felon: "",
-      us_citizen: "",
       has_children: "",
       served_armed_forces: "",
       currently_employed: "",
@@ -112,8 +110,6 @@ export default function NewCasePage() {
       location: { state: filters.location.state },
       eligibility: {
         served_on_jury: filters.eligibility.served_on_jury || "Any",
-        convicted_felon: filters.eligibility.convicted_felon || "Any",
-        us_citizen: filters.eligibility.us_citizen || "Any",
         has_children: filters.eligibility.has_children || "Any",
         served_armed_forces: filters.eligibility.served_armed_forces || "Any",
         currently_employed: filters.eligibility.currently_employed || "Any",
@@ -255,8 +251,6 @@ export default function NewCasePage() {
                 <div className="space-y-6 bg-card p-6 rounded-2xl border shadow-sm">
                   <h3 className="font-bold text-lg border-b pb-2">Eligibility & Status</h3>
                   <div className="grid grid-cols-1 gap-4">
-                    <YesNoSelect label="U.S. Citizen?" value={filters.eligibility.us_citizen} onChange={(v) => setFilters({ ...filters, eligibility: { ...filters.eligibility, us_citizen: v } })} />
-                    <YesNoSelect label="Convicted felon?" value={filters.eligibility.convicted_felon} onChange={(v) => setFilters({ ...filters, eligibility: { ...filters.eligibility, convicted_felon: v } })} />
                     <YesNoSelect label="Served on a jury?" value={filters.eligibility.served_on_jury} onChange={(v) => setFilters({ ...filters, eligibility: { ...filters.eligibility, served_on_jury: v } })} />
                     <YesNoSelect label="Has children?" value={filters.eligibility.has_children} onChange={(v) => setFilters({ ...filters, eligibility: { ...filters.eligibility, has_children: v } })} />
                     <YesNoSelect label="Currently employed?" value={filters.eligibility.currently_employed} onChange={(v) => setFilters({ ...filters, eligibility: { ...filters.eligibility, currently_employed: v } })} />

@@ -16,12 +16,9 @@ export interface CaseFilters {
   political_affiliation?: string[];
   eligibility?: {
     served_on_jury?: string;
-    convicted_felon?: string;
-    us_citizen?: string;
     has_children?: string;
     served_armed_forces?: string;
     currently_employed?: string;
-    internet_access?: string;
   };
   socioeconomic?: {
     education_level?: string[];
@@ -131,12 +128,9 @@ export function applyCaseFilters(
     const e = filters.eligibility;
     const fields = [
       "served_on_jury",
-      "convicted_felon",
-      "us_citizen",
       "has_children",
       "served_armed_forces",
       "currently_employed",
-      "internet_access"
     ];
 
     fields.forEach(field => {
@@ -222,12 +216,9 @@ export function combineCaseFilters(filtersList: CaseFilters[]): CaseFilters {
 
   const eligibilityFields = [
     "served_on_jury",
-    "convicted_felon",
-    "us_citizen",
     "has_children",
     "served_armed_forces",
     "currently_employed",
-    "internet_access"
   ];
 
   eligibilityFields.forEach(field => {
@@ -524,12 +515,9 @@ export function checkFilterMatch(
     case "eligibility": {
       const fields = [
         { key: "served_on_jury", label: "Served on Jury" },
-        { key: "convicted_felon", label: "Convicted Felon" },
-        { key: "us_citizen", label: "US Citizen" },
         { key: "has_children", label: "Has Children" },
         { key: "served_armed_forces", label: "Armed Forces" },
         { key: "currently_employed", label: "Employed" },
-        { key: "internet_access", label: "Internet Access" },
       ];
 
       if (hasMultipleCases) {
