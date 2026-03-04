@@ -92,7 +92,7 @@ export default async function ParticipantDashboard({
      ========================= */
   const { data: acceptedInvites } = await supabaseAdmin
     .from("session_participants")
-    .select("id, session_id, sessions(session_date, session_cases(start_time, end_time))")
+    .select("id, session_id, sessions(session_date, session_cases(start_time, end_time, cases(title)))")
     .eq("participant_id", participant.user_id)
     .eq("invite_status", "accepted");
 
@@ -247,17 +247,23 @@ export default async function ParticipantDashboard({
         </section>
       )}
 
-      {/* VIEW / EDIT PROFILE */}
-      <div className="flex gap-3">
+      {/* VIEW / EDIT PROFILE + MY SESSIONS */}
+      <div className="flex gap-3 flex-wrap">
+        <Link
+          href="/dashboard/participant/sessions"
+          className="inline-block bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+        >
+          My Sessions
+        </Link>
         <Link
           href={`/dashboard/participant/${participant.id}`}
-          className="inline-block bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+          className="inline-block bg-white border border-blue-600 text-blue-600 px-4 py-2 rounded-lg hover:bg-blue-50 transition-colors"
         >
           View Full Profile
         </Link>
         <Link
           href="/dashboard/participant/edit"
-          className="inline-block bg-white border border-blue-600 text-blue-600 px-4 py-2 rounded-lg hover:bg-blue-50 transition-colors"
+          className="inline-block bg-white border border-slate-300 text-slate-600 px-4 py-2 rounded-lg hover:bg-slate-50 transition-colors"
         >
           Edit Profile
         </Link>
