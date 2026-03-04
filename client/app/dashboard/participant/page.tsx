@@ -92,22 +92,38 @@ export default async function ParticipantDashboard({
      ========================= */
   const { data: acceptedInvites } = await supabaseAdmin
     .from("session_participants")
-    .select("id, session_id, sessions(session_date)")
+    .select("id, session_id, sessions(session_date, session_cases(start_time, end_time))")
     .eq("participant_id", participant.user_id)
     .eq("invite_status", "accepted");
+
+  const fmtUtc = (t: string) => {
+    const [h, m] = t.split(":");
+    const d = new Date();
+    d.setUTCHours(parseInt(h), parseInt(m), 0, 0);
+    return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "UTC" });
+  };
 
   const rescheduleItems: RescheduleItem[] = (acceptedInvites ?? []).flatMap((inv) => {
     const session = Array.isArray(inv.sessions) ? inv.sessions[0] : inv.sessions;
     const date: string = (session as any)?.session_date ?? "";
     if (!date) return [];
+
+    const sessionCases: any[] = (session as any)?.session_cases ?? [];
+    const starts = sessionCases.map((c: any) => c.start_time).filter(Boolean).sort();
+    const ends   = sessionCases.map((c: any) => c.end_time).filter(Boolean).sort();
+    const timeRange = starts.length && ends.length
+      ? `${fmtUtc(starts[0])} – ${fmtUtc(ends[ends.length - 1])} (UTC)`
+      : undefined;
+
     return [{
-      id: inv.session_id,       // localStorage key
-      actionId: inv.id,          // invite record id for updateInviteStatus
+      id: inv.session_id,
+      actionId: inv.id,
       title: `Session on ${date}`,
       newDate: date,
       displayDate: new Date(date).toLocaleDateString("en-US", {
         weekday: "long", year: "numeric", month: "long", day: "numeric",
       }),
+      timeRange,
     }];
   });
 
@@ -178,7 +194,14 @@ export default async function ParticipantDashboard({
 
                       if (startTimes.length === 0 || endTimes.length === 0) return "TBD";
 
-                      return `${startTimes[0]} - ${endTimes[endTimes.length - 1]}`;
+                      const fmtUtc = (t: string) => {
+                        const [h, m] = t.split(":");
+                        const d = new Date();
+                        d.setUTCHours(parseInt(h), parseInt(m), 0, 0);
+                        return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "UTC" });
+                      };
+
+                      return `${fmtUtc(startTimes[0])} – ${fmtUtc(endTimes[endTimes.length - 1])} (UTC)`;
                     })()}
                   </p>
                   <p className="text-sm text-slate-500">

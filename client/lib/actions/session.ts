@@ -117,6 +117,28 @@ export async function inviteParticipants(
 
   if (error) throw error;
 
+  // Fetch case times for this session to include in emails
+  const { data: sessionCaseRows } = await supabase
+    .from("session_cases")
+    .select("start_time, end_time")
+    .eq("session_id", sessionId);
+
+  const formatUtcTime = (t: string) => {
+    const [h, m] = t.split(":");
+    const d = new Date();
+    d.setUTCHours(parseInt(h), parseInt(m), 0, 0);
+    return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "UTC" });
+  };
+
+  let timeStr = "TBD";
+  if (sessionCaseRows && sessionCaseRows.length > 0) {
+    const starts = sessionCaseRows.map((r) => r.start_time).filter(Boolean).sort();
+    const ends   = sessionCaseRows.map((r) => r.end_time).filter(Boolean).sort();
+    if (starts.length && ends.length) {
+      timeStr = `${formatUtcTime(starts[0])} – ${formatUtcTime(ends[ends.length - 1])} (UTC)`;
+    }
+  }
+
   // Send invitation emails to each participant
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
 
@@ -196,6 +218,8 @@ export async function inviteParticipants(
                 <div style="background-color: #f8fafc; padding: 15px; border-radius: 8px; margin: 20px 0;">
                   <p style="margin: 0; color: #475569; font-size: 14px; text-transform: uppercase; font-weight: bold; letter-spacing: 0.05em;">Session Date</p>
                   <p style="margin: 5px 0 0 0; font-size: 18px; font-weight: 600;">${dateStr}</p>
+                  <p style="margin: 8px 0 0 0; color: #475569; font-size: 14px; text-transform: uppercase; font-weight: bold; letter-spacing: 0.05em;">Session Time</p>
+                  <p style="margin: 5px 0 0 0; font-size: 18px; font-weight: 600;">${timeStr}</p>
                 </div>
 
                 <p style="font-size: 15px; color: #64748b;">Please respond by selecting an option below:</p>

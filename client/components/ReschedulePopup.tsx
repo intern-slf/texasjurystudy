@@ -10,6 +10,7 @@ export interface RescheduleItem {
   title: string;
   newDate: string;     // raw value stored in localStorage for comparison
   displayDate: string; // human-readable
+  timeRange?: string;  // e.g. "9:00 AM – 11:00 AM (UTC)"
 }
 
 interface Props {
@@ -100,8 +101,13 @@ export default function ReschedulePopup({ items, role, onAccept, onDecline }: Pr
                 <div>
                   <p className="text-sm font-semibold text-amber-900">{item.title}</p>
                   <p className="text-xs text-amber-700 mt-0.5">
-                    New date: <span className="font-medium">{item.displayDate}</span>
+                    Date: <span className="font-medium">{item.displayDate}</span>
                   </p>
+                  {item.timeRange && (
+                    <p className="text-xs text-amber-700 mt-0.5">
+                      Time: <span className="font-medium">{item.timeRange}</span>
+                    </p>
+                  )}
                 </div>
 
                 <div className="flex gap-2">
