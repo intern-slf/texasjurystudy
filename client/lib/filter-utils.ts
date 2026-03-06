@@ -19,6 +19,9 @@ export interface CaseFilters {
     has_children?: string;
     served_armed_forces?: string;
     currently_employed?: string;
+    convicted_felon?: string;
+    us_citizen?: string;
+    internet_access?: string;
   };
   socioeconomic?: {
     education_level?: string[];
