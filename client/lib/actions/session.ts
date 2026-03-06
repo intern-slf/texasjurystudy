@@ -123,11 +123,11 @@ export async function inviteParticipants(
     .select("start_time, end_time")
     .eq("session_id", sessionId);
 
-  const formatUtcTime = (t: string) => {
+  const formatCentralTime = (t: string) => {
     const [h, m] = t.split(":");
     const d = new Date();
     d.setUTCHours(parseInt(h), parseInt(m), 0, 0);
-    return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "UTC" });
+    return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Chicago" });
   };
 
   let timeStr = "TBD";
@@ -135,7 +135,7 @@ export async function inviteParticipants(
     const starts = sessionCaseRows.map((r) => r.start_time).filter(Boolean).sort();
     const ends   = sessionCaseRows.map((r) => r.end_time).filter(Boolean).sort();
     if (starts.length && ends.length) {
-      timeStr = `${formatUtcTime(starts[0])} – ${formatUtcTime(ends[ends.length - 1])} (UTC)`;
+      timeStr = `${formatCentralTime(starts[0])} – ${formatCentralTime(ends[ends.length - 1])} CT`;
     }
   }
 
