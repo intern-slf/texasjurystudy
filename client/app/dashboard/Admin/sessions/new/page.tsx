@@ -21,6 +21,9 @@ import {
 } from "@/lib/filter-utils";
 import { getAncestorCaseIds, getLineageParticipantIds } from "@/lib/case-lineage";
 import Link from "next/link";
+import SelectAllParticipants from "@/components/SelectAllParticipants";
+import ShowMoreButton from "@/components/ShowMoreButton";
+import CheckboxRestorer from "@/components/CheckboxRestorer";
 
 /* =========================
    PAGE
@@ -55,13 +58,14 @@ export default async function NewSessionPage({
 
   const isOldData = preferredTable === "oldData";
   const testTable = preferredTable;
-  const minRequired = params?.limit ? parseInt(params.limit) : 50;
+  const minRequired = params?.limit ? parseInt(params.limit) : 30;
 
   const selectedIds = params?.selectedCases
     ? Array.isArray(params.selectedCases)
       ? params.selectedCases
       : [params.selectedCases]
     : [];
+
 
   /* =========================
      FETCH ONLY SELECTED CASES
@@ -121,6 +125,7 @@ export default async function NewSessionPage({
   let participants: any[] = [];
   const seenIds = new Set<string>();
   const nowIso = new Date().toISOString();
+
 
   // Fetch blacklisted user IDs from roles table (role = 'blacklisted')
   const { data: blacklistedRoles } = await supabase
@@ -183,11 +188,10 @@ export default async function NewSessionPage({
     // });
 
     if (batch && batch.length > 0) {
-      let newPeeps = batch.filter((p: any) => {
+      const newPeeps = batch.filter((p: any) => {
         const pId = p.user_id || p.id;
         return !seenIds.has(pId);
       });
-      newPeeps = newPeeps.sort(() => Math.random() - 0.5);
 
       newPeeps.forEach((p: any) => {
         const pId = p.user_id || p.id;
@@ -215,6 +219,7 @@ export default async function NewSessionPage({
 
   participants = attachMultiCaseScores(participants, filtersList);
   participants = sortParticipantsByMultiCaseMatch(participants);
+  participants = participants.slice(0, minRequired);
 
   /* =========================
      SERVER ACTION
@@ -374,7 +379,11 @@ export default async function NewSessionPage({
 
         {/* RIGHT - PARTICIPANTS */}
         <div className="space-y-4">
-          <h2 className="font-semibold">Recommended Participants</h2>
+          <CheckboxRestorer />
+          <div className="flex items-center justify-between">
+            <h2 className="font-semibold">Recommended Participants</h2>
+            <SelectAllParticipants total={participants.length} />
+          </div>
 
           <div className="border rounded divide-y max-h-[500px] overflow-y-auto">
             {participants?.map((p) => {
@@ -535,15 +544,7 @@ export default async function NewSessionPage({
 
           {/* ====== SHOW MORE BUTTON ====== */}
           <div className="mt-2">
-            <Link
-              href={{
-                query: { ...params, limit: minRequired + 50 },
-              }}
-              scroll={false}
-              className="block w-full text-center py-2 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded border border-blue-200 transition-colors"
-            >
-              Show More Participants... (currently {participants.length})
-            </Link>
+            <ShowMoreButton nextLimit={minRequired + 30} />
           </div>
         </div>
       </div>
