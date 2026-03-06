@@ -174,11 +174,12 @@ async function fetchCandidates(
 export default async function SessionsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ created?: string }>;
+  searchParams: Promise<{ created?: string; tab?: string }>;
 }) {
   const supabase = await createClient();
   const params = await searchParams;
   const showSuccess = params?.created === "1";
+  const activeTab = params?.tab === "past" ? "past" : "upcoming";
 
   /* =========================
      FETCH SESSIONS
@@ -272,8 +273,23 @@ export default async function SessionsPage({
     })
   );
 
-  // Sort: unnotified sessions first
-  enrichedSessions.sort((a, b) => Number(a.alreadySubmitted) - Number(b.alreadySubmitted));
+  // Split into upcoming and past based on today's date
+  const todayStr = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+
+  const upcomingSessions = enrichedSessions
+    .filter(({ s }) => s.session_date >= todayStr)
+    .sort((a, b) => {
+      // upcoming: sort by date ascending, unnotified first within same date
+      if (a.s.session_date !== b.s.session_date)
+        return a.s.session_date < b.s.session_date ? -1 : 1;
+      return Number(a.alreadySubmitted) - Number(b.alreadySubmitted);
+    });
+
+  const pastSessions = enrichedSessions
+    .filter(({ s }) => s.session_date < todayStr)
+    .sort((a, b) => (a.s.session_date < b.s.session_date ? 1 : -1)); // most recent first
+
+  const displayedSessions = activeTab === "past" ? pastSessions : upcomingSessions;
 
   return (
     <div className="space-y-8">
@@ -297,9 +313,43 @@ export default async function SessionsPage({
         </Link>
       </div>
 
+      {/* TABS */}
+      <div className="flex gap-1 border-b">
+        <Link
+          href="/dashboard/Admin/sessions?tab=upcoming"
+          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            activeTab === "upcoming"
+              ? "border-blue-600 text-blue-600"
+              : "border-transparent text-slate-500 hover:text-slate-700"
+          }`}
+        >
+          Upcoming Sessions
+          {upcomingSessions.length > 0 && (
+            <span className="ml-2 text-xs bg-blue-100 text-blue-700 rounded-full px-1.5 py-0.5">
+              {upcomingSessions.length}
+            </span>
+          )}
+        </Link>
+        <Link
+          href="/dashboard/Admin/sessions?tab=past"
+          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            activeTab === "past"
+              ? "border-blue-600 text-blue-600"
+              : "border-transparent text-slate-500 hover:text-slate-700"
+          }`}
+        >
+          Past Sessions
+          {pastSessions.length > 0 && (
+            <span className="ml-2 text-xs bg-slate-100 text-slate-600 rounded-full px-1.5 py-0.5">
+              {pastSessions.length}
+            </span>
+          )}
+        </Link>
+      </div>
+
       {/* LIST */}
-      {enrichedSessions.length ? (
-        enrichedSessions.map(({ s, scases, caseDetails, alreadySubmitted, sParticipants, participantDetails, candidates }) => (
+      {displayedSessions.length ? (
+        displayedSessions.map(({ s, scases, caseDetails, alreadySubmitted, sParticipants, participantDetails, candidates }) => (
           <div
             key={s.id}
             className="border rounded p-6 space-y-6 bg-white shadow-sm"
@@ -445,7 +495,7 @@ export default async function SessionsPage({
         ))
       ) : (
         <div className="text-slate-400 italic">
-          No sessions created yet.
+          {activeTab === "past" ? "No past sessions found." : "No upcoming sessions scheduled."}
         </div>
       )}
     </div>
