@@ -382,7 +382,7 @@ export default async function NewSessionPage({
           <CheckboxRestorer />
           <div className="flex items-center justify-between">
             <h2 className="font-semibold">Recommended Participants</h2>
-            <SelectAllParticipants total={participants.length} />
+            <SelectAllParticipants total={participants.length} isOldData={isOldData} />
           </div>
 
           <div className="border rounded divide-y max-h-[500px] overflow-y-auto">
