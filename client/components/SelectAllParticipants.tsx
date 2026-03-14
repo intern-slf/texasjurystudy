@@ -43,10 +43,20 @@ export default function SelectAllParticipants({
       let emails: string[] = [];
 
       if (isOldData) {
-        const { data, error } = await supabase
+        // pId in the page is `p.user_id || p.id`, so try user_id first, fallback to id
+        let { data, error } = await supabase
           .from("oldData")
           .select("email")
-          .in("id", selectedIds);
+          .in("user_id", selectedIds);
+        if (!error && (!data || data.length === 0)) {
+          const res = await supabase
+            .from("oldData")
+            .select("email")
+            .in("id", selectedIds);
+          data = res.data;
+          error = res.error;
+        }
+        console.log("[CSV] oldData query →", { selectedIds, data, error });
         if (error) throw error;
         emails = (data ?? []).map((row: { email: string }) => row.email).filter(Boolean);
       } else {
