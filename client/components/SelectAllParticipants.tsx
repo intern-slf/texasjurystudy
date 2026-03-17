@@ -40,35 +40,42 @@ export default function SelectAllParticipants({
     try {
       const supabase = createClient();
 
-      let emails: string[] = [];
+      type ParticipantRow = { email: string; first_name: string | null; last_name: string | null };
+      let rows: ParticipantRow[] = [];
 
       if (isOldData) {
         // pId in the page is `p.user_id || p.id`, so try user_id first, fallback to id
         let { data, error } = await supabase
           .from("oldData")
-          .select("email")
+          .select("email, first_name, last_name")
           .in("user_id", selectedIds);
         if (!error && (!data || data.length === 0)) {
           const res = await supabase
             .from("oldData")
-            .select("email")
+            .select("email, first_name, last_name")
             .in("id", selectedIds);
           data = res.data;
           error = res.error;
         }
         console.log("[CSV] oldData query →", { selectedIds, data, error });
         if (error) throw error;
-        emails = (data ?? []).map((row: { email: string }) => row.email).filter(Boolean);
+        rows = (data ?? []) as ParticipantRow[];
       } else {
         const { data, error } = await supabase
           .from("jury_participants")
-          .select("email")
+          .select("email, first_name, last_name")
           .in("user_id", selectedIds);
         if (error) throw error;
-        emails = (data ?? []).map((row: { email: string }) => row.email).filter(Boolean);
+        rows = (data ?? []) as ParticipantRow[];
       }
 
-      const csv = "email\n" + emails.join("\n");
+      const csvLines = rows
+        .filter((r) => r.email)
+        .map((r) => {
+          const name = [r.first_name, r.last_name].filter(Boolean).join(" ");
+          return `${name},${r.email}`;
+        });
+      const csv = "Name,Email\n" + csvLines.join("\n");
       const blob = new Blob([csv], { type: "text/csv" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
