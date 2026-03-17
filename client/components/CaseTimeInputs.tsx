@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react";
 
 // All 24 hours displayed in a 6-column grid — no scroll needed
 const HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0"));
-const MINUTES = ["00", "15", "30", "45"];
+const MINUTES = ["00", "30"];
 
 type TimeVal = { h: string; m: string };
 type Props = { caseId: string };
