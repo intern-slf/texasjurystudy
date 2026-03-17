@@ -127,6 +127,7 @@ export default function NewCasePage() {
 
   const [caseId, setCaseId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
   const searchParams = useSearchParams();
   const parentId = searchParams.get("parent_id");
 
@@ -274,129 +275,184 @@ export default function NewCasePage() {
 
         {!caseId ? (
           <div className="space-y-8">
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
 
-              {/* COLUMN 1 — Case Details + Location */}
-              <div className="space-y-6 self-start">
-                <div className="space-y-4 bg-card p-6 rounded-2xl border shadow-sm">
-                  <label className="text-sm font-bold uppercase tracking-wider text-primary">Case Details</label>
-                  <input className="input w-full" placeholder="Case Title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
-                  <textarea className="input w-full" rows={2} placeholder="Brief Case Description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Preferable Date</label>
-                    <div className="flex gap-2">
-                      <input
-                        type="date"
-                        className="border rounded px-3 py-2 text-sm flex-1"
-                        value={form.scheduled_at ? form.scheduled_at.slice(0, 10) : ""}
-                        onChange={(e) => {
-                          const hour = form.scheduled_at ? form.scheduled_at.slice(11, 13) : "00";
-                          const val = e.target.value ? `${e.target.value}T${hour}:00` : "";
-                          setForm({ ...form, scheduled_at: val });
-                          setFilters((f) => ({ ...f, socioeconomic: { ...f.socioeconomic, availability: getAvailabilityFromDate(val) } }));
-                        }}
-                      />
-                      <HourPicker
-                        value={form.scheduled_at ? form.scheduled_at.slice(11, 13) : ""}
-                        onChange={(h) => {
-                          const date = form.scheduled_at ? form.scheduled_at.slice(0, 10) : "";
-                          const val = date ? `${date}T${h}:00` : "";
-                          setForm({ ...form, scheduled_at: val });
-                          setFilters((f) => ({ ...f, socioeconomic: { ...f.socioeconomic, availability: getAvailabilityFromDate(val) } }));
-                        }}
-                      />
-                    </div>
-                    {filters.socioeconomic.availability.length > 0 && (
-                      <p className="text-xs text-muted-foreground">
-                        Availability filter auto-set to{" "}
-                        <span className="font-semibold text-primary">
-                          {filters.socioeconomic.availability[0]}
-                        </span>
-                      </p>
-                    )}
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Deadline Date</label>
-                    <div className="flex gap-2">
-                      <input
-                        type="date"
-                        className="border rounded px-3 py-2 text-sm flex-1"
-                        value={form.deadline_date ? form.deadline_date.slice(0, 10) : ""}
-                        onChange={(e) => {
-                          const hour = form.deadline_date ? form.deadline_date.slice(11, 13) : "00";
-                          const val = e.target.value ? `${e.target.value}T${hour}:00` : "";
-                          setForm({ ...form, deadline_date: val });
-                        }}
-                      />
-                      <HourPicker
-                        value={form.deadline_date ? form.deadline_date.slice(11, 13) : ""}
-                        onChange={(h) => {
-                          const date = form.deadline_date ? form.deadline_date.slice(0, 10) : "";
-                          const val = date ? `${date}T${h}:00` : "";
-                          setForm({ ...form, deadline_date: val });
-                        }}
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Number of Attendees</label>
-                    <input type="number" className="input w-full" placeholder="10" value={form.number_of_attendees} onChange={(e) => setForm({ ...form, number_of_attendees: Number(e.target.value) })} />
-                  </div>
-                </div>
-
-                <div className="bg-card p-6 rounded-2xl border shadow-sm space-y-4">
-                  <h3 className="font-bold text-lg border-b pb-2">Location</h3>
-                  <div className="max-h-48 overflow-y-auto">
-                    <MultiCheckbox label="" options={US_STATES} values={filters.location.state} onChange={(v) => setFilters({ ...filters, location: { state: v } })} />
-                  </div>
+            {/* Case Details — always visible */}
+            <div className="bg-card p-6 rounded-2xl border shadow-sm space-y-4 max-w-2xl">
+              <label className="text-sm font-bold uppercase tracking-wider text-primary">Case Details</label>
+              <input className="input w-full" placeholder="Case Title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
+              <textarea className="input w-full" rows={2} placeholder="Brief Case Description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Deadline Date</label>
+                <div className="flex gap-2">
+                  <input
+                    type="date"
+                    className="border rounded px-3 py-2 text-sm flex-1"
+                    value={form.deadline_date ? form.deadline_date.slice(0, 10) : ""}
+                    onChange={(e) => {
+                      const hour = form.deadline_date ? form.deadline_date.slice(11, 13) : "00";
+                      const val = e.target.value ? `${e.target.value}T${hour}:00` : "";
+                      setForm({ ...form, deadline_date: val });
+                    }}
+                  />
+                  <HourPicker
+                    value={form.deadline_date ? form.deadline_date.slice(11, 13) : ""}
+                    onChange={(h) => {
+                      const date = form.deadline_date ? form.deadline_date.slice(0, 10) : "";
+                      const val = date ? `${date}T${h}:00` : "";
+                      setForm({ ...form, deadline_date: val });
+                    }}
+                  />
                 </div>
               </div>
-              
-
-              {/* COLUMN 2 — Demographics & Eligibility */}
-              <div className="space-y-6">
-                <div className="bg-card p-6 rounded-2xl border shadow-sm space-y-4">
-                  <h3 className="font-bold text-lg border-b pb-2">Age & Identity</h3>
-                  <div className="flex gap-4">
-                    <input type="number" className="input flex-1" placeholder="Min Age" value={filters.age.min} onChange={(e) => setFilters({ ...filters, age: { ...filters.age, min: e.target.value } })} />
-                    <input type="number" className="input flex-1" placeholder="Max Age" value={filters.age.max} onChange={(e) => setFilters({ ...filters, age: { ...filters.age, max: e.target.value } })} />
-                  </div>
-                  <MultiCheckbox label="Gender" options={["Male", "Female", "Other"]} values={filters.gender} onChange={(v) => setFilters({ ...filters, gender: v })} />
-                  <MultiCheckbox label="Race" options={["Caucasian", "African American", "Asian", "Native American", "Middle Eastern", "Latino/Hispanic", "Multi-racial", "Other"]} values={filters.race} onChange={(v) => setFilters({ ...filters, race: v })} />
-                </div>
-
-                <div className="bg-card p-6 rounded-2xl border shadow-sm space-y-4">
-                  <h3 className="font-bold text-lg border-b pb-2">Eligibility & Status</h3>
-                  <YesNoSelect label="Served on a jury?" value={filters.eligibility.served_on_jury} onChange={(v) => setFilters({ ...filters, eligibility: { ...filters.eligibility, served_on_jury: v } })} />
-                  <YesNoSelect label="Has children?" value={filters.eligibility.has_children} onChange={(v) => setFilters({ ...filters, eligibility: { ...filters.eligibility, has_children: v } })} />
-                  <YesNoSelect label="Currently employed?" value={filters.eligibility.currently_employed} onChange={(v) => setFilters({ ...filters, eligibility: { ...filters.eligibility, currently_employed: v } })} />
-                </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Number of Attendees</label>
+                <input type="number" className="input w-full" placeholder="10" value={form.number_of_attendees} onChange={(e) => setForm({ ...form, number_of_attendees: Number(e.target.value) })} />
               </div>
-
-              {/* COLUMN 3 — Socioeconomic, Location, Political */}
-              <div className="space-y-6">
-                <div className="bg-card p-6 rounded-2xl border shadow-sm space-y-4">
-                  <h3 className="font-bold text-lg border-b pb-2">Socioeconomic Factors</h3>
-                  <MultiCheckbox label="Marital Status" options={["Single / Never Married", "Married", "Divorced", "Separated", "Widowed"]} values={filters.socioeconomic.marital_status} onChange={(v) => setFilters({ ...filters, socioeconomic: { ...filters.socioeconomic, marital_status: v } })} />
-                  <MultiCheckbox label="Education Level" options={EDUCATION_LEVELS} values={filters.socioeconomic.education_level} onChange={(newVals) => setFilters((f) => {
-                      const current = f.socioeconomic.education_level;
-                      const toggled = newVals.length > current.length
-                        ? newVals.find((v) => !current.includes(v))!
-                        : current.find((v) => !newVals.includes(v))!;
-                      return { ...f, socioeconomic: { ...f.socioeconomic, education_level: applyEducationAutoSelect(toggled, current) } };
-                    })} />
-                  <MultiCheckbox label="Family Income" options={["less than $40K", "$41-75K", "$75-100K", "$101-$150K", "$150K+"]} values={filters.socioeconomic.family_income} onChange={(v) => setFilters({ ...filters, socioeconomic: { ...filters.socioeconomic, family_income: v } })} />
-                </div>
-
-                <div className="bg-card p-6 rounded-2xl border shadow-sm space-y-4">
-                  <h3 className="font-bold text-lg border-b pb-2">Political Context</h3>
-                  <MultiCheckbox label="Political Affiliation" options={["Republican", "Democrat", "Other"]} values={filters.political_affiliation} onChange={(v) => setFilters({ ...filters, political_affiliation: v })} />
-                </div>
-              </div>
-
             </div>
 
-            {/* SAVE BUTTON — centered under all 3 columns */}
+            {/* Toggle button */}
+            <button
+              type="button"
+              onClick={() => {
+                if (showFilters) {
+                  // Switching to "No Filters" — clear all filters
+                  setFilters({
+                    age: { min: "", max: "" },
+                    gender: [],
+                    race: [],
+                    location: { state: [] },
+                    eligibility: {
+                      served_on_jury: "",
+                      has_children: "",
+                      served_armed_forces: "",
+                      currently_employed: "",
+                    },
+                    socioeconomic: {
+                      marital_status: [],
+                      education_level: [],
+                      family_income: [],
+                      availability: [],
+                    },
+                    political_affiliation: [],
+                  });
+                }
+                setShowFilters((v) => {
+                  if (!v) {
+                    setTimeout(() => window.scrollBy({ top: 400, behavior: "smooth" }), 50);
+                  }
+                  return !v;
+                });
+              }}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-primary text-primary font-semibold text-sm hover:bg-primary hover:text-primary-foreground transition-colors"
+            >
+              {showFilters ? (
+                <>
+                  <span>&#8593;</span> No Filters
+                </>
+              ) : (
+                <>
+                  <span>&#8595;</span> Apply Filters
+                </>
+              )}
+            </button>
+
+            {/* All filters — shown when toggled */}
+            {showFilters && (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+
+                {/* COLUMN 1 — Preferable Date + Location */}
+                <div className="space-y-6 self-start">
+                  <div className="space-y-4 bg-card p-6 rounded-2xl border shadow-sm">
+                    <label className="text-sm font-bold uppercase tracking-wider text-primary">Scheduling</label>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Preferable Date</label>
+                      <div className="flex gap-2">
+                        <input
+                          type="date"
+                          className="border rounded px-3 py-2 text-sm flex-1"
+                          value={form.scheduled_at ? form.scheduled_at.slice(0, 10) : ""}
+                          onChange={(e) => {
+                            const hour = form.scheduled_at ? form.scheduled_at.slice(11, 13) : "00";
+                            const val = e.target.value ? `${e.target.value}T${hour}:00` : "";
+                            setForm({ ...form, scheduled_at: val });
+                            setFilters((f) => ({ ...f, socioeconomic: { ...f.socioeconomic, availability: getAvailabilityFromDate(val) } }));
+                          }}
+                        />
+                        <HourPicker
+                          value={form.scheduled_at ? form.scheduled_at.slice(11, 13) : ""}
+                          onChange={(h) => {
+                            const date = form.scheduled_at ? form.scheduled_at.slice(0, 10) : "";
+                            const val = date ? `${date}T${h}:00` : "";
+                            setForm({ ...form, scheduled_at: val });
+                            setFilters((f) => ({ ...f, socioeconomic: { ...f.socioeconomic, availability: getAvailabilityFromDate(val) } }));
+                          }}
+                        />
+                      </div>
+                      {filters.socioeconomic.availability.length > 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          Availability filter auto-set to{" "}
+                          <span className="font-semibold text-primary">
+                            {filters.socioeconomic.availability[0]}
+                          </span>
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="bg-card p-6 rounded-2xl border shadow-sm space-y-4">
+                    <h3 className="font-bold text-lg border-b pb-2">Location</h3>
+                    <div className="max-h-48 overflow-y-auto">
+                      <MultiCheckbox label="" options={US_STATES} values={filters.location.state} onChange={(v) => setFilters({ ...filters, location: { state: v } })} />
+                    </div>
+                  </div>
+
+                  <div className="bg-card p-6 rounded-2xl border shadow-sm space-y-4">
+                    <h3 className="font-bold text-lg border-b pb-2">Political Context</h3>
+                    <MultiCheckbox label="Political Affiliation" options={["Republican", "Democrat", "Other"]} values={filters.political_affiliation} onChange={(v) => setFilters({ ...filters, political_affiliation: v })} />
+                  </div>
+                </div>
+
+                {/* COLUMN 2 — Demographics & Eligibility */}
+                <div className="space-y-6">
+                  <div className="bg-card p-6 rounded-2xl border shadow-sm space-y-4">
+                    <h3 className="font-bold text-lg border-b pb-2">Age & Identity</h3>
+                    <div className="flex gap-4">
+                      <input type="number" className="input flex-1" placeholder="Min Age" value={filters.age.min} onChange={(e) => setFilters({ ...filters, age: { ...filters.age, min: e.target.value } })} />
+                      <input type="number" className="input flex-1" placeholder="Max Age" value={filters.age.max} onChange={(e) => setFilters({ ...filters, age: { ...filters.age, max: e.target.value } })} />
+                    </div>
+                    <MultiCheckbox label="Gender" options={["Male", "Female", "Other"]} values={filters.gender} onChange={(v) => setFilters({ ...filters, gender: v })} />
+                    <MultiCheckbox label="Race" options={["Caucasian", "African American", "Asian", "Native American", "Middle Eastern", "Latino/Hispanic", "Multi-racial", "Other"]} values={filters.race} onChange={(v) => setFilters({ ...filters, race: v })} />
+                  </div>
+
+                  <div className="bg-card p-6 rounded-2xl border shadow-sm space-y-4">
+                    <h3 className="font-bold text-lg border-b pb-2">Eligibility & Status</h3>
+                    <YesNoSelect label="Served on a jury?" value={filters.eligibility.served_on_jury} onChange={(v) => setFilters({ ...filters, eligibility: { ...filters.eligibility, served_on_jury: v } })} />
+                    <YesNoSelect label="Has children?" value={filters.eligibility.has_children} onChange={(v) => setFilters({ ...filters, eligibility: { ...filters.eligibility, has_children: v } })} />
+                    <YesNoSelect label="Currently employed?" value={filters.eligibility.currently_employed} onChange={(v) => setFilters({ ...filters, eligibility: { ...filters.eligibility, currently_employed: v } })} />
+                  </div>
+                </div>
+
+                {/* COLUMN 3 — Socioeconomic & Political */}
+                <div className="space-y-6">
+                  <div className="bg-card p-6 rounded-2xl border shadow-sm space-y-4">
+                    <h3 className="font-bold text-lg border-b pb-2">Socioeconomic Factors</h3>
+                    <MultiCheckbox label="Marital Status" options={["Single / Never Married", "Married", "Divorced", "Separated", "Widowed"]} values={filters.socioeconomic.marital_status} onChange={(v) => setFilters({ ...filters, socioeconomic: { ...filters.socioeconomic, marital_status: v } })} />
+                    <MultiCheckbox label="Education Level" options={EDUCATION_LEVELS} values={filters.socioeconomic.education_level} onChange={(newVals) => setFilters((f) => {
+                        const current = f.socioeconomic.education_level;
+                        const toggled = newVals.length > current.length
+                          ? newVals.find((v) => !current.includes(v))!
+                          : current.find((v) => !newVals.includes(v))!;
+                        return { ...f, socioeconomic: { ...f.socioeconomic, education_level: applyEducationAutoSelect(toggled, current) } };
+                      })} />
+                    <MultiCheckbox label="Family Income" options={["less than $40K", "$41-75K", "$75-100K", "$101-$150K", "$150K+"]} values={filters.socioeconomic.family_income} onChange={(v) => setFilters({ ...filters, socioeconomic: { ...filters.socioeconomic, family_income: v } })} />
+                  </div>
+
+                </div>
+
+              </div>
+            )}
+
+            {/* SAVE BUTTON */}
             <button onClick={createCaseAndUpload} disabled={loading} className="w-full py-5 bg-primary text-primary-foreground rounded-2xl font-bold text-lg shadow-xl hover:brightness-110 active:scale-[0.98] transition-all disabled:opacity-50">
               {loading ? "Establishing Case..." : "Save Case & Filter"}
             </button>
