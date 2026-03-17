@@ -245,10 +245,14 @@ export default function NewCasePage() {
   }
 
   function MultiCheckbox({ label, options, values, onChange }: { label: string; options: string[]; values: string[]; onChange: (v: string[]) => void; }) {
+    const noneSelected = values.length === 0;
     return (
       <div className="space-y-2">
         <p className="text-sm font-medium">{label}</p>
         <div className="flex flex-wrap gap-2">
+          <span className={`text-xs px-2 py-1 rounded-md border select-none ${noneSelected ? "bg-slate-800 text-white border-slate-800 font-semibold" : "bg-card text-muted-foreground border-slate-200"}`}>
+            No Preference 
+          </span>
           {options.map((opt) => (
             <label key={opt} className="flex items-center gap-2 text-xs cursor-pointer border px-2 py-1 rounded-md bg-card hover:bg-accent transition-colors">
               <input
