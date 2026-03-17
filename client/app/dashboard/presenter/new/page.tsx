@@ -6,6 +6,29 @@ import { createClient } from "@/lib/supabase/client";
 import PresenterSidebar from "@/components/PresenterSidebar";
 import CaseDocumentUploader from "@/components/CaseDocumentUploader";
 
+const EDUCATION_LEVELS = [
+  "Less than High School",
+  "High School or GED",
+  "Associate's or Technical Degree",
+  "Some College",
+  "Bachelor Degree",
+  "Graduate Degree",
+];
+
+function applyEducationAutoSelect(option: string, current: string[]): string[] {
+  const idx = EDUCATION_LEVELS.indexOf(option);
+  const isSelected = current.includes(option);
+  if (isSelected) {
+    // Uncheck: remove this level and all above it
+    const toRemove = new Set(EDUCATION_LEVELS.slice(idx));
+    return current.filter((v) => !toRemove.has(v));
+  } else {
+    // Check: add this level and all above it
+    const toAdd = EDUCATION_LEVELS.slice(idx);
+    return Array.from(new Set([...current, ...toAdd]));
+  }
+}
+
 const US_STATES = [
   "Alabama","Alaska","Arizona","Arkansas","California","Colorado","Connecticut",
   "Delaware","Florida","Georgia","Hawaii","Idaho","Illinois","Indiana","Iowa",
@@ -212,7 +235,7 @@ export default function NewCasePage() {
                 <div className="space-y-4 bg-card p-6 rounded-2xl border shadow-sm">
                   <label className="text-sm font-bold uppercase tracking-wider text-primary">Case Details</label>
                   <input className="input w-full" placeholder="Case Title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
-                  <textarea className="input w-full" rows={2} placeholder="Case Description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+                  <textarea className="input w-full" rows={2} placeholder="Brief Case Description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
                   <div className="space-y-2">
                     <label className="text-sm font-medium">Preferable Date</label>
                     <input
@@ -283,7 +306,13 @@ export default function NewCasePage() {
                 <div className="bg-card p-6 rounded-2xl border shadow-sm space-y-4">
                   <h3 className="font-bold text-lg border-b pb-2">Socioeconomic Factors</h3>
                   <MultiCheckbox label="Marital Status" options={["Single / Never Married", "Married", "Divorced", "Separated", "Widowed"]} values={filters.socioeconomic.marital_status} onChange={(v) => setFilters({ ...filters, socioeconomic: { ...filters.socioeconomic, marital_status: v } })} />
-                  <MultiCheckbox label="Education Level" options={["Less than High School", "High School or GED", "Associate's or Technical Degree", "Some College", "Bachelor Degree", "Graduate Degree"]} values={filters.socioeconomic.education_level} onChange={(v) => setFilters({ ...filters, socioeconomic: { ...filters.socioeconomic, education_level: v } })} />
+                  <MultiCheckbox label="Education Level" options={EDUCATION_LEVELS} values={filters.socioeconomic.education_level} onChange={(newVals) => setFilters((f) => {
+                      const current = f.socioeconomic.education_level;
+                      const toggled = newVals.length > current.length
+                        ? newVals.find((v) => !current.includes(v))!
+                        : current.find((v) => !newVals.includes(v))!;
+                      return { ...f, socioeconomic: { ...f.socioeconomic, education_level: applyEducationAutoSelect(toggled, current) } };
+                    })} />
                   <MultiCheckbox label="Family Income" options={["less than $40K", "$41-75K", "$75-100K", "$101-$150K", "$150K+"]} values={filters.socioeconomic.family_income} onChange={(v) => setFilters({ ...filters, socioeconomic: { ...filters.socioeconomic, family_income: v } })} />
                 </div>
 

@@ -83,6 +83,10 @@ export default async function PresenterDashboard({
       =========================== */
   const resolvedSearchParams = await searchParams;
 
+  if (!resolvedSearchParams?.tab) {
+    redirect("/dashboard/presenter/new");
+  }
+
   const tab: "current" | "approved" | "previous" =
     resolvedSearchParams?.tab === "approved"
       ? "approved"
@@ -342,7 +346,7 @@ export default async function PresenterDashboard({
           <div className="flex items-center justify-between mb-8">
             <div>
               <h1 className="text-3xl font-bold tracking-tight capitalize">
-                {tab === "current" ? "Request Cases" : tab} Focus Groups
+                {tab === "current" ? "Requested Cases" : tab} Focus Groups
               </h1>
               <p className="text-muted-foreground mt-2">
                 {tab === "current"
