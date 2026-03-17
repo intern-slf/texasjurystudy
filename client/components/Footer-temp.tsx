@@ -21,7 +21,7 @@ export default function Footer() {
         <p className="text-sm text-muted-foreground">
           Support:{" "}
           <a
-            href="info@texasjurystudy.com"
+            href="mailto:info@texasjurystudy.com"
             className="transition-colors hover:text-primary"
           >
             info@texasjurystudy.com
