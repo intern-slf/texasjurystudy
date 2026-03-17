@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import PresenterSidebar from "@/components/PresenterSidebar";
@@ -40,6 +40,52 @@ const US_STATES = [
   "Virginia","Washington","West Virginia","Wisconsin","Wyoming",
 ];
 
+
+const HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0"));
+
+function HourPicker({ value, onChange }: { value: string; onChange: (h: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const fn = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", fn);
+    return () => document.removeEventListener("mousedown", fn);
+  }, []);
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-1 border border-slate-200 rounded bg-white px-3 py-2 text-sm font-mono text-slate-700 hover:bg-slate-50 focus:outline-none w-24"
+      >
+        {value || "HH"}:00
+      </button>
+      {open && (
+        <div className="absolute z-50 top-full mt-1 left-0 bg-white border border-slate-200 rounded-lg shadow-lg overflow-hidden w-24">
+          <div className="text-[10px] text-center font-semibold text-slate-400 py-1 bg-slate-50 border-b border-slate-100">Hour</div>
+          <div className="flex flex-col overflow-y-auto max-h-52 p-1 gap-0">
+            {HOURS.map((h) => (
+              <button
+                key={h}
+                type="button"
+                onClick={() => { onChange(h); setOpen(false); }}
+                className={`py-1.5 text-sm font-mono text-center rounded transition-colors ${
+                  value === h ? "bg-slate-800 text-white font-bold" : "hover:bg-slate-100 text-slate-700"
+                }`}
+              >
+                {h}:00
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function getAvailabilityFromDate(dateStr: string): string[] {
   if (!dateStr) return [];
@@ -238,21 +284,28 @@ export default function NewCasePage() {
                   <textarea className="input w-full" rows={2} placeholder="Brief Case Description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
                   <div className="space-y-2">
                     <label className="text-sm font-medium">Preferable Date</label>
-                    <input
-                      type="datetime-local"
-                      className="input w-full"
-                      value={form.scheduled_at}
-                      onChange={(e) => {
-                        setForm({ ...form, scheduled_at: e.target.value });
-                        setFilters((f) => ({
-                          ...f,
-                          socioeconomic: {
-                            ...f.socioeconomic,
-                            availability: getAvailabilityFromDate(e.target.value),
-                          },
-                        }));
-                      }}
-                    />
+                    <div className="flex gap-2">
+                      <input
+                        type="date"
+                        className="border rounded px-3 py-2 text-sm flex-1"
+                        value={form.scheduled_at ? form.scheduled_at.slice(0, 10) : ""}
+                        onChange={(e) => {
+                          const hour = form.scheduled_at ? form.scheduled_at.slice(11, 13) : "00";
+                          const val = e.target.value ? `${e.target.value}T${hour}:00` : "";
+                          setForm({ ...form, scheduled_at: val });
+                          setFilters((f) => ({ ...f, socioeconomic: { ...f.socioeconomic, availability: getAvailabilityFromDate(val) } }));
+                        }}
+                      />
+                      <HourPicker
+                        value={form.scheduled_at ? form.scheduled_at.slice(11, 13) : ""}
+                        onChange={(h) => {
+                          const date = form.scheduled_at ? form.scheduled_at.slice(0, 10) : "";
+                          const val = date ? `${date}T${h}:00` : "";
+                          setForm({ ...form, scheduled_at: val });
+                          setFilters((f) => ({ ...f, socioeconomic: { ...f.socioeconomic, availability: getAvailabilityFromDate(val) } }));
+                        }}
+                      />
+                    </div>
                     {filters.socioeconomic.availability.length > 0 && (
                       <p className="text-xs text-muted-foreground">
                         Availability filter auto-set to{" "}
@@ -264,7 +317,26 @@ export default function NewCasePage() {
                   </div>
                   <div className="space-y-2">
                     <label className="text-sm font-medium">Deadline Date</label>
-                    <input type="datetime-local" className="input w-full" value={form.deadline_date} onChange={(e) => setForm({ ...form, deadline_date: e.target.value })} />
+                    <div className="flex gap-2">
+                      <input
+                        type="date"
+                        className="border rounded px-3 py-2 text-sm flex-1"
+                        value={form.deadline_date ? form.deadline_date.slice(0, 10) : ""}
+                        onChange={(e) => {
+                          const hour = form.deadline_date ? form.deadline_date.slice(11, 13) : "00";
+                          const val = e.target.value ? `${e.target.value}T${hour}:00` : "";
+                          setForm({ ...form, deadline_date: val });
+                        }}
+                      />
+                      <HourPicker
+                        value={form.deadline_date ? form.deadline_date.slice(11, 13) : ""}
+                        onChange={(h) => {
+                          const date = form.deadline_date ? form.deadline_date.slice(0, 10) : "";
+                          const val = date ? `${date}T${h}:00` : "";
+                          setForm({ ...form, deadline_date: val });
+                        }}
+                      />
+                    </div>
                   </div>
                   <div className="space-y-2">
                     <label className="text-sm font-medium">Number of Attendees</label>
