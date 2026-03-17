@@ -37,10 +37,16 @@ export default function CaseDocumentUploader({ caseId }: Props) {
     fetchDocuments();
   }, [caseId]);
 
+  const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MB
+
   function handleFiles(files: FileList | null) {
     if (!files) return;
 
     Array.from(files).forEach((file) => {
+      if (file.size > MAX_FILE_SIZE) {
+        alert(`"${file.name}" exceeds the 100 MB limit.`);
+        return;
+      }
       startTransition(async () => {
         await uploadCaseDocument(caseId, file);
         await fetchDocuments();
