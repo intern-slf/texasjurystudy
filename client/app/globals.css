@@ -67,6 +67,12 @@
   }
 }
 
+/* Lock minutes field on datetime-local inputs to always show 00 */
+input[type="datetime-local"]::-webkit-datetime-edit-minute-field {
+  pointer-events: none;
+  user-select: none;
+}
+
 @layer components {
   .input {
     @apply w-full rounded-md border border-input bg-background px-3 py-2 text-sm
