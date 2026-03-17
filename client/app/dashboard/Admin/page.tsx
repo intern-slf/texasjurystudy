@@ -15,6 +15,7 @@ import {
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { sendApprovalEmail } from "@/lib/mail";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 import { localToUTC } from "@/lib/timezone";
 import { AdminActionButton } from "@/components/AdminActionButton";
 import { Button } from "@/components/ui/button";
@@ -103,14 +104,30 @@ async function approveCase(formData: FormData) {
     .single();
 
   if (updatedCase) {
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("email")
-      .eq("id", updatedCase.user_id)
-      .single();
+    // Get presenter email from auth.users (most reliable source)
+    let presenterEmail: string | null = null;
+    const { data: userData } = await supabaseAdmin.auth.admin.getUserById(updatedCase.user_id);
+    presenterEmail = userData?.user?.email ?? null;
 
-    if (profile?.email) {
-      await sendApprovalEmail(profile.email, updatedCase.title);
+    // Fallback to profiles table if auth email not found
+    if (!presenterEmail) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("email")
+        .eq("id", updatedCase.user_id)
+        .single();
+      presenterEmail = profile?.email ?? null;
+    }
+
+    if (presenterEmail) {
+      try {
+        await sendApprovalEmail(presenterEmail, updatedCase.title);
+        console.log("[approveCase] Approval email sent to:", presenterEmail);
+      } catch (emailErr) {
+        console.error("[approveCase] Failed to send approval email:", emailErr);
+      }
+    } else {
+      console.error("[approveCase] Could not find email for user_id:", updatedCase.user_id);
     }
   }
 

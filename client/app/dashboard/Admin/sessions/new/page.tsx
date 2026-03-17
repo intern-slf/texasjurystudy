@@ -3,6 +3,7 @@ import {
   createSession,
   addCasesToSession,
   inviteParticipants,
+  notifyPresentersSessionCreated,
 } from "@/lib/actions/session";
 import { redirect } from "next/navigation";
 import CreateSessionButton from "@/components/CreateSessionButton";
@@ -250,6 +251,16 @@ export default async function NewSessionPage({
     const selectedParticipants = formData.getAll("participants") as string[];
     if (selectedParticipants.length) {
       await inviteParticipants(sessionId, selectedParticipants, date);
+    }
+
+    // Notify presenter(s) that their session has been created
+    if (selectedCases.length) {
+      await notifyPresentersSessionCreated(
+        sessionId,
+        selectedCases.map((c) => c.caseId),
+        date,
+        selectedParticipants.length
+      );
     }
 
     // Redirect to sessions list with a success flag.

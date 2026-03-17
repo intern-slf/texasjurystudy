@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { sendEmail, sendRescheduleEmail } from "@/lib/mail";
+import { sendEmail, sendRescheduleEmail, sendSessionCreatedEmail } from "@/lib/mail";
 import { revalidatePath } from "next/cache";
 import { localToUTC, localToUTCTime } from "@/lib/timezone";
 
@@ -270,6 +270,75 @@ export async function inviteParticipants(
   }
 
   revalidatePath("/dashboard/Admin/sessions");
+}
+
+/* =========================
+   NOTIFY PRESENTERS SESSION CREATED
+========================= */
+export async function notifyPresentersSessionCreated(
+  sessionId: string,
+  caseIds: string[],
+  sessionDate: string,
+  participantCount: number
+) {
+  if (!caseIds.length) return;
+
+  const supabase = await createClient();
+
+  // Fetch case titles and presenter user_ids
+  const { data: caseRows } = await supabase
+    .from("cases")
+    .select("id, title, user_id")
+    .in("id", caseIds);
+
+  if (!caseRows?.length) return;
+
+  // Fetch session times
+  const { data: sessionCaseRows } = await supabase
+    .from("session_cases")
+    .select("start_time, end_time")
+    .eq("session_id", sessionId);
+
+  const formatCentralTime = (t: string) => {
+    const [h, m] = t.split(":");
+    const d = new Date();
+    d.setUTCHours(parseInt(h), parseInt(m), 0, 0);
+    return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Chicago" });
+  };
+
+  let timeStr = "TBD";
+  if (sessionCaseRows?.length) {
+    const starts = sessionCaseRows.map((r) => r.start_time).filter(Boolean).sort();
+    const ends   = sessionCaseRows.map((r) => r.end_time).filter(Boolean).sort();
+    if (starts.length && ends.length) {
+      timeStr = `${formatCentralTime(starts[0])} – ${formatCentralTime(ends[ends.length - 1])} CT`;
+    }
+  }
+
+  const dateStr = new Date(sessionDate).toLocaleDateString("en-US", {
+    weekday: "long", year: "numeric", month: "long", day: "numeric",
+  });
+
+  // Group case titles by presenter (one email per presenter)
+  const presenterMap = new Map<string, string[]>();
+  for (const c of caseRows) {
+    if (!c.user_id) continue;
+    if (!presenterMap.has(c.user_id)) presenterMap.set(c.user_id, []);
+    presenterMap.get(c.user_id)!.push(c.title);
+  }
+
+  for (const [presenterId, titles] of presenterMap) {
+    try {
+      const { data: userData } = await supabaseAdmin.auth.admin.getUserById(presenterId);
+      const email = userData?.user?.email;
+      if (email) {
+        await sendSessionCreatedEmail(email, titles, dateStr, timeStr, participantCount);
+        console.log(`[notifyPresenters] Session created email sent to ${email}`);
+      }
+    } catch (e) {
+      console.error(`[notifyPresenters] Failed to email presenter ${presenterId}:`, e);
+    }
+  }
 }
 
 /* =========================

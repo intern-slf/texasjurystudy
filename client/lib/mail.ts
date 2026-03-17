@@ -84,19 +84,103 @@ export async function sendRescheduleEmail(
   });
 }
 
+export async function sendSessionCreatedEmail(
+  to: string,
+  caseTitles: string[],
+  sessionDate: string,
+  timeStr: string,
+  participantCount: number
+) {
+  const caseListHtml = caseTitles
+    .map(
+      (t) =>
+        `<li style="margin: 4px 0; font-size: 15px; color: #1e3a8a; font-weight: 600;">${t}</li>`
+    )
+    .join("");
+
+  const html = `
+    <html>
+      <body style="font-family: sans-serif; padding: 20px; color: #333; line-height: 1.5;">
+        <div style="border: 1px solid #eee; border-radius: 12px; max-width: 550px; padding: 30px; background-color: #ffffff; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+          <h2 style="color: #2563eb; margin-top: 0; font-size: 24px;">Your Session Has Been Created!</h2>
+          <p style="font-size: 16px;">A session has been successfully created for your case${caseTitles.length > 1 ? "s" : ""}. Here are the details:</p>
+
+          <div style="background-color: #eff6ff; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #2563eb;">
+            <p style="margin: 0 0 6px 0; color: #1e40af; font-size: 13px; text-transform: uppercase; font-weight: bold; letter-spacing: 0.05em;">Case${caseTitles.length > 1 ? "s" : ""}</p>
+            <ul style="margin: 0; padding-left: 18px;">${caseListHtml}</ul>
+          </div>
+
+          <div style="background-color: #f8fafc; padding: 15px; border-radius: 8px; margin: 20px 0;">
+            <table style="width: 100%; border-collapse: collapse;">
+              <tr>
+                <td style="padding: 6px 0; color: #64748b; font-size: 13px; text-transform: uppercase; font-weight: bold; letter-spacing: 0.05em; width: 40%;">Session Date</td>
+                <td style="padding: 6px 0; font-size: 15px; font-weight: 600;">${sessionDate}</td>
+              </tr>
+              <tr>
+                <td style="padding: 6px 0; color: #64748b; font-size: 13px; text-transform: uppercase; font-weight: bold; letter-spacing: 0.05em;">Session Time</td>
+                <td style="padding: 6px 0; font-size: 15px; font-weight: 600;">${timeStr}</td>
+              </tr>
+              <tr>
+                <td style="padding: 6px 0; color: #64748b; font-size: 13px; text-transform: uppercase; font-weight: bold; letter-spacing: 0.05em;">Participants Invited</td>
+                <td style="padding: 6px 0; font-size: 15px; font-weight: 600;">${participantCount}</td>
+              </tr>
+            </table>
+          </div>
+
+          <p style="font-size: 14px; color: #64748b;">You can view your session details on your dashboard.</p>
+
+          <div style="margin-top: 25px; text-align: center;">
+            <a href="${process.env.NEXT_PUBLIC_APP_URL}/dashboard/presenter?tab=approved"
+               style="background-color: #2563eb; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; display: inline-block; font-weight: bold; font-size: 14px;">
+              Go to Dashboard
+            </a>
+          </div>
+
+          <p style="margin-top: 25px; font-size: 12px; color: #94a3b8; text-align: center;">If you did not expect this email, please ignore it.</p>
+        </div>
+      </body>
+    </html>
+  `;
+
+  await sendEmail({
+    to,
+    subject: `Session Created: ${caseTitles.join(", ")}`,
+    html,
+  });
+}
+
 export async function sendApprovalEmail(to: string, caseTitle: string) {
   const html = `
-    <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 8px;">
-      <h2 style="color: #2563eb;">Your Case has been Approved!</h2>
-      <p>The administrator has reviewed and approved your case: <strong>"${caseTitle}"</strong>.</p>
-      <p>You can now view this case in your <strong>Approved Cases</strong> tab.</p>
-      <div style="margin-top: 20px;">
-        <a href="${process.env.NEXT_PUBLIC_APP_URL}/dashboard/presenter?tab=approved" 
-           style="background-color: #2563eb; color: white; padding: 10px 20px; border-radius: 5px; text-decoration: none;">
-          Go to Dashboard
-        </a>
-      </div>
-    </div>
+    <html>
+      <body style="font-family: sans-serif; padding: 20px; color: #333; line-height: 1.5;">
+        <div style="border: 1px solid #eee; border-radius: 12px; max-width: 550px; padding: 30px; background-color: #ffffff; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+          <h2 style="color: #2563eb; margin-top: 0; font-size: 24px;">Your Case has been Approved!</h2>
+          <p style="font-size: 16px;">The administrator has reviewed and approved your case:</p>
+
+          <div style="background-color: #eff6ff; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #2563eb;">
+            <p style="margin: 0; color: #1e40af; font-size: 14px; text-transform: uppercase; font-weight: bold; letter-spacing: 0.05em;">Case Title</p>
+            <p style="margin: 5px 0 0 0; font-size: 18px; font-weight: 600; color: #1e3a8a;">${caseTitle}</p>
+          </div>
+
+          <p style="font-size: 15px; color: #64748b;">You can now view this case in your <strong>Approved Cases</strong> tab on your dashboard.</p>
+
+          <div style="background-color: #f0fdf4; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #16a34a;">
+            <p style="margin: 0; font-size: 14px; color: #15803d;">
+              We will send you another email once a session has been created for your case. Please stay tuned!
+            </p>
+          </div>
+
+          <div style="margin-top: 25px; text-align: center;">
+            <a href="${process.env.NEXT_PUBLIC_APP_URL}/dashboard/presenter?tab=approved"
+               style="background-color: #2563eb; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; display: inline-block; font-weight: bold; font-size: 14px;">
+              Go to Dashboard
+            </a>
+          </div>
+
+          <p style="margin-top: 25px; font-size: 12px; color: #94a3b8; text-align: center;">If you did not expect this email, please ignore it.</p>
+        </div>
+      </body>
+    </html>
   `;
 
   await sendEmail({
