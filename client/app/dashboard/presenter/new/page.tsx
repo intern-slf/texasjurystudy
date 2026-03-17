@@ -272,9 +272,25 @@ export default function NewCasePage() {
     <main className="flex min-h-screen bg-background text-foreground">
       <PresenterSidebar />
       <section className="flex-1 max-w-6xl px-8 py-12 space-y-10 overflow-y-auto">
-        <header>
+        <header className="flex items-center gap-3">
           <h1 className="text-4xl font-extrabold tracking-tight">New Case Setup</h1>
-          <p className="text-muted-foreground mt-2">Provide case context and set juror ranking priorities.</p>
+          <div className="relative group">
+            <button
+              type="button"
+              className="w-6 h-6 rounded-full border border-muted-foreground text-muted-foreground text-xs font-bold flex items-center justify-center hover:bg-muted transition-colors"
+            >
+              ?
+            </button>
+            <div className="absolute left-8 top-0 z-50 hidden group-hover:block w-80 bg-popover border border-border rounded-xl shadow-lg p-4 text-sm text-muted-foreground leading-relaxed">
+              <p className="font-semibold text-foreground mb-2">How to create a case:</p>
+              <ol className="space-y-1.5 list-none">
+                <li><span className="font-medium text-foreground">1. Enter Case Details</span> — Fill in the title and a brief description.</li>
+                <li><span className="font-medium text-foreground">2. Set Juror Filters (Optional)</span> — Narrow down the juror pool by demographics and preferences.</li>
+                <li><span className="font-medium text-foreground">3. Save the Case.</span></li>
+                <li><span className="font-medium text-foreground">4. Upload Case Files</span> — Add documents, exhibits, or evidence for jurors to review.</li>
+              </ol>
+            </div>
+          </div>
         </header>
 
         {!caseId ? (
