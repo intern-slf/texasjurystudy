@@ -21,7 +21,7 @@ export default async function HomeAuthSection() {
             href="/auth/signup?role=presenter"
             className="px-6 py-3 rounded-md border"
           >
-            Run a Focus Group
+            Request a Focus Group
           </Link>
         </>
       ) : (

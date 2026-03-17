@@ -21,7 +21,13 @@ export default function PresenterSidebar({ activeTab }: Props) {
 
   const navItems = [
     {
-      label: "Request Cases",
+      label: "Create New Case",
+      href: "/dashboard/presenter/new",
+      id: "new",
+      icon: PlusCircle,
+    },
+    {
+      label: "Requested Cases",
       href: "/dashboard/presenter?tab=current",
       id: "current",
       icon: PlayCircle,
@@ -31,12 +37,6 @@ export default function PresenterSidebar({ activeTab }: Props) {
       href: "/dashboard/presenter?tab=approved",
       id: "approved",
       icon: CheckCircle2,
-    },
-    {
-      label: "Create New Case",
-      href: "/dashboard/presenter/new",
-      id: "new",
-      icon: PlusCircle,
     },
     {
       label: "Previous Cases",
