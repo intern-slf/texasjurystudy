@@ -100,23 +100,49 @@ export default function ParticipantForm({ userId, email }: Props) {
   const [uploadProgress, setUploadProgress] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  function handleIdFileChange(file: File | null) {
+  async function handleIdFileChange(file: File | null) {
     if (!file) {
       setIdFile(null);
       setIdPreview(null);
       return;
     }
+
+    let processedFile = file;
+
+    const isHeic =
+      file.type === "image/heic" ||
+      file.type === "image/heif" ||
+      /\.(heic|heif)$/i.test(file.name);
+
+    if (isHeic) {
+      try {
+        const fd = new FormData();
+        fd.append("file", file);
+        const res = await fetch("/api/convert-heic", { method: "POST", body: fd });
+        if (!res.ok) throw new Error("Server conversion failed");
+        const blob = await res.blob();
+        processedFile = new File(
+          [blob],
+          file.name.replace(/\.(heic|heif)$/i, ".jpg"),
+          { type: "image/jpeg" }
+        );
+      } catch {
+        setError("Could not convert HEIC image. Please try a different photo.");
+        return;
+      }
+    }
+
     // Validate: only images, max 10MB
-    if (!file.type.startsWith("image/")) {
+    if (!processedFile.type.startsWith("image/")) {
       setError("Please upload an image file (JPG, PNG, etc.).");
       return;
     }
-    if (file.size > 10 * 1024 * 1024) {
+    if (processedFile.size > 10 * 1024 * 1024) {
       setError("Image must be under 10 MB.");
       return;
     }
-    setIdFile(file);
-    setIdPreview(URL.createObjectURL(file));
+    setIdFile(processedFile);
+    setIdPreview(URL.createObjectURL(processedFile));
     setError(null);
   }
 
@@ -390,7 +416,7 @@ export default function ParticipantForm({ userId, email }: Props) {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/*"
+                accept="image/*,.heic,.heif"
                 className="hidden"
                 onChange={(e) => handleIdFileChange(e.target.files?.[0] || null)}
               />
