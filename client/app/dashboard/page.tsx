@@ -233,7 +233,6 @@ export default function DashboardPage() {
                 <Label htmlFor="firstName">First Name*</Label>
                 <Input
                   id="firstName"
-                  placeholder="John"
                   value={form.firstName}
                   onChange={(e) =>
                     setForm({ ...form, firstName: e.target.value })
@@ -244,7 +243,6 @@ export default function DashboardPage() {
                 <Label htmlFor="middleName">Middle Name</Label>
                 <Input
                   id="middleName"
-                  placeholder="Quincy"
                   value={form.middleName}
                   onChange={(e) =>
                     setForm({ ...form, middleName: e.target.value })
@@ -255,7 +253,6 @@ export default function DashboardPage() {
                 <Label htmlFor="lastName">Last Name*</Label>
                 <Input
                   id="lastName"
-                  placeholder="Doe"
                   value={form.lastName}
                   onChange={(e) =>
                     setForm({ ...form, lastName: e.target.value })
