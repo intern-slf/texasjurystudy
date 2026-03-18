@@ -10,13 +10,12 @@ export async function POST(req: NextRequest) {
     }
 
     const arrayBuffer = await file.arrayBuffer();
-    const inputBuffer = Buffer.from(arrayBuffer);
 
     // Dynamic import so any WASM/module-load errors are caught below
     const convert = (await import("heic-convert")).default;
 
     const jpegBuffer = await convert({
-      buffer: inputBuffer,
+      buffer: arrayBuffer,
       format: "JPEG",
       quality: 0.85,
     });
