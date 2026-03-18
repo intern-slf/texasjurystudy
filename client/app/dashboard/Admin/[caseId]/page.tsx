@@ -46,6 +46,7 @@ interface CaseInfo {
   status: string;
   description: string;
   filters: CaseFilters;
+  presenter_id: string | null;
   case_documents: CaseDocument[];
 }
 
@@ -78,6 +79,7 @@ export default async function AdminCaseDetailPage({
       status,
       description,
       filters,
+      presenter_id,
       case_documents (
         id,
         original_name,
@@ -118,6 +120,25 @@ export default async function AdminCaseDetailPage({
   };
 
   /* =========================
+     FETCH PRESENTER PROFILE
+     ========================= */
+
+  let presenterProfile: { id: string; email: string | null; full_name: string | null } | null = null;
+  if (caseInfo.presenter_id) {
+    const [{ data: profile }, { data: roleRow }, { data: agreement }] = await Promise.all([
+      supabase.from("profiles").select("id, email, full_name").eq("id", caseInfo.presenter_id).single(),
+      supabase.from("roles").select("user_id, email").eq("user_id", caseInfo.presenter_id).single(),
+      supabase.from("confidentiality_agreements_presenter").select("first_name, last_name").eq("user_id", caseInfo.presenter_id).single(),
+    ]);
+
+    const email = profile?.email || roleRow?.email || null;
+    const full_name = profile?.full_name
+      || (agreement ? `${agreement.first_name} ${agreement.last_name}`.trim() : null);
+
+    presenterProfile = { id: caseInfo.presenter_id, email, full_name };
+  }
+
+  /* =========================
      BUILD PARTICIPANT QUERY
      ========================= */
 
@@ -146,6 +167,18 @@ export default async function AdminCaseDetailPage({
         <p className="mt-6 bg-slate-50 p-4 rounded border italic">
           {caseInfo.description}
         </p>
+
+        {caseInfo.presenter_id && (
+          <div className="mt-6 bg-slate-50 p-4 rounded border text-sm space-y-1">
+            <p className="font-semibold text-slate-700">Presenter</p>
+            {presenterProfile?.full_name && (
+              <p className="text-slate-600">{presenterProfile.full_name}</p>
+            )}
+            {presenterProfile?.email && (
+              <p className="text-slate-600">{presenterProfile.email}</p>
+            )}
+          </div>
+        )}
       </section>
 
       {/* DOCUMENTS */}

@@ -392,7 +392,12 @@ export default async function SessionsPage({
                             key={i}
                             className="text-sm flex justify-between border rounded px-3 py-2 items-center"
                           >
-                            <span>{detail?.title ?? "Unknown case"}</span>
+                            <Link
+                              href={`/dashboard/Admin/${c.case_id}`}
+                              className="hover:underline text-blue-600"
+                            >
+                              {detail?.title ?? "Unknown case"}
+                            </Link>
                             <div className="flex items-center gap-2">
                               {detail?.schedule_status && (
                                 <span className={`text-xs font-semibold capitalize px-2 py-0.5 rounded-full ${
