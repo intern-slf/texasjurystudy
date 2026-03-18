@@ -19,9 +19,20 @@ export default async function ParticipantDashboard({
   const supabase = await createClient();
 
   /* =========================
+     AUTH
+     ========================= */
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  /* =========================
      HANDLE EMAIL ACTIONS (If present)
      ========================= */
   if (inviteId && (status === "accepted" || status === "declined")) {
+    if (!user) {
+      // Not logged in — save intent in query param and send to login
+      redirect(`/auth/login?next=/dashboard/participant?inviteId=${inviteId}&status=${status}`);
+    }
     console.log(`[ParticipantDashboard] Handling URL invite response: ID=${inviteId}, status=${status}`);
     try {
       await updateInviteStatus(inviteId, status as "accepted" | "declined");
@@ -29,37 +40,12 @@ export default async function ParticipantDashboard({
     } catch (err: any) {
       console.error(`[ParticipantDashboard] Failed to handle URL invite response:`, err.message);
     }
-    // Redirect must be OUTSIDE try/catch because trigger an internal Next.js error
-    redirect("/dashboard/participant?success=true");
+    // Redirect must be OUTSIDE try/catch because it triggers an internal Next.js error
+    redirect("/dashboard/participant");
   }
 
-
-  /* =========================
-     AUTH
-     ========================= */
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
   if (!user) {
-    return (
-      <div className="flex min-h-[60vh] items-center justify-center p-8">
-        <div className="max-w-md w-full text-center space-y-6 bg-white border border-green-100 rounded-2xl p-10 shadow-sm">
-          <div className="mx-auto w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-            </svg>
-          </div>
-          <div>
-            <h2 className="text-2xl font-bold text-slate-900 mb-2">Response Recorded!</h2>
-            <p className="text-slate-600">Your choice has been saved. Please log in to your dashboard to see your full schedule and next steps.</p>
-          </div>
-          <Link href="/auth/login" className="inline-flex h-12 w-full items-center justify-center rounded-xl bg-blue-600 text-sm font-semibold text-white transition-all hover:bg-blue-700">
-            Log In to Your Dashboard
-          </Link>
-        </div>
-      </div>
-    );
+    redirect("/auth/login");
   }
 
   /* =========================
