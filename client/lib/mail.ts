@@ -1,5 +1,52 @@
 import nodemailer from 'nodemailer';
 
+// ---------------------------------------------------------------------------
+// Shared email wrapper – provides consistent branded header and footer
+// ---------------------------------------------------------------------------
+export function emailWrapper(content: string): string {
+  return `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+</head>
+<body style="margin:0;padding:0;background-color:#f4f6f9;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr>
+      <td align="center" style="padding:32px 16px;">
+        <table role="presentation" width="100%" style="max-width:600px;" cellpadding="0" cellspacing="0" border="0">
+
+          <!-- Header -->
+          <tr>
+            <td style="background-color:#1e3a8a;border-radius:8px 8px 0 0;padding:28px 36px;text-align:center;">
+              <p style="margin:0;font-size:22px;font-weight:700;color:#ffffff;letter-spacing:-0.3px;">Texas Jury Study</p>
+            </td>
+          </tr>
+
+          <!-- Body -->
+          <tr>
+            <td style="background-color:#ffffff;padding:36px;border-left:1px solid #e2e8f0;border-right:1px solid #e2e8f0;color:#1e293b;line-height:1.7;">
+              ${content}
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="background-color:#f8fafc;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 8px 8px;padding:20px 36px;text-align:center;">
+              <p style="margin:0;font-size:11px;color:#cbd5e1;">© ${new Date().getFullYear()} Texas Jury Study. All rights reserved.</p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+  `.trim();
+}
+
 // Create a reusable transporter object using the default SMTP transport
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST,
@@ -50,36 +97,40 @@ export async function sendRescheduleEmail(
   const dashboardPath =
     role === "presenter" ? "/dashboard/presenter" : "/dashboard/participant";
 
-  const html = `
-    <html>
-      <body style="font-family: sans-serif; padding: 20px; color: #333; line-height: 1.5;">
-        <div style="border: 1px solid #eee; border-radius: 12px; max-width: 550px; padding: 30px; background-color: #ffffff; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
-          <h2 style="color: #d97706; margin-top: 0; font-size: 24px;">Session Rescheduled</h2>
-          <p style="font-size: 16px;">Your <strong>Texas Jury Study</strong> session has been rescheduled to a new date.</p>
+  const html = emailWrapper(`
+    <h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#d97706;">Session Rescheduled</h2>
+    <p style="margin:0 0 20px;font-size:15px;color:#475569;">
+      Your Texas Jury Study session has been moved to a new date. Please review the updated information below.
+    </p>
 
-          <div style="background-color: #fffbeb; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #d97706;">
-            <p style="margin: 0; color: #92400e; font-size: 14px; text-transform: uppercase; font-weight: bold; letter-spacing: 0.05em;">New Session Date</p>
-            <p style="margin: 5px 0 0 0; font-size: 18px; font-weight: 600; color: #78350f;">${newDateStr}</p>
-          </div>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#fffbeb;border-left:4px solid #d97706;border-radius:6px;margin:0 0 24px;">
+      <tr>
+        <td style="padding:16px 20px;">
+          <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:0.08em;">New Session Date</p>
+          <p style="margin:0;font-size:20px;font-weight:700;color:#78350f;">${newDateStr}</p>
+        </td>
+      </tr>
+    </table>
 
-          <p style="font-size: 15px; color: #64748b;">Please note this updated date. No action is required — your ${role === "participant" ? "acceptance remains valid" : "session details have been updated"}.</p>
+    <p style="margin:0 0 28px;font-size:14px;color:#64748b;">
+      No action is required — your ${role === "participant" ? "acceptance remains valid" : "session details have been updated automatically"}.
+    </p>
 
-          <div style="margin-top: 25px; text-align: center;">
-            <a href="${process.env.NEXT_PUBLIC_APP_URL}${dashboardPath}"
-               style="background-color: #d97706; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; display: inline-block; font-weight: bold; font-size: 14px;">
-              View Dashboard
-            </a>
-          </div>
-
-          <p style="margin-top: 25px; font-size: 12px; color: #94a3b8; text-align: center;">If you did not expect this email, please ignore it.</p>
-        </div>
-      </body>
-    </html>
-  `;
+    <table role="presentation" cellpadding="0" cellspacing="0">
+      <tr>
+        <td style="border-radius:6px;background-color:#d97706;">
+          <a href="${process.env.NEXT_PUBLIC_APP_URL}${dashboardPath}"
+             style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:6px;">
+            View My Dashboard
+          </a>
+        </td>
+      </tr>
+    </table>
+  `);
 
   await sendEmail({
     to,
-    subject: `Session Rescheduled – New Date: ${newDateStr}`,
+    subject: `Session Rescheduled – New Date: ${newDateStr} | Texas Jury Study`,
     html,
   });
 }
@@ -92,100 +143,105 @@ export async function sendSessionCreatedEmail(
   participantCount: number
 ) {
   const caseListHtml = caseTitles
-    .map(
-      (t) =>
-        `<li style="margin: 4px 0; font-size: 15px; color: #1e3a8a; font-weight: 600;">${t}</li>`
-    )
+    .map((t) => `<li style="margin:4px 0;font-size:15px;font-weight:600;color:#1e3a8a;">${t}</li>`)
     .join("");
 
-  const html = `
-    <html>
-      <body style="font-family: sans-serif; padding: 20px; color: #333; line-height: 1.5;">
-        <div style="border: 1px solid #eee; border-radius: 12px; max-width: 550px; padding: 30px; background-color: #ffffff; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
-          <h2 style="color: #2563eb; margin-top: 0; font-size: 24px;">Your Session Has Been Created!</h2>
-          <p style="font-size: 16px;">A session has been successfully created for your case${caseTitles.length > 1 ? "s" : ""}. Here are the details:</p>
+  const html = emailWrapper(`
+    <h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#1e3a8a;">Session Scheduled</h2>
+    <p style="margin:0 0 20px;font-size:15px;color:#475569;">
+      A study session has been created for your case${caseTitles.length > 1 ? "s" : ""}. Please review the details below.
+    </p>
 
-          <div style="background-color: #eff6ff; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #2563eb;">
-            <p style="margin: 0 0 6px 0; color: #1e40af; font-size: 13px; text-transform: uppercase; font-weight: bold; letter-spacing: 0.05em;">Case${caseTitles.length > 1 ? "s" : ""}</p>
-            <ul style="margin: 0; padding-left: 18px;">${caseListHtml}</ul>
-          </div>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#eff6ff;border-left:4px solid #2563eb;border-radius:6px;margin:0 0 16px;">
+      <tr>
+        <td style="padding:16px 20px;">
+          <p style="margin:0 0 8px;font-size:11px;font-weight:700;color:#1e40af;text-transform:uppercase;letter-spacing:0.08em;">Case${caseTitles.length > 1 ? "s" : ""}</p>
+          <ul style="margin:0;padding-left:18px;">${caseListHtml}</ul>
+        </td>
+      </tr>
+    </table>
 
-          <div style="background-color: #f8fafc; padding: 15px; border-radius: 8px; margin: 20px 0;">
-            <table style="width: 100%; border-collapse: collapse;">
-              <tr>
-                <td style="padding: 6px 0; color: #64748b; font-size: 13px; text-transform: uppercase; font-weight: bold; letter-spacing: 0.05em; width: 40%;">Session Date</td>
-                <td style="padding: 6px 0; font-size: 15px; font-weight: 600;">${sessionDate}</td>
-              </tr>
-              <tr>
-                <td style="padding: 6px 0; color: #64748b; font-size: 13px; text-transform: uppercase; font-weight: bold; letter-spacing: 0.05em;">Session Time</td>
-                <td style="padding: 6px 0; font-size: 15px; font-weight: 600;">${timeStr}</td>
-              </tr>
-              <tr>
-                <td style="padding: 6px 0; color: #64748b; font-size: 13px; text-transform: uppercase; font-weight: bold; letter-spacing: 0.05em;">Participants Invited</td>
-                <td style="padding: 6px 0; font-size: 15px; font-weight: 600;">${participantCount}</td>
-              </tr>
-            </table>
-          </div>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;margin:0 0 24px;">
+      <tr>
+        <td style="padding:12px 20px;border-bottom:1px solid #e2e8f0;">
+          <p style="margin:0 0 2px;font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.08em;">Session Date</p>
+          <p style="margin:0;font-size:15px;font-weight:600;color:#1e293b;">${sessionDate}</p>
+        </td>
+      </tr>
+      <tr>
+        <td style="padding:12px 20px;border-bottom:1px solid #e2e8f0;">
+          <p style="margin:0 0 2px;font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.08em;">Session Time</p>
+          <p style="margin:0;font-size:15px;font-weight:600;color:#1e293b;">${timeStr}</p>
+        </td>
+      </tr>
+      <tr>
+        <td style="padding:12px 20px;">
+          <p style="margin:0 0 2px;font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.08em;">Participants Invited</p>
+          <p style="margin:0;font-size:15px;font-weight:600;color:#1e293b;">${participantCount}</p>
+        </td>
+      </tr>
+    </table>
 
-          <p style="font-size: 14px; color: #64748b;">You can view your session details on your dashboard.</p>
-
-          <div style="margin-top: 25px; text-align: center;">
-            <a href="${process.env.NEXT_PUBLIC_APP_URL}/dashboard/presenter?tab=approved"
-               style="background-color: #2563eb; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; display: inline-block; font-weight: bold; font-size: 14px;">
-              Go to Dashboard
-            </a>
-          </div>
-
-          <p style="margin-top: 25px; font-size: 12px; color: #94a3b8; text-align: center;">If you did not expect this email, please ignore it.</p>
-        </div>
-      </body>
-    </html>
-  `;
+    <table role="presentation" cellpadding="0" cellspacing="0">
+      <tr>
+        <td style="border-radius:6px;background-color:#2563eb;">
+          <a href="${process.env.NEXT_PUBLIC_APP_URL}/dashboard/presenter?tab=approved"
+             style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:6px;">
+            View Session Details
+          </a>
+        </td>
+      </tr>
+    </table>
+  `);
 
   await sendEmail({
     to,
-    subject: `Session Created: ${caseTitles.join(", ")}`,
+    subject: `Session Scheduled: ${caseTitles.join(", ")} | Texas Jury Study`,
     html,
   });
 }
 
 export async function sendApprovalEmail(to: string, caseTitle: string) {
-  const html = `
-    <html>
-      <body style="font-family: sans-serif; padding: 20px; color: #333; line-height: 1.5;">
-        <div style="border: 1px solid #eee; border-radius: 12px; max-width: 550px; padding: 30px; background-color: #ffffff; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
-          <h2 style="color: #2563eb; margin-top: 0; font-size: 24px;">Your Case has been Approved!</h2>
-          <p style="font-size: 16px;">The administrator has reviewed and approved your case:</p>
+  const html = emailWrapper(`
+    <h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#15803d;">Case Approved</h2>
+    <p style="margin:0 0 20px;font-size:15px;color:#475569;">
+      We are pleased to inform you that your case has been reviewed and approved by the program administrator.
+    </p>
 
-          <div style="background-color: #eff6ff; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #2563eb;">
-            <p style="margin: 0; color: #1e40af; font-size: 14px; text-transform: uppercase; font-weight: bold; letter-spacing: 0.05em;">Case Title</p>
-            <p style="margin: 5px 0 0 0; font-size: 18px; font-weight: 600; color: #1e3a8a;">${caseTitle}</p>
-          </div>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#eff6ff;border-left:4px solid #2563eb;border-radius:6px;margin:0 0 20px;">
+      <tr>
+        <td style="padding:16px 20px;">
+          <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#1e40af;text-transform:uppercase;letter-spacing:0.08em;">Approved Case</p>
+          <p style="margin:0;font-size:18px;font-weight:700;color:#1e3a8a;">${caseTitle}</p>
+        </td>
+      </tr>
+    </table>
 
-          <p style="font-size: 15px; color: #64748b;">You can now view this case in your <strong>Approved Cases</strong> tab on your dashboard.</p>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f0fdf4;border-left:4px solid #16a34a;border-radius:6px;margin:0 0 28px;">
+      <tr>
+        <td style="padding:14px 20px;">
+          <p style="margin:0;font-size:14px;color:#15803d;">
+            You will receive a follow-up notification once a study session has been scheduled for this case.
+          </p>
+        </td>
+      </tr>
+    </table>
 
-          <div style="background-color: #f0fdf4; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #16a34a;">
-            <p style="margin: 0; font-size: 14px; color: #15803d;">
-              We will send you another email once a session has been created for your case. Please stay tuned!
-            </p>
-          </div>
-
-          <div style="margin-top: 25px; text-align: center;">
-            <a href="${process.env.NEXT_PUBLIC_APP_URL}/dashboard/presenter?tab=approved"
-               style="background-color: #2563eb; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; display: inline-block; font-weight: bold; font-size: 14px;">
-              Go to Dashboard
-            </a>
-          </div>
-
-          <p style="margin-top: 25px; font-size: 12px; color: #94a3b8; text-align: center;">If you did not expect this email, please ignore it.</p>
-        </div>
-      </body>
-    </html>
-  `;
+    <table role="presentation" cellpadding="0" cellspacing="0">
+      <tr>
+        <td style="border-radius:6px;background-color:#2563eb;">
+          <a href="${process.env.NEXT_PUBLIC_APP_URL}/dashboard/presenter?tab=approved"
+             style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:6px;">
+            View Approved Cases
+          </a>
+        </td>
+      </tr>
+    </table>
+  `);
 
   await sendEmail({
     to,
-    subject: `Case Approved: ${caseTitle}`,
+    subject: `Case Approved: ${caseTitle} | Texas Jury Study`,
     html,
   });
 }

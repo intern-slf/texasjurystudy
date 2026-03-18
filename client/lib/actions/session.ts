@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { sendEmail, sendRescheduleEmail, sendSessionCreatedEmail } from "@/lib/mail";
+import { sendEmail, sendRescheduleEmail, sendSessionCreatedEmail, emailWrapper } from "@/lib/mail";
 import { revalidatePath } from "next/cache";
 import { localToUTC, localToUTCTime } from "@/lib/timezone";
 
@@ -174,89 +174,78 @@ export async function inviteParticipants(
 
       await sendEmail({
         to: participantEmail,
-        subject: "You've been invited to a Jury Study Session!",
-        html: `
-          <html>
-            <head>
-              <script type="application/ld+json">
-              {
-                "@context": "http://schema.org",
-                "@type": "Event",
-                "name": "Jury Study Session",
-                "startDate": "${sessionDate || new Date().toISOString()}",
-                "location": {
-                  "@type": "Place",
-                  "name": "Remote (Secure Zoom)",
-                  "address": "Online"
-                },
-                "potentialAction": [
-                  {
-                    "@type": "RsvpAction",
-                    "handler": {
-                      "@type": "HttpActionHandler",
-                      "url": "${acceptLink}"
-                    },
-                    "attendance": "http://schema.org/RsvpResponseYes"
-                  },
-                  {
-                    "@type": "RsvpAction",
-                    "handler": {
-                      "@type": "HttpActionHandler",
-                      "url": "${declineLink}"
-                    },
-                    "attendance": "http://schema.org/RsvpResponseNo"
-                  }
-                ]
-              }
-              </script>
-            </head>
-            <body style="font-family: sans-serif; padding: 20px; color: #333; line-height: 1.5;">
-              <div style="border: 1px solid #eee; border-radius: 12px; max-width: 550px; padding: 30px; background-color: #ffffff; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
-                <h2 style="color: #2563eb; margin-top: 0; font-size: 24px;">Session Invitation</h2>
-                <p style="font-size: 16px;">You have been invited to participate in a <strong>Texas Jury Study</strong> focus group session.</p>
-                
-                <div style="background-color: #f8fafc; padding: 15px; border-radius: 8px; margin: 20px 0;">
-                  <p style="margin: 0; color: #475569; font-size: 14px; text-transform: uppercase; font-weight: bold; letter-spacing: 0.05em;">Session Date</p>
-                  <p style="margin: 5px 0 0 0; font-size: 18px; font-weight: 600;">${dateStr}</p>
-                  <p style="margin: 8px 0 0 0; color: #475569; font-size: 14px; text-transform: uppercase; font-weight: bold; letter-spacing: 0.05em;">Session Time</p>
-                  <p style="margin: 5px 0 0 0; font-size: 18px; font-weight: 600;">${timeStr}</p>
-                </div>
+        subject: `Invitation: Texas Jury Study Session – ${dateStr}`,
+        html: emailWrapper(`
+          <script type="application/ld+json">
+          {
+            "@context": "http://schema.org",
+            "@type": "Event",
+            "name": "Texas Jury Study Session",
+            "startDate": "${sessionDate || new Date().toISOString()}",
+            "location": { "@type": "Place", "name": "Remote (Secure Zoom)", "address": "Online" },
+            "potentialAction": [
+              { "@type": "RsvpAction", "handler": { "@type": "HttpActionHandler", "url": "${acceptLink}" }, "attendance": "http://schema.org/RsvpResponseYes" },
+              { "@type": "RsvpAction", "handler": { "@type": "HttpActionHandler", "url": "${declineLink}" }, "attendance": "http://schema.org/RsvpResponseNo" }
+            ]
+          }
+          </script>
 
-                <p style="font-size: 15px; color: #64748b;">Please respond by selecting an option below:</p>
-                
-                <table role="presentation" border="0" cellpadding="0" cellspacing="0" style="margin-top: 20px; width: 100%;">
+          <h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#1e3a8a;">You Have Been Invited</h2>
+          <p style="margin:0 0 20px;font-size:15px;color:#475569;">
+            You have been selected to participate in a Texas Jury Study focus group session. Please review the session details below and confirm your availability.
+          </p>
+
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;margin:0 0 24px;">
+            <tr>
+              <td style="padding:12px 20px;border-bottom:1px solid #e2e8f0;">
+                <p style="margin:0 0 2px;font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.08em;">Session Date</p>
+                <p style="margin:0;font-size:16px;font-weight:600;color:#1e293b;">${dateStr}</p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:12px 20px;">
+                <p style="margin:0 0 2px;font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.08em;">Session Time</p>
+                <p style="margin:0;font-size:16px;font-weight:600;color:#1e293b;">${timeStr}</p>
+              </td>
+            </tr>
+          </table>
+
+          <p style="margin:0 0 16px;font-size:14px;color:#475569;font-weight:600;">Please respond to this invitation:</p>
+
+          <table role="presentation" cellpadding="0" cellspacing="0">
+            <tr>
+              <td style="padding-right:12px;">
+                <table role="presentation" cellpadding="0" cellspacing="0">
                   <tr>
-                    <td align="center">
-                      <table role="presentation" border="0" cellpadding="0" cellspacing="0">
-                        <tr>
-                          <td style="padding: 0 5px;">
-                            <a href="${acceptLink}"
-                               style="background-color: #16a34a; color: white; padding: 12px 20px; border-radius: 6px; text-decoration: none; display: inline-block; font-weight: bold; font-size: 14px;">
-                              Yes
-                            </a>
-                          </td>
-                          <td style="padding: 0 5px;">
-                            <a href="${declineLink}"
-                               style="background-color: #dc2626; color: white; padding: 12px 20px; border-radius: 6px; text-decoration: none; display: inline-block; font-weight: bold; font-size: 14px;">
-                              No
-                            </a>
-                          </td>
-
-                        </tr>
-                      </table>
+                    <td style="border-radius:6px;background-color:#16a34a;">
+                      <a href="${acceptLink}"
+                         style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:6px;">
+                        Accept Invitation
+                      </a>
                     </td>
                   </tr>
                 </table>
+              </td>
+              <td>
+                <table role="presentation" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td style="border-radius:6px;background-color:#ffffff;border:1px solid #dc2626;">
+                      <a href="${declineLink}"
+                         style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#dc2626;text-decoration:none;border-radius:6px;">
+                        Decline
+                      </a>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
 
-                <div style="margin-top: 30px; border-top: 1px solid #f1f5f9; padding-top: 20px; text-align: center;">
-                  <p style="font-size: 14px; color: #64748b;">Alternatively, <a href="${appUrl}/dashboard/participant" style="color: #2563eb; text-decoration: underline;">view invitation on your dashboard</a>.</p>
-                </div>
-                
-                <p style="margin-top: 25px; font-size: 12px; color: #94a3b8; text-align: center;">If you did not expect this email, please ignore it.</p>
-              </div>
-            </body>
-          </html>
-        `,
+          <p style="margin:24px 0 0;font-size:13px;color:#64748b;">
+            You can also manage this invitation from your
+            <a href="${appUrl}/dashboard/participant" style="color:#2563eb;text-decoration:underline;">participant dashboard</a>.
+          </p>
+        `),
       });
 
       console.log(`Invitation email sent to ${participantEmail}`);
