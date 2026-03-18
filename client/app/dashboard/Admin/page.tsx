@@ -133,7 +133,10 @@ export default async function AdminDashboardPage({
         storage_path
       ),
       session_cases (
-        session_id
+        session_id,
+        sessions (
+          session_date
+        )
       )
     `)
     .in(
@@ -169,9 +172,22 @@ export default async function AdminDashboardPage({
     })
   );
 
+  // On the approved tab, hide cases whose session has already passed
+  const todayStr = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  const filteredCases = tab === "approved"
+    ? cases.filter((c) => {
+        const sessionCases = (c as any).session_cases ?? [];
+        if (sessionCases.length === 0) return true; // not in any session — keep
+        // keep only if at least one linked session is today or in the future
+        return sessionCases.some(
+          (sc: any) => sc.sessions?.session_date >= todayStr
+        );
+      })
+    : cases;
+
   // On the approved tab, show unscheduled cases first
   if (tab === "approved") {
-    cases.sort((a, b) => {
+    filteredCases.sort((a, b) => {
       if (!a.is_in_session && b.is_in_session) return -1;
       if (a.is_in_session && !b.is_in_session) return 1;
       return 0;
@@ -280,7 +296,7 @@ export default async function AdminDashboardPage({
             </TableHeader>
 
             <TableBody>
-              {cases.map((c) => {
+              {filteredCases.map((c) => {
                 const date = c.scheduled_at ? new Date(c.scheduled_at) : null;
                 const adminDate = c.admin_scheduled_at ? new Date(c.admin_scheduled_at) : null;
 
@@ -485,7 +501,7 @@ export default async function AdminDashboardPage({
                 );
               })}
 
-              {!cases.length && (
+              {!filteredCases.length && (
                 <TableRow>
                   <TableCell
                     colSpan={10}
