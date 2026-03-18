@@ -62,11 +62,14 @@ export async function getParticipantProfile(
 
     const { data: caseRow } = await supabase
       .from("cases")
-      .select("presenter_id")
+      .select("user_id, presenter_id")
       .eq("id", context.caseId)
       .single();
 
-    if (!caseRow || caseRow.presenter_id !== user.id) {
+    const isOwner =
+      caseRow?.user_id === user.id || caseRow?.presenter_id === user.id;
+
+    if (!caseRow || !isOwner) {
       throw new Error("Access denied");
     }
 
