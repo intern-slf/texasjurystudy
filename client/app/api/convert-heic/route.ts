@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import sharp from "sharp";
 
 export async function POST(req: NextRequest) {
   try {
@@ -13,20 +12,22 @@ export async function POST(req: NextRequest) {
     const arrayBuffer = await file.arrayBuffer();
     const inputBuffer = Buffer.from(arrayBuffer);
 
-    const jpegBuffer = await sharp(inputBuffer)
-      .rotate() // auto-rotate based on EXIF
-      .jpeg({ quality: 85 })
-      .toBuffer();
+    // Dynamic import so any WASM/module-load errors are caught below
+    const convert = (await import("heic-convert")).default;
 
-    return new NextResponse(new Uint8Array(jpegBuffer), {
+    const jpegBuffer = await convert({
+      buffer: inputBuffer,
+      format: "JPEG",
+      quality: 0.85,
+    });
+
+    return new NextResponse(new Uint8Array(jpegBuffer as ArrayBuffer), {
       status: 200,
-      headers: {
-        "Content-Type": "image/jpeg",
-        "Content-Disposition": `inline; filename="converted.jpg"`,
-      },
+      headers: { "Content-Type": "image/jpeg" },
     });
   } catch (err: any) {
-    console.error("[convert-heic] Error:", err.message);
-    return NextResponse.json({ error: "Conversion failed" }, { status: 500 });
+    const msg = err?.message ?? "Unknown error";
+    console.error("[convert-heic]", msg);
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

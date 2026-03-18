@@ -112,23 +112,58 @@ export default function ParticipantForm({ userId, email }: Props) {
     const isHeic =
       file.type === "image/heic" ||
       file.type === "image/heif" ||
-      /\.(heic|heif)$/i.test(file.name);
+      /\.(heic|heif)$/i.test(file.name) ||
+      await (async () => {
+        try {
+          const buf = new Uint8Array(await file.slice(0, 12).arrayBuffer());
+          return String.fromCharCode(buf[4], buf[5], buf[6], buf[7]) === "ftyp";
+        } catch { return false; }
+      })();
 
     if (isHeic) {
-      try {
-        const fd = new FormData();
-        fd.append("file", file);
-        const res = await fetch("/api/convert-heic", { method: "POST", body: fd });
-        if (!res.ok) throw new Error("Server conversion failed");
-        const blob = await res.blob();
-        processedFile = new File(
-          [blob],
-          file.name.replace(/\.(heic|heif)$/i, ".jpg"),
-          { type: "image/jpeg" }
-        );
-      } catch {
-        setError("Could not convert HEIC image. Please try a different photo.");
-        return;
+      // 1️⃣ Try <img> canvas conversion — iOS Safari renders HEIC in <img> natively
+      const canvasJpeg = await new Promise<File | null>((resolve) => {
+        const url = URL.createObjectURL(file);
+        const img = document.createElement("img");
+        img.onload = () => {
+          const canvas = document.createElement("canvas");
+          canvas.width = img.naturalWidth;
+          canvas.height = img.naturalHeight;
+          canvas.getContext("2d")!.drawImage(img, 0, 0);
+          URL.revokeObjectURL(url);
+          canvas.toBlob(
+            (blob) => {
+              if (!blob) { resolve(null); return; }
+              const name = (file.name.replace(/\.(heic|heif)$/i, "") || "photo") + ".jpg";
+              resolve(new File([blob], name, { type: "image/jpeg" }));
+            },
+            "image/jpeg",
+            0.85
+          );
+        };
+        img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+        img.src = url;
+      });
+
+      if (canvasJpeg) {
+        processedFile = canvasJpeg;
+      } else {
+        // 2️⃣ Fallback: server-side conversion via /api/convert-heic
+        try {
+          const fd = new FormData();
+          fd.append("file", file);
+          const res = await fetch("/api/convert-heic", { method: "POST", body: fd });
+          if (!res.ok) {
+            const body = await res.json().catch(() => ({}));
+            throw new Error(body.error ?? `HTTP ${res.status}`);
+          }
+          const blob = await res.blob();
+          const name = (file.name.replace(/\.(heic|heif)$/i, "") || "photo") + ".jpg";
+          processedFile = new File([blob], name, { type: "image/jpeg" });
+        } catch (err: any) {
+          setError(`Could not convert HEIC image: ${err.message}`);
+          return;
+        }
       }
     }
 
