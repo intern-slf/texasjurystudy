@@ -245,3 +245,57 @@ export async function sendApprovalEmail(to: string, caseTitle: string) {
     html,
   });
 }
+
+export async function sendSessionCompletedEmail(
+  to: string,
+  caseTitles: string[],
+  sessionDate: string,
+) {
+  const caseListHtml = caseTitles
+    .map((t) => `<li style="margin:4px 0;font-size:15px;font-weight:600;color:#1e3a8a;">${t}</li>`)
+    .join("");
+
+  const html = emailWrapper(`
+  <h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#15803d;">Session Completed</h2>
+  <p style="margin:0 0 20px;font-size:15px;color:#475569;">
+    Thank you for being a part of the Texas Jury Study. Your session has been successfully completed.
+  </p>
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#eff6ff;border-left:4px solid #2563eb;border-radius:6px;margin:0 0 16px;">
+    <tr>
+      <td style="padding:16px 20px;">
+        <p style="margin:0 0 8px;font-size:11px;font-weight:700;color:#1e40af;text-transform:uppercase;letter-spacing:0.08em;">Case${caseTitles.length > 1 ? "s" : ""}</p>
+        <ul style="margin:0;padding-left:18px;">${caseListHtml}</ul>
+      </td>
+    </tr>
+  </table>
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f0fdf4;border-left:4px solid #16a34a;border-radius:6px;margin:0 0 16px;">
+    <tr>
+      <td style="padding:16px 20px;">
+        <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#166534;text-transform:uppercase;letter-spacing:0.08em;">Session Date</p>
+        <p style="margin:0;font-size:15px;font-weight:600;color:#15803d;">${sessionDate}</p>
+      </td>
+    </tr>
+  </table>
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f8fafc;border-left:4px solid #64748b;border-radius:6px;margin:0 0 28px;">
+    <tr>
+      <td style="padding:16px 20px;">
+        <p style="margin:0;font-size:15px;color:#334155;">
+          Your <strong>transcripts and video of the session will be sent to you within a week.</strong>
+        </p>
+      </td>
+    </tr>
+  </table>
+
+  <p style="margin:0;font-size:14px;color:#64748b;">
+    If you have any questions, please don't hesitate to reach out to us.
+  </p>
+`);
+  await sendEmail({
+    to,
+    subject: `Session Completed: ${caseTitles.join(", ")} | Texas Jury Study`,
+    html,
+  });
+}

@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { sendEmail, sendRescheduleEmail, sendSessionCreatedEmail, emailWrapper } from "@/lib/mail";
+import { sendEmail, sendRescheduleEmail, sendSessionCreatedEmail, sendSessionCompletedEmail, emailWrapper } from "@/lib/mail";
 import { revalidatePath } from "next/cache";
 import { localToUTC, localToUTCTime } from "@/lib/timezone";
 
@@ -518,6 +518,117 @@ export async function replaceCaseInSession(
       console.error(`Notification email failed for new presenter ${caseRow.user_id}:`, e);
     }
   }
+
+  revalidatePath("/dashboard/Admin/sessions");
+}
+
+/* =========================
+   TOGGLE COMPLETION EMAIL INTENT
+   Sets send_completion_email on a session (pre-select intent before session completes)
+========================= */
+export async function toggleCompletionEmailIntent(sessionId: string, value: boolean) {
+  const supabase = await createClient();
+  await supabase
+    .from("sessions")
+    .update({ send_completion_email: value })
+    .eq("id", sessionId);
+  revalidatePath("/dashboard/Admin/sessions");
+}
+
+/* =========================
+   SEND SESSION COMPLETION EMAIL
+   Sends completion email to each case presenter and marks completion_email_sent = true
+========================= */
+export async function sendCompletionEmailAction(sessionId: string) {
+  const supabase = await createClient();
+
+  const { data: session, error: sessionError } = await supabase
+    .from("sessions")
+    .select("session_date, completion_email_sent")
+    .eq("id", sessionId)
+    .single();
+
+  if (sessionError || !session) {
+    console.error("[sendCompletionEmail] Failed to fetch session:", sessionError);
+    return;
+  }
+
+  // Guard: only send once
+  if ((session as any).completion_email_sent) {
+    console.log("[sendCompletionEmail] Already sent for session:", sessionId);
+    return;
+  }
+
+  const { data: sessionCases } = await supabase
+    .from("session_cases")
+    .select("case_id")
+    .eq("session_id", sessionId);
+
+  const caseIds = (sessionCases ?? []).map((sc: any) => sc.case_id);
+  if (!caseIds.length) {
+    console.error("[sendCompletionEmail] No cases found for session:", sessionId);
+    return;
+  }
+
+  const { data: caseRows } = await supabase
+    .from("cases")
+    .select("id, title, user_id")
+    .in("id", caseIds);
+
+  if (!caseRows?.length) {
+    console.error("[sendCompletionEmail] No case rows found");
+    return;
+  }
+
+  const sessionDate = new Date(session.session_date).toLocaleDateString("en-US", {
+    weekday: "long", year: "numeric", month: "long", day: "numeric",
+  });
+
+  // Deduplicate by user_id — same pattern as notifyPresentersSessionCreated
+  const presenterMap = new Map<string, string[]>();
+  for (const c of caseRows) {
+    if (!c.user_id) continue;
+    if (!presenterMap.has(c.user_id)) presenterMap.set(c.user_id, []);
+    presenterMap.get(c.user_id)!.push(c.title);
+  }
+
+  if (presenterMap.size === 0) {
+    console.error("[sendCompletionEmail] No user_id on cases:", caseIds);
+    return;
+  }
+
+  for (const [userId, titles] of presenterMap) {
+    try {
+      // Primary: auth.users  (same as approveCaseAction)
+      let email: string | null = null;
+      const { data: userData } = await supabaseAdmin.auth.admin.getUserById(userId);
+      email = userData?.user?.email ?? null;
+
+      // Fallback: profiles table
+      if (!email) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("email")
+          .eq("id", userId)
+          .single();
+        email = profile?.email ?? null;
+      }
+
+      if (email) {
+        await sendSessionCompletedEmail(email, titles, sessionDate);
+        console.log(`[sendCompletionEmail] Sent to ${email}`);
+      } else {
+        console.error(`[sendCompletionEmail] No email found for user_id ${userId}`);
+      }
+    } catch (e) {
+      console.error(`[sendCompletionEmail] Failed for user_id ${userId}:`, e);
+    }
+  }
+
+  await supabase
+    .from("sessions")
+    .update({ completion_email_sent: true } as any)
+    .eq("id", sessionId);
 
   revalidatePath("/dashboard/Admin/sessions");
 }

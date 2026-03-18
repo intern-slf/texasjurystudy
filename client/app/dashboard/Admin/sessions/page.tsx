@@ -17,6 +17,7 @@ import InviteMoreModal, { type Candidate } from "@/components/InviteMoreModal";
 import RescheduleModal from "@/components/RescheduleModal";
 import ReplaceCaseModal, { type ReplacementCandidate } from "@/components/ReplaceCaseModal";
 import LocalTimeRange from "@/components/LocalTimeRange";
+import { toggleCompletionEmailIntent, sendCompletionEmailAction } from "@/lib/actions/session";
 
 
 async function submitSession(formData: FormData) {
@@ -202,7 +203,7 @@ export default async function SessionsPage({
 
   const { data: sessions } = await supabase
     .from("sessions")
-    .select("id, session_date, created_by")
+    .select("id, session_date, created_by, send_completion_email, completion_email_sent")
     .order("session_date", { ascending: false });
 
   /* =========================
@@ -269,7 +270,10 @@ export default async function SessionsPage({
       const alreadyInvitedSet = new Set(participantIds);
       const candidates = await fetchCandidates(supabase, caseIds, alreadyInvitedSet);
 
-      return { s, scases, caseDetails, alreadySubmitted, sParticipants, participantDetails, candidates };
+      return { s, scases, caseDetails, alreadySubmitted, sParticipants, participantDetails, candidates,
+        sendCompletionEmail: (s as any).send_completion_email ?? false,
+        completionEmailSent: (s as any).completion_email_sent ?? false,
+      };
     })
   );
 
@@ -349,7 +353,7 @@ export default async function SessionsPage({
 
       {/* LIST */}
       {displayedSessions.length ? (
-        displayedSessions.map(({ s, scases, caseDetails, alreadySubmitted, sParticipants, participantDetails, candidates }) => (
+        displayedSessions.map(({ s, scases, caseDetails, alreadySubmitted, sParticipants, participantDetails, candidates, sendCompletionEmail, completionEmailSent }) => (
           <div
             key={s.id}
             className="border rounded p-6 space-y-6 bg-white shadow-sm"
@@ -473,7 +477,7 @@ export default async function SessionsPage({
                 </div>
 
                 {/* ACTIONS */}
-                <div className="flex justify-end gap-3">
+                <div className="flex justify-end gap-3 flex-wrap">
                   {!alreadySubmitted && (
                     <InviteMoreModal
                       sessionId={s.id}
@@ -494,6 +498,48 @@ export default async function SessionsPage({
                       {alreadySubmitted ? "Already Notified" : "Notify Presenter"}
                     </button>
                   </form>
+
+                  {/* COMPLETION EMAIL BUTTON */}
+                  {completionEmailSent ? (
+                    <button
+                      disabled
+                      className="px-4 py-2 rounded text-sm text-white bg-gray-400 cursor-not-allowed"
+                    >
+                      ✓ Completion Email Sent
+                    </button>
+                  ) : s.session_date <= todayStr ? (
+                    /* Session date is today or past: clicking sends the email immediately */
+                    <form action={async () => {
+                      "use server";
+                      await sendCompletionEmailAction(s.id);
+                    }}>
+                      <button
+                        className={`px-4 py-2 rounded text-sm text-white ${
+                          sendCompletionEmail
+                            ? "bg-blue-600 hover:bg-blue-700"
+                            : "bg-slate-500 hover:bg-slate-600"
+                        }`}
+                      >
+                        {sendCompletionEmail ? "Send Completion Email" : "Notify on Completion"}
+                      </button>
+                    </form>
+                  ) : (
+                    /* Upcoming session: toggle intent on/off */
+                    <form action={async () => {
+                      "use server";
+                      await toggleCompletionEmailIntent(s.id, !sendCompletionEmail);
+                    }}>
+                      <button
+                        className={`px-4 py-2 rounded text-sm border ${
+                          sendCompletionEmail
+                            ? "bg-blue-600 text-white hover:bg-blue-700 border-blue-600"
+                            : "bg-white text-slate-600 hover:bg-slate-50 border-slate-300"
+                        }`}
+                      >
+                        {sendCompletionEmail ? "Will Notify on Completion" : "Notify on Completion"}
+                      </button>
+                    </form>
+                  )}
                 </div>
 
               </div>

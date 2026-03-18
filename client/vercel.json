@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/send-completion-emails",
+      "schedule": "0 * * * *"
+    }
+  ]
+}
