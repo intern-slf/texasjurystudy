@@ -247,6 +247,44 @@ export default async function ParticipantDashboard({
         </section>
       )}
 
+      {/* NO ACTIVE SESSIONS — ONBOARDING DIRECTIONS */}
+      {pendingInvites.length === 0 && (
+        <section className="bg-white border rounded-xl p-6 space-y-4">
+          <h2 className="text-lg font-bold text-slate-800">
+            Welcome to the Texas Jury Study!
+          </h2>
+          <p className="text-slate-600">
+            You currently don&apos;t have any active sessions. Here is what you can expect next:
+          </p>
+          <ul className="space-y-3">
+            <li className="flex items-start gap-3">
+              <span className="text-xl">📩</span>
+              <div>
+                <span className="font-semibold text-slate-800">Watch Your Inbox:</span>{" "}
+                <span className="text-slate-600">We will notify you via email as soon as a study opens up that matches your profile.</span>
+              </div>
+            </li>
+            <li className="flex items-start gap-3">
+              <span className="text-xl">🗓️</span>
+              <div>
+                <span className="font-semibold text-slate-800">Check Your Availability:</span>{" "}
+                <span className="text-slate-600">Review the session&apos;s date, time, and details to see if it fits your schedule.</span>
+              </div>
+            </li>
+            <li className="flex items-start gap-3">
+              <span className="text-xl">✅</span>
+              <div>
+                <span className="font-semibold text-slate-800">Claim Your Spot:</span>{" "}
+                <span className="text-slate-600">If you are available, just accept the email invitation to become a participant.</span>
+              </div>
+            </li>
+          </ul>
+          <p className="text-sm text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-4 py-3">
+            <span className="font-semibold">Tip:</span> Keeping your Full Profile updated helps us send you the most relevant studies!
+          </p>
+        </section>
+      )}
+
       {/* VIEW / EDIT PROFILE + MY SESSIONS */}
       <div className="flex gap-3 flex-wrap">
         <Link
