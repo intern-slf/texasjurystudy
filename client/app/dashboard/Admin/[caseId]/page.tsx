@@ -1,14 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-
-import { applyCaseFilters, CaseFilters } from "@/lib/filter-utils";
+import { CaseFilters } from "@/lib/filter-utils";
 
 /* =========================
    DB ROW TYPES
@@ -18,18 +9,6 @@ interface CaseDocumentRow {
   id: string;
   original_name: string;
   storage_path: string;
-}
-
-interface JuryParticipant {
-  id: string;
-  first_name: string;
-  last_name: string;
-  city: string;
-  state: string;
-  education_level: string;
-  political_affiliation: string;
-  gender: string;
-  age: number;
 }
 
 /* =========================
@@ -56,16 +35,11 @@ interface CaseInfo {
 
 export default async function AdminCaseDetailPage({
   params,
-  searchParams,
 }: {
   params: Promise<{ caseId: string }>;
-  searchParams: Promise<{ test_table?: string }>;
 }) {
   const supabase = await createClient();
   const { caseId } = await params;
-  const resolvedSearchParams = await searchParams;
-  const isOldData = resolvedSearchParams?.test_table === "oldData";
-  const testTable = isOldData ? "oldData" : "jury_participants";
 
   /* =========================
      FETCH CASE
@@ -139,19 +113,6 @@ export default async function AdminCaseDetailPage({
   }
 
   /* =========================
-     BUILD PARTICIPANT QUERY
-     ========================= */
-
-  let participantQuery = supabase
-    .from(testTable)
-    .select("*");
-
-  // Apply filters using shared utility
-  participantQuery = applyCaseFilters(participantQuery, caseInfo.filters);
-
-  const { data: participants } = await participantQuery;
-
-  /* =========================
      UI
      ========================= */
 
@@ -198,59 +159,6 @@ export default async function AdminCaseDetailPage({
               </a>
             ) : null
           )}
-        </div>
-      </section>
-
-      {/* PARTICIPANTS */}
-      <section>
-        <h3 className="text-xl font-bold mb-4">
-          Matched Participants
-        </h3>
-
-        <div className="rounded-md border bg-white overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Location</TableHead>
-                <TableHead>Education</TableHead>
-                <TableHead>Politics</TableHead>
-              </TableRow>
-            </TableHeader>
-
-            <TableBody>
-              {participants?.length ? (
-                participants.map((p: JuryParticipant) => (
-                  <TableRow key={p.id} className="hover:bg-slate-50">
-                    <TableCell>
-                      <a
-                        href={`/dashboard/participant/${p.id}?from=case&caseId=${caseId}${isOldData ? "&test_table=oldData" : ""}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="font-medium text-blue-600 hover:underline"
-                      >
-                        {p.first_name} {p.last_name}
-                      </a>
-                    </TableCell>
-                    <TableCell>
-                      {p.city}, {p.state}
-                    </TableCell>
-                    <TableCell>{p.education_level}</TableCell>
-                    <TableCell>{p.political_affiliation}</TableCell>
-                  </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell
-                    colSpan={4}
-                    className="text-center text-slate-400 italic py-10"
-                  >
-                    No matching participants found.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
         </div>
       </section>
     </div>
