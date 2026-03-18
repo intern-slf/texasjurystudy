@@ -1,7 +1,7 @@
 'use server';
 
 import { supabaseAdmin } from '@/lib/supabase/admin';
-import { sendEmail } from '@/lib/mail';
+import { sendEmail, emailWrapper } from '@/lib/mail';
 import { redirect } from 'next/navigation';
 
 export async function signupWithCustomEmail(formData: FormData) {
@@ -53,15 +53,26 @@ export async function signupWithCustomEmail(formData: FormData) {
 
         await sendEmail({
             to: email,
-            subject: 'Confirm your account | Texas Jury Study',
-            html: `
-          <div style="font-family: sans-serif; padding: 20px;">
-            <h2>Welcome to Texas Jury Study!</h2>
-            <p>Please confirm your account by clicking the link below:</p>
-            <a href="${verificationLink}" style="padding: 10px 20px; background-color: #007bff; color: white; text-decoration: none; border-radius: 5px;">Confirm Account</a>
-            <p>If you did not request this, please ignore this email.</p>
-          </div>
-        `,
+            subject: 'Confirm Your Account | Texas Jury Study',
+            html: emailWrapper(`
+              <h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#1e3a8a;text-align:center;">Confirm Your Account</h2>
+              <p style="margin:0 0 20px;font-size:15px;color:#475569;">
+                Thank you for registering with the Texas Jury Study. Please verify your email address to activate your account.
+              </p>
+              <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 28px;">
+                <tr>
+                  <td style="border-radius:6px;background-color:#2563eb;">
+                    <a href="${verificationLink}"
+                       style="display:inline-block;padding:13px 32px;font-size:15px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:6px;">
+                      Confirm Account
+                    </a>
+                  </td>
+                </tr>
+              </table>
+              <p style="margin:0;font-size:13px;color:#94a3b8;">
+                If you did not create an account, you can safely ignore this email.
+              </p>
+            `),
         });
 
         return { success: true };
@@ -92,15 +103,29 @@ export async function resetPasswordWithCustomEmail(formData: FormData) {
 
     await sendEmail({
         to: email,
-        subject: 'Reset your password | Texas Jury Study',
-        html: `
-      <div style="font-family: sans-serif; padding: 20px;">
-        <h2>Reset Password Request</h2>
-        <p>Click the link below to reset your password:</p>
-        <a href="${resetLink}" style="padding: 10px 20px; background-color: #007bff; color: white; text-decoration: none; border-radius: 5px;">Reset Password</a>
-        <p>If you did not request this, please ignore this email.</p>
-      </div>
-    `,
+        subject: 'Password Reset Request | Texas Jury Study',
+        html: emailWrapper(`
+          <h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#1e3a8a;">Password Reset Request</h2>
+          <p style="margin:0 0 20px;font-size:15px;color:#475569;">
+            We received a request to reset the password for your Texas Jury Study account. Click the button below to choose a new password.
+          </p>
+          <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 24px;">
+            <tr>
+              <td style="border-radius:6px;background-color:#2563eb;">
+                <a href="${resetLink}"
+                   style="display:inline-block;padding:13px 32px;font-size:15px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:6px;">
+                  Reset Password
+                </a>
+              </td>
+            </tr>
+          </table>
+          <p style="margin:0 0 8px;font-size:13px;color:#64748b;">
+            This link will expire shortly for your security.
+          </p>
+          <p style="margin:0;font-size:13px;color:#94a3b8;">
+            If you did not request a password reset, no action is needed — your account remains secure.
+          </p>
+        `),
     });
 
     return { success: true };
