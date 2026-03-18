@@ -10,23 +10,13 @@ export default function AuthCallbackPage() {
     useEffect(() => {
         const handleCallback = async () => {
             const supabase = createClient();
-            
-            // Check for hash parameters (implicit flow / magic link default sometimes)
+
             if (window.location.hash) {
-                const { data, error } = await supabase.auth.getSession();
-                if (data.session) {
-                    router.push('/dashboard');
-                } else {
-                     // Try to recover session from the hash if getSession didn't pick it up automatically
-                     // (Supabase client usually handles this on initialization if autoRefreshToken is on)
-                     // If we are here, likely the client auto-detected the hash.
-                     // Just redirect to dashboard and let middleware handle protection.
-                     router.push('/dashboard');
-                }
-            } else {
-                 // Fallback
-                 router.push('/dashboard');
+                await supabase.auth.getSession();
             }
+
+            // After confirming account, send user to login so they can sign in
+            router.push('/auth/login');
         };
 
         handleCallback();
