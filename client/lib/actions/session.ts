@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { sendEmail, sendRescheduleEmail, sendSessionCreatedEmail, emailWrapper } from "@/lib/mail";
+import { sendEmail, sendRescheduleEmail, sendSessionCreatedEmail, sendSessionCompletedEmail, emailWrapper } from "@/lib/mail";
 import { revalidatePath } from "next/cache";
 import { localToUTC, localToUTCTime } from "@/lib/timezone";
 
@@ -453,6 +453,86 @@ export async function respondToInvite(
     .eq("participant_id", participantId);
 
   if (error) throw error;
+}
+
+/* =========================
+   SET COMPLETION NOTIFICATION FLAG (upcoming sessions — cron handles sending)
+========================= */
+export async function setCompletionFlag(formData: FormData) {
+  const supabase = await createClient();
+  const sessionId = formData.get("sessionId") as string;
+
+  const { error } = await supabase
+    .from("sessions")
+    .update({ completion_notification_enabled: true })
+    .eq("id", sessionId);
+
+  if (error) throw error;
+
+  revalidatePath("/dashboard/Admin/sessions");
+}
+
+/* =========================
+   SEND COMPLETION EMAIL NOW (past sessions — immediate send)
+========================= */
+export async function sendCompletionNow(formData: FormData) {
+  const supabase = await createClient();
+  const sessionId = formData.get("sessionId") as string;
+
+  // Fetch session date
+  const { data: session } = await supabase
+    .from("sessions")
+    .select("session_date")
+    .eq("id", sessionId)
+    .single();
+
+  if (!session) throw new Error("Session not found");
+
+  // Fetch cases for this session
+  const { data: sessionCases } = await supabase
+    .from("session_cases")
+    .select("case_id")
+    .eq("session_id", sessionId);
+
+  const caseIds = (sessionCases ?? []).map((sc) => sc.case_id);
+
+  const { data: caseRows } = caseIds.length
+    ? await supabase.from("cases").select("id, title, user_id").in("id", caseIds)
+    : { data: [] };
+
+  const sessionDateStr = new Date(session.session_date).toLocaleDateString("en-US", {
+    weekday: "long", year: "numeric", month: "long", day: "numeric",
+  });
+
+  // Group case titles by presenter
+  const presenterMap = new Map<string, string[]>();
+  for (const c of (caseRows ?? [])) {
+    if (!c.user_id) continue;
+    if (!presenterMap.has(c.user_id)) presenterMap.set(c.user_id, []);
+    presenterMap.get(c.user_id)!.push(c.title);
+  }
+
+  // Send email immediately to each presenter
+  for (const [presenterId, titles] of presenterMap) {
+    try {
+      const { data: userData } = await supabaseAdmin.auth.admin.getUserById(presenterId);
+      const email = userData?.user?.email;
+      if (email) {
+        await sendSessionCompletedEmail(email, titles, sessionDateStr);
+        console.log(`[sendCompletionNow] Sent to ${email} for session ${sessionId}`);
+      }
+    } catch (e) {
+      console.error(`[sendCompletionNow] Failed for presenter ${presenterId}:`, e);
+    }
+  }
+
+  // Mark both flags so button goes gray and cron won't re-send
+  await supabase
+    .from("sessions")
+    .update({ completion_notification_enabled: true, completion_email_sent: true })
+    .eq("id", sessionId);
+
+  revalidatePath("/dashboard/Admin/sessions");
 }
 
 /* =========================

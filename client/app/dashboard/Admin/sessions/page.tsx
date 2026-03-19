@@ -17,6 +17,7 @@ import InviteMoreModal, { type Candidate } from "@/components/InviteMoreModal";
 import RescheduleModal from "@/components/RescheduleModal";
 import ReplaceCaseModal, { type ReplacementCandidate } from "@/components/ReplaceCaseModal";
 import LocalTimeRange from "@/components/LocalTimeRange";
+import { setCompletionFlag, sendCompletionNow } from "@/lib/actions/session";
 
 
 async function submitSession(formData: FormData) {
@@ -202,7 +203,7 @@ export default async function SessionsPage({
 
   const { data: sessions } = await supabase
     .from("sessions")
-    .select("id, session_date, created_by")
+    .select("id, session_date, created_by, completion_notification_enabled, completion_email_sent")
     .order("session_date", { ascending: false });
 
   /* =========================
@@ -364,16 +365,33 @@ export default async function SessionsPage({
                       Session ID: {s.id}
                     </div>
                   </div>
-                  <RescheduleModal
-                    sessionId={s.id}
-                    sessionDate={s.session_date}
-                    cases={(scases ?? []).map((sc) => ({
-                      case_id: sc.case_id,
-                      title: caseDetails?.find((cd) => cd.id === sc.case_id)?.title ?? "Unknown",
-                      start_time: sc.start_time,
-                      end_time: sc.end_time,
-                    }))}
-                  />
+                  <div className="flex items-center gap-2">
+                    <form action={activeTab === "past" ? sendCompletionNow : setCompletionFlag}>
+                      <input type="hidden" name="sessionId" value={s.id} />
+                      <button
+                        disabled={!!s.completion_notification_enabled}
+                        className={`px-3 py-1.5 rounded text-sm text-white ${
+                          s.completion_notification_enabled
+                            ? "bg-gray-400 cursor-not-allowed"
+                            : "bg-blue-600 hover:bg-blue-700"
+                        }`}
+                      >
+                        {s.completion_notification_enabled
+                          ? "Completion Notification Enabled"
+                          : "Send Notification of Completion"}
+                      </button>
+                    </form>
+                    <RescheduleModal
+                      sessionId={s.id}
+                      sessionDate={s.session_date}
+                      cases={(scases ?? []).map((sc) => ({
+                        case_id: sc.case_id,
+                        title: caseDetails?.find((cd) => cd.id === sc.case_id)?.title ?? "Unknown",
+                        start_time: sc.start_time,
+                        end_time: sc.end_time,
+                      }))}
+                    />
+                  </div>
                 </div>
 
                 {/* CASES */}
