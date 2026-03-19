@@ -140,13 +140,21 @@ export default async function ParticipantProfilePage({
 
         {/* ADMIN AREA */}
         {role === "admin" && (
-          <section className="bg-slate-50 border rounded-xl p-6">
-            <h2 className="font-bold text-lg mb-4">Admin Controls</h2>
+          <section className="bg-slate-50 border rounded-xl p-6 space-y-4">
+            <h2 className="font-bold text-lg">Admin Controls</h2>
             <AdminParticipantControls
               userId={participant.user_id}
               approvedByAdmin={participant.approved_by_admin ?? null}
               blacklistedAt={participant.blacklisted_at ?? null}
             />
+            <div className="pt-2 border-t border-slate-200">
+              <Link
+                href={`/dashboard/Admin/participants/${participant.user_id}/edit`}
+                className="inline-flex items-center rounded-md bg-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-300 transition-colors"
+              >
+                Edit Participant Details
+              </Link>
+            </div>
           </section>
         )}
       </div>

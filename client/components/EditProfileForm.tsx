@@ -30,21 +30,29 @@ const US_STATES = [
 
 type Props = {
   participant: Record<string, any>;
+  adminMode?: boolean;
+  onUpdate?: (payload: Record<string, unknown>) => Promise<void>;
+  backHref?: string;
 };
 
-export default function EditProfileForm({ participant }: Props) {
+export default function EditProfileForm({ participant, adminMode, onUpdate, backHref }: Props) {
   const supabase = createClient();
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
-  // Names fetched from confidentiality agreement
-  const [firstName, setFirstName] = useState<string | null>(null);
-  const [lastName, setLastName] = useState<string | null>(null);
-  const [namesLoading, setNamesLoading] = useState(true);
+  // Names: editable in adminMode, fetched from confidentiality agreement otherwise
+  const [firstName, setFirstName] = useState<string | null>(
+    adminMode ? (participant.first_name || "") : null
+  );
+  const [lastName, setLastName] = useState<string | null>(
+    adminMode ? (participant.last_name || "") : null
+  );
+  const [namesLoading, setNamesLoading] = useState(!adminMode);
 
   useEffect(() => {
+    if (adminMode) return;
     async function fetchFromAgreement() {
       const { data, error } = await supabase
         .from("confidentiality_agreements")
@@ -59,7 +67,7 @@ export default function EditProfileForm({ participant }: Props) {
       setNamesLoading(false);
     }
     fetchFromAgreement();
-  }, [participant.user_id, supabase]);
+  }, [adminMode, participant.user_id, supabase]);
   const [age, setAge] = useState(participant.age?.toString() || "");
   const [gender, setGender] = useState(participant.gender || "");
   const [race, setRace] = useState(participant.race || "");
@@ -270,15 +278,25 @@ export default function EditProfileForm({ participant }: Props) {
       date_updated: new Date().toISOString(),
     };
 
-    const { error: dbError } = await supabase
-      .from("jury_participants")
-      .update(payload)
-      .eq("user_id", participant.user_id);
+    if (onUpdate) {
+      try {
+        await onUpdate(payload as Record<string, unknown>);
+      } catch (err: any) {
+        setError(err.message ?? "Failed to save changes.");
+        setLoading(false);
+        return;
+      }
+    } else {
+      const { error: dbError } = await supabase
+        .from("jury_participants")
+        .update(payload)
+        .eq("user_id", participant.user_id);
 
-    if (dbError) {
-      setError(dbError.message);
-      setLoading(false);
-      return;
+      if (dbError) {
+        setError(dbError.message);
+        setLoading(false);
+        return;
+      }
     }
 
     // Auto-blacklist (or restore) based on latest answers
@@ -292,17 +310,23 @@ export default function EditProfileForm({ participant }: Props) {
     <form onSubmit={handleSubmit} className="max-w-2xl mx-auto space-y-8 p-4">
       <div className="flex items-center gap-3">
         <Pencil className="h-6 w-6 text-blue-600" />
-        <h2 className="text-2xl font-bold">Edit Profile</h2>
+        <h2 className="text-2xl font-bold">
+          {adminMode ? "Edit Participant Profile" : "Edit Profile"}
+        </h2>
       </div>
       <p className="text-slate-500 text-sm -mt-4">
-        Update any of your profile details below.
+        {adminMode
+          ? "Update this participant's details as an admin."
+          : "Update any of your profile details below."}
       </p>
 
       {/* BASIC INFO */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label>First Name</Label>
-          {namesLoading ? (
+          {adminMode ? (
+            <Input value={firstName || ""} onChange={(e) => setFirstName(e.target.value)} required />
+          ) : namesLoading ? (
             <p className="text-sm text-slate-400 py-2">Loading...</p>
           ) : firstName ? (
             <div className="flex h-10 items-center rounded-md border bg-slate-50 px-3 text-sm text-slate-700">
@@ -314,7 +338,9 @@ export default function EditProfileForm({ participant }: Props) {
         </div>
         <div className="space-y-2">
           <Label>Last Name</Label>
-          {namesLoading ? (
+          {adminMode ? (
+            <Input value={lastName || ""} onChange={(e) => setLastName(e.target.value)} required />
+          ) : namesLoading ? (
             <p className="text-sm text-slate-400 py-2">Loading...</p>
           ) : lastName ? (
             <div className="flex h-10 items-center rounded-md border bg-slate-50 px-3 text-sm text-slate-700">
@@ -617,14 +643,22 @@ export default function EditProfileForm({ participant }: Props) {
         <Button type="submit" disabled={loading || uploadProgress} className="h-12 px-8 text-lg">
           {uploadProgress ? "Uploading ID..." : loading ? "Saving..." : "Save Changes"}
         </Button>
-        <Button
-          type="button"
-          variant="outline"
-          className="h-12 px-8 text-lg"
-          onClick={() => window.history.back()}
-        >
-          Cancel
-        </Button>
+        {backHref ? (
+          <a href={backHref}>
+            <Button type="button" variant="outline" className="h-12 px-8 text-lg">
+              Cancel
+            </Button>
+          </a>
+        ) : (
+          <Button
+            type="button"
+            variant="outline"
+            className="h-12 px-8 text-lg"
+            onClick={() => window.history.back()}
+          >
+            Cancel
+          </Button>
+        )}
       </div>
 
       {success && (

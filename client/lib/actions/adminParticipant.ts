@@ -72,3 +72,19 @@ export async function unblacklistParticipant(userId: string) {
 
     revalidatePath("/dashboard/Admin/participants");
 }
+
+/* =========================
+   ADMIN EDIT PARTICIPANT
+========================= */
+
+export async function adminUpdateParticipant(userId: string, payload: Record<string, unknown>) {
+    const { error } = await supabaseAdmin
+        .from("jury_participants")
+        .update({ ...payload, date_updated: new Date().toISOString() })
+        .eq("user_id", userId);
+
+    if (error) throw new Error(error.message);
+
+    revalidatePath(`/dashboard/participant/${userId}`);
+    revalidatePath("/dashboard/Admin/participants");
+}

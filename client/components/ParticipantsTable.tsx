@@ -199,6 +199,12 @@ export default function ParticipantsTable({ participants, tab }: Props) {
                           <span className="inline-flex items-center rounded-full bg-red-400/10 px-2 py-1 text-xs font-medium text-red-500 ring-1 ring-inset ring-red-400/20">
                             Blacklisted
                           </span>
+                          <Link
+                            href={`/dashboard/Admin/participants/${p.user_id}/edit`}
+                            className="inline-flex items-center rounded-md bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-200 transition-colors"
+                          >
+                            Edit
+                          </Link>
                           <button
                             onClick={() => handleUnblacklist(p.user_id)}
                             disabled={isThisPending}
@@ -208,9 +214,17 @@ export default function ParticipantsTable({ participants, tab }: Props) {
                           </button>
                         </div>
                       ) : (
-                        <span className="inline-flex items-center rounded-full bg-green-400/10 px-2 py-1 text-xs font-medium text-green-500 ring-1 ring-inset ring-green-400/20">
-                          Verified
-                        </span>
+                        <div className="flex items-center justify-end gap-2">
+                          <span className="inline-flex items-center rounded-full bg-green-400/10 px-2 py-1 text-xs font-medium text-green-500 ring-1 ring-inset ring-green-400/20">
+                            Verified
+                          </span>
+                          <Link
+                            href={`/dashboard/Admin/participants/${p.user_id}/edit`}
+                            className="inline-flex items-center rounded-md bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-200 transition-colors"
+                          >
+                            Edit
+                          </Link>
+                        </div>
                       )}
                     </TableCell>
                   </TableRow>
