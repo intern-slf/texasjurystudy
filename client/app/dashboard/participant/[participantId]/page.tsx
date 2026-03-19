@@ -1,6 +1,5 @@
 import { getParticipantProfile } from "@/lib/participant/getParticipantProfile";
 import { createClient } from "@/lib/supabase/server";
-import ParticipantForm from "@/components/ParticipantForm";
 import Link from "next/link";
 import AdminParticipantControls from "@/components/AdminParticipantControls";
 
@@ -148,12 +147,19 @@ export default async function ParticipantProfilePage({
               blacklistedAt={participant.blacklisted_at ?? null}
             />
             <div className="pt-2 border-t border-slate-200">
-              <Link
-                href={`/dashboard/Admin/participants/${participant.user_id}/edit`}
-                className="inline-flex items-center rounded-md bg-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-300 transition-colors"
-              >
-                Edit Participant Details
-              </Link>
+              <div className="relative group inline-flex items-start">
+                <Link
+                  href={`/dashboard/Admin/participants/${participant.user_id}/edit`}
+                  className="inline-flex items-center rounded-md bg-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-300 transition-colors"
+                >
+                  Edit Participant Details
+                </Link>
+                <span className="ml-1 -mt-1 inline-flex items-center justify-center w-4 h-4 rounded-full bg-blue-500 text-white text-[11px] font-bold cursor-default select-none leading-none">?</span>
+                <div className="absolute bottom-full left-0 mb-2 w-60 rounded-md bg-slate-800 px-3 py-2 text-xs text-white shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                  Saving changes will send an email notification to the participant listing what was updated.
+                  <span className="absolute top-full left-4 border-4 border-transparent border-t-slate-800" />
+                </div>
+              </div>
             </div>
           </section>
         )}

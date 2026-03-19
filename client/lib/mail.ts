@@ -252,6 +252,55 @@ export async function sendSessionCompletedEmail(
   });
 }
 
+export async function sendProfileUpdatedEmail(
+  to: string,
+  firstName: string,
+  changedFields: string[]
+) {
+  const fieldListHtml = changedFields
+    .map((f) => `<li style="margin:4px 0;font-size:14px;color:#1e293b;">${f}</li>`)
+    .join("");
+
+  const html = emailWrapper(`
+    <h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#1e3a8a;">Profile Updated</h2>
+    <p style="margin:0 0 20px;font-size:15px;color:#475569;">
+      Hi ${firstName}, an administrator has updated your participant profile.
+    </p>
+
+    ${changedFields.length > 0 ? `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#eff6ff;border-left:4px solid #2563eb;border-radius:6px;margin:0 0 24px;">
+      <tr>
+        <td style="padding:16px 20px;">
+          <p style="margin:0 0 8px;font-size:11px;font-weight:700;color:#1e40af;text-transform:uppercase;letter-spacing:0.08em;">Fields Updated</p>
+          <ul style="margin:0;padding-left:18px;">${fieldListHtml}</ul>
+        </td>
+      </tr>
+    </table>
+    ` : ""}
+
+    <p style="margin:0 0 28px;font-size:14px;color:#64748b;">
+      If you believe any of these changes are incorrect, please contact us.
+    </p>
+
+    <table role="presentation" cellpadding="0" cellspacing="0">
+      <tr>
+        <td style="border-radius:6px;background-color:#2563eb;">
+          <a href="${process.env.NEXT_PUBLIC_APP_URL}/dashboard/participant"
+             style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:6px;">
+            View My Profile
+          </a>
+        </td>
+      </tr>
+    </table>
+  `);
+
+  await sendEmail({
+    to,
+    subject: "Your Profile Has Been Updated | Texas Jury Study",
+    html,
+  });
+}
+
 export async function sendApprovalEmail(to: string, caseTitle: string) {
   const html = emailWrapper(`
     <h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#15803d;">Case Approved</h2>

@@ -3,6 +3,38 @@
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
+import { sendProfileUpdatedEmail } from "@/lib/mail";
+
+const FIELD_LABELS: Record<string, string> = {
+    first_name: "First Name",
+    last_name: "Last Name",
+    age: "Age",
+    gender: "Gender",
+    race: "Race",
+    phone: "Phone Number",
+    street_address: "Street Address",
+    address_line_2: "Address Line 2",
+    city: "City",
+    county: "County",
+    state: "State",
+    zip_code: "ZIP Code",
+    availability_weekdays: "Weekday Availability",
+    availability_weekends: "Weekend Availability",
+    served_on_jury: "Served on Jury",
+    convicted_felon: "Convicted Felon Status",
+    us_citizen: "U.S. Citizenship",
+    has_children: "Has Children",
+    served_armed_forces: "Armed Forces Service",
+    currently_employed: "Employment Status",
+    industry: "Industry / Field",
+    marital_status: "Marital Status",
+    political_affiliation: "Political Affiliation",
+    education_level: "Education Level",
+    family_income: "Family Income",
+    heard_about_us: "Referral Source",
+    driver_license_number: "Driver's License Number",
+    driver_license_image_url: "ID Photo",
+};
 
 /* =========================
    VERIFY (APPROVE) PARTICIPANT
@@ -78,6 +110,13 @@ export async function unblacklistParticipant(userId: string) {
 ========================= */
 
 export async function adminUpdateParticipant(userId: string, payload: Record<string, unknown>) {
+    // Fetch current data before updating so we can diff
+    const { data: current } = await supabaseAdmin
+        .from("jury_participants")
+        .select("*")
+        .eq("user_id", userId)
+        .single();
+
     const { error } = await supabaseAdmin
         .from("jury_participants")
         .update({ ...payload, date_updated: new Date().toISOString() })
@@ -87,6 +126,21 @@ export async function adminUpdateParticipant(userId: string, payload: Record<str
 
     revalidatePath(`/dashboard/participant/${userId}`);
     revalidatePath("/dashboard/Admin/participants");
+
+    // Notify participant — only list fields whose values actually changed
+    try {
+        if (current?.email) {
+            const changedFields = Object.keys(payload)
+                .filter((k) => k in FIELD_LABELS && String(payload[k] ?? "") !== String(current[k] ?? ""))
+                .map((k) => FIELD_LABELS[k]);
+
+            if (changedFields.length > 0) {
+                await sendProfileUpdatedEmail(current.email, current.first_name || "there", changedFields);
+            }
+        }
+    } catch (emailErr) {
+        console.error("[adminUpdateParticipant] Failed to send profile update email:", emailErr);
+    }
 }
 
 export async function adminUpdateParticipantDob(userId: string, dateOfBirth: string) {

@@ -695,7 +695,7 @@ export default function EditProfileForm({ participant, adminMode, onUpdate, onUp
       </div>
 
       {/* SUBMIT */}
-      <div className="flex gap-3">
+      <div className="flex items-center gap-3">
         <Button type="submit" disabled={loading || uploadProgress} className="h-12 px-8 text-lg">
           {uploadProgress ? "Uploading ID..." : loading ? "Saving..." : "Save Changes"}
         </Button>
