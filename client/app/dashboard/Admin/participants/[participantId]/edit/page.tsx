@@ -1,6 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
-import { adminUpdateParticipant } from "@/lib/actions/adminParticipant";
+import { adminUpdateParticipant, adminUpdateParticipantDob } from "@/lib/actions/adminParticipant";
 import { autoBlacklistIfIneligible } from "@/lib/actions/autoBlacklist";
 import EditProfileForm from "@/components/EditProfileForm";
 import Link from "next/link";
@@ -29,14 +29,18 @@ export default async function AdminEditParticipantPage({
 
   if (roleRow?.role !== "admin") redirect("/dashboard/participant");
 
-  // Fetch the full participant record using admin client
-  const { data: participant } = await supabaseAdmin
-    .from("jury_participants")
-    .select("*")
-    .eq("user_id", participantId)
-    .single();
+  // Fetch the full participant record and DOB using admin client
+  const [{ data: participant }, { data: agreement }] = await Promise.all([
+    supabaseAdmin.from("jury_participants").select("*").eq("user_id", participantId).single(),
+    supabaseAdmin.from("confidentiality_agreements").select("date_of_birth").eq("user_id", participantId).maybeSingle(),
+  ]);
 
   if (!participant) redirect("/dashboard/Admin/participants");
+
+  const participantWithDob = {
+    ...participant,
+    date_of_birth: agreement?.date_of_birth ?? null,
+  };
 
   const backHref = `/dashboard/participant/${participantId}`;
 
@@ -50,6 +54,11 @@ export default async function AdminEditParticipantPage({
     }
   }
 
+  async function handleUpdateDob(dob: string) {
+    "use server";
+    await adminUpdateParticipantDob(participantId, dob);
+  }
+
   return (
     <div className="max-w-3xl mx-auto p-8">
       <Link
@@ -59,9 +68,10 @@ export default async function AdminEditParticipantPage({
         ← Back to Profile
       </Link>
       <EditProfileForm
-        participant={participant}
+        participant={participantWithDob}
         adminMode
         onUpdate={handleUpdate}
+        onUpdateDob={handleUpdateDob}
         backHref={backHref}
       />
     </div>

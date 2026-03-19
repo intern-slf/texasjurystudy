@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { autoBlacklistIfIneligible } from "@/lib/actions/autoBlacklist";
 import { Pencil, Upload, X, CreditCard } from "lucide-react";
@@ -32,10 +32,11 @@ type Props = {
   participant: Record<string, any>;
   adminMode?: boolean;
   onUpdate?: (payload: Record<string, unknown>) => Promise<void>;
+  onUpdateDob?: (dob: string) => Promise<void>;
   backHref?: string;
 };
 
-export default function EditProfileForm({ participant, adminMode, onUpdate, backHref }: Props) {
+export default function EditProfileForm({ participant, adminMode, onUpdate, onUpdateDob, backHref }: Props) {
   const supabase = createClient();
 
   const [loading, setLoading] = useState(false);
@@ -49,6 +50,9 @@ export default function EditProfileForm({ participant, adminMode, onUpdate, back
   const [lastName, setLastName] = useState<string | null>(
     adminMode ? (participant.last_name || "") : null
   );
+  const [dob, setDob] = useState<string | null>(
+    adminMode ? (participant.date_of_birth || null) : null
+  );
   const [namesLoading, setNamesLoading] = useState(!adminMode);
 
   useEffect(() => {
@@ -56,19 +60,29 @@ export default function EditProfileForm({ participant, adminMode, onUpdate, back
     async function fetchFromAgreement() {
       const { data, error } = await supabase
         .from("confidentiality_agreements")
-        .select("first_name, last_name")
+        .select("first_name, last_name, date_of_birth")
         .eq("user_id", participant.user_id)
         .maybeSingle();
 
       if (!error && data) {
         if (data.first_name) setFirstName(data.first_name);
         if (data.last_name) setLastName(data.last_name);
+        if (data.date_of_birth) setDob(data.date_of_birth);
       }
       setNamesLoading(false);
     }
     fetchFromAgreement();
   }, [adminMode, participant.user_id, supabase]);
-  const [age, setAge] = useState(participant.age?.toString() || "");
+
+  const calculatedAge = useMemo(() => {
+    if (!dob) return adminMode ? (participant.age ?? null) : null;
+    const birth = new Date(dob + "T00:00:00");
+    const today = new Date();
+    let age = today.getFullYear() - birth.getFullYear();
+    const monthDiff = today.getMonth() - birth.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) age--;
+    return age >= 0 ? age : null;
+  }, [adminMode, dob, participant.age]);
   const [gender, setGender] = useState(participant.gender || "");
   const [race, setRace] = useState(participant.race || "");
   const [phone, setPhone] = useState(participant.phone || "");
@@ -85,8 +99,19 @@ export default function EditProfileForm({ participant, adminMode, onUpdate, back
   const [driverLicenseNumber, setDriverLicenseNumber] = useState(participant.driver_license_number || "");
   const [idFile, setIdFile] = useState<File | null>(null);
   const [idPreview, setIdPreview] = useState<string | null>(null);
+  const [existingIdUrl, setExistingIdUrl] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!participant.driver_license_image_url) return;
+    supabase.storage
+      .from("id-documents")
+      .createSignedUrl(participant.driver_license_image_url, 3600)
+      .then(({ data }) => {
+        if (data?.signedUrl) setExistingIdUrl(data.signedUrl);
+      });
+  }, [participant.driver_license_image_url, supabase]);
 
   // Availability
   const [availWeekdays, setAvailWeekdays] = useState(participant.availability_weekdays === "Yes");
@@ -247,7 +272,7 @@ export default function EditProfileForm({ participant, adminMode, onUpdate, back
     const payload = {
       first_name: firstName,
       last_name: lastName,
-      age: Number(age),
+      age: calculatedAge ?? participant.age,
       gender,
       race,
       email: participant.email,
@@ -296,6 +321,24 @@ export default function EditProfileForm({ participant, adminMode, onUpdate, back
         setError(dbError.message);
         setLoading(false);
         return;
+      }
+    }
+
+    // Save updated DOB
+    if (dob) {
+      if (onUpdateDob) {
+        try {
+          await onUpdateDob(dob);
+        } catch (err: any) {
+          setError(err.message ?? "Failed to save date of birth.");
+          setLoading(false);
+          return;
+        }
+      } else {
+        await supabase
+          .from("confidentiality_agreements")
+          .update({ date_of_birth: dob })
+          .eq("user_id", participant.user_id);
       }
     }
 
@@ -351,8 +394,20 @@ export default function EditProfileForm({ participant, adminMode, onUpdate, back
           )}
         </div>
         <div className="space-y-2">
-          <Label>Age</Label>
-          <Input type="number" min={18} max={99} value={age} onChange={(e) => setAge(e.target.value)} required />
+          <Label>Date of Birth</Label>
+          {namesLoading ? (
+            <p className="text-sm text-slate-400 py-2">Loading...</p>
+          ) : (
+            <Input
+              type="date"
+              value={dob || ""}
+              onChange={(e) => setDob(e.target.value || null)}
+              max={new Date().toISOString().split("T")[0]}
+            />
+          )}
+          {calculatedAge !== null && (
+            <p className="text-xs text-slate-500">Age: {calculatedAge}</p>
+          )}
         </div>
         <div className="space-y-2">
           <Label>Gender</Label>
@@ -453,12 +508,9 @@ export default function EditProfileForm({ participant, adminMode, onUpdate, back
           </div>
           <div className="space-y-2">
             <Label>Upload Driver&apos;s License / State ID Photo</Label>
-            {participant.driver_license_image_url && !idFile && (
-              <p className="text-xs text-green-600">✓ An ID image is already on file</p>
-            )}
             <div
               className={`relative border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-all duration-200 ${
-                idPreview
+                idPreview || existingIdUrl
                   ? "border-blue-300 bg-blue-50/50"
                   : "border-slate-300 hover:border-blue-400 hover:bg-blue-50/30"
               }`}
@@ -491,12 +543,16 @@ export default function EditProfileForm({ participant, adminMode, onUpdate, back
                     <X className="h-3 w-3" /> Remove
                   </button>
                 </div>
+              ) : existingIdUrl ? (
+                <div className="space-y-2">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={existingIdUrl} alt="Existing ID" className="mx-auto max-h-32 rounded-lg object-contain" />
+                  <p className="text-xs text-slate-500">Click to replace</p>
+                </div>
               ) : (
                 <div className="py-4 space-y-2">
                   <Upload className="h-8 w-8 mx-auto text-slate-400" />
-                  <p className="text-sm text-slate-500">
-                    {participant.driver_license_image_url ? "Click to replace existing photo" : "Click or drag & drop to upload"}
-                  </p>
+                  <p className="text-sm text-slate-500">Click or drag &amp; drop to upload</p>
                   <p className="text-xs text-slate-400">JPG, PNG — Max 10 MB</p>
                 </div>
               )}

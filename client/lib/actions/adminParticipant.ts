@@ -88,3 +88,12 @@ export async function adminUpdateParticipant(userId: string, payload: Record<str
     revalidatePath(`/dashboard/participant/${userId}`);
     revalidatePath("/dashboard/Admin/participants");
 }
+
+export async function adminUpdateParticipantDob(userId: string, dateOfBirth: string) {
+    const { error } = await supabaseAdmin
+        .from("confidentiality_agreements")
+        .update({ date_of_birth: dateOfBirth })
+        .eq("user_id", userId);
+
+    if (error) throw new Error(error.message);
+}
