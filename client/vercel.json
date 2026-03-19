@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/cron/session-completion?secret=8f3c9b2a7d4e1f6a9c0b3e5d8f7a2c1e4b6d9f0a3c7e2b1d",
-      "schedule": "30 23 * * *"
+      "schedule": "5 18 * * *"
     }
   ]
 }
