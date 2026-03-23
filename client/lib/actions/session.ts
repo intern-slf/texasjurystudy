@@ -431,6 +431,7 @@ export async function rescheduleSession(
   }
 
   revalidatePath("/dashboard/Admin/sessions");
+  revalidatePath("/dashboard/participant/sessions");
 }
 
 /* =========================

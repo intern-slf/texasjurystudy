@@ -190,18 +190,6 @@ export default async function ParticipantDashboard({
                       return `${fmtUtc(startTimes[0])} – ${fmtUtc(endTimes[endTimes.length - 1])} (UTC)`;
                     })()}
                   </p>
-                  <p className="text-sm text-slate-500">
-                    Cases: {(() => {
-                      const session = Array.isArray(invite.sessions) ? invite.sessions[0] : invite.sessions;
-                      const cases = session?.session_cases || [];
-                      if (cases.length === 0) return "None";
-
-                      return cases.map((c: any) => {
-                        const caseDetail = Array.isArray(c.cases) ? c.cases[0] : c.cases;
-                        return caseDetail?.title;
-                      }).filter(Boolean).join(", ");
-                    })()}
-                  </p>
                 </div>
 
                 <div className="flex gap-2">
