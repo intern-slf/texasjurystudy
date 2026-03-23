@@ -161,27 +161,6 @@ function SessionCard({
         </span>
       </div>
 
-      {/* Cases */}
-      {session.caseTitles.length > 0 && (
-        <div>
-          <p className={`text-xs font-semibold uppercase tracking-wide mb-1.5 ${isPast ? "text-slate-400" : "text-blue-600"}`}>
-            Cases
-          </p>
-          <ul className="space-y-1">
-            {session.caseTitles.map((title, i) => (
-              <li
-                key={i}
-                className={`text-sm flex items-center gap-2 ${isPast ? "text-slate-500" : "text-blue-800"}`}
-              >
-                <span
-                  className={`h-1.5 w-1.5 rounded-full shrink-0 ${isPast ? "bg-slate-400" : "bg-blue-500"}`}
-                />
-                {title}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
     </div>
   );
 }
