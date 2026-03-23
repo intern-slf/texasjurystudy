@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { sendEmail, sendRescheduleEmail, sendSessionCreatedEmail, sendSessionCompletedEmail, emailWrapper } from "@/lib/mail";
+import { sendEmail, sendRescheduleEmail, sendSessionCreatedEmail, sendSessionCompletedEmail, sendPresenceConfirmedEmail, sendPresenceDeclinedEmail, emailWrapper } from "@/lib/mail";
 import { revalidatePath } from "next/cache";
 import { localToUTC, localToUTCTime } from "@/lib/timezone";
 
@@ -453,6 +453,77 @@ export async function respondToInvite(
     .eq("participant_id", participantId);
 
   if (error) throw error;
+}
+
+/* =========================
+   ADMIN RESPOND ON BEHALF OF PARTICIPANT
+========================= */
+export async function adminRespondOnBehalf(
+  sessionId: string,
+  participantId: string,
+  action: "accepted" | "rejected"
+) {
+  const supabase = await createClient();
+
+  const { error } = await supabase
+    .from("session_participants")
+    .update({ invite_status: action, responded_at: new Date().toISOString() })
+    .eq("session_id", sessionId)
+    .eq("participant_id", participantId);
+
+  if (error) throw error;
+
+  // Lookup participant email + name (same for both actions)
+  let email: string | null = null;
+  let firstName = "there";
+
+  const { data: jp } = await supabase
+    .from("jury_participants")
+    .select("email, first_name")
+    .eq("user_id", participantId)
+    .maybeSingle();
+
+  if (jp) {
+    email = jp.email;
+    firstName = jp.first_name || "there";
+  } else {
+    const { data: od } = await supabase
+      .from("oldData")
+      .select("email, first_name")
+      .eq("id", participantId)
+      .maybeSingle();
+    if (od) {
+      email = od.email;
+      firstName = od.first_name || "there";
+    }
+  }
+
+  const { data: session } = await supabase
+    .from("sessions")
+    .select("session_date")
+    .eq("id", sessionId)
+    .single();
+
+  if (email && session) {
+    if (action === "accepted") {
+      const { data: sc } = await supabase
+        .from("session_cases")
+        .select("start_time, end_time")
+        .eq("session_id", sessionId)
+        .limit(1)
+        .maybeSingle();
+
+      const timeStr = sc
+        ? `${sc.start_time} – ${sc.end_time}`
+        : "See your dashboard for details";
+
+      await sendPresenceConfirmedEmail(email, firstName, session.session_date, timeStr);
+    } else {
+      await sendPresenceDeclinedEmail(email, firstName, session.session_date);
+    }
+  }
+
+  revalidatePath("/dashboard/Admin/sessions");
 }
 
 /* =========================

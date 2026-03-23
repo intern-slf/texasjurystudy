@@ -17,6 +17,7 @@ import InviteMoreModal, { type Candidate } from "@/components/InviteMoreModal";
 import RescheduleModal from "@/components/RescheduleModal";
 import ReplaceCaseModal, { type ReplacementCandidate } from "@/components/ReplaceCaseModal";
 import LocalTimeRange from "@/components/LocalTimeRange";
+import ParticipantActionsMenu from "@/components/ParticipantActionsMenu";
 import { setCompletionFlag, sendCompletionNow } from "@/lib/actions/session";
 
 
@@ -470,15 +471,22 @@ export default async function SessionsPage({
                         return (
                           <div
                             key={i}
-                            className="text-sm flex justify-between border rounded px-3 py-2"
+                            className="text-sm flex justify-between border rounded px-3 py-2 items-center"
                           >
                             <span>
                               {detail?.first_name} {detail?.last_name}
                             </span>
 
-                            <span className="capitalize text-xs font-semibold">
-                              {p.invite_status}
-                            </span>
+                            <div className="flex items-center gap-2">
+                              <span className="capitalize text-xs font-semibold">
+                                {p.invite_status}
+                              </span>
+                              <ParticipantActionsMenu
+                                sessionId={s.id}
+                                participantId={p.participant_id}
+                                participantName={`${detail?.first_name ?? ""} ${detail?.last_name ?? ""}`.trim()}
+                              />
+                            </div>
                           </div>
                         );
                       })

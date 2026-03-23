@@ -301,6 +301,102 @@ export async function sendProfileUpdatedEmail(
   });
 }
 
+export async function sendPresenceConfirmedEmail(
+  to: string,
+  firstName: string,
+  sessionDate: string,
+  timeStr: string,
+) {
+  const html = emailWrapper(`
+    <h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#15803d;">Presence Confirmed</h2>
+    <p style="margin:0 0 20px;font-size:15px;color:#475569;">
+      Hi ${firstName}, we have confirmed your presence for the upcoming Texas Jury Study session. Please review the details below.
+    </p>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f0fdf4;border-left:4px solid #16a34a;border-radius:6px;margin:0 0 16px;">
+      <tr>
+        <td style="padding:16px 20px;">
+          <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#166534;text-transform:uppercase;letter-spacing:0.08em;">Session Date</p>
+          <p style="margin:0;font-size:20px;font-weight:700;color:#15803d;">${sessionDate}</p>
+        </td>
+      </tr>
+    </table>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f8fafc;border-left:4px solid #94a3b8;border-radius:6px;margin:0 0 24px;">
+      <tr>
+        <td style="padding:16px 20px;">
+          <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;">Session Time</p>
+          <p style="margin:0;font-size:16px;font-weight:600;color:#1e293b;">${timeStr}</p>
+        </td>
+      </tr>
+    </table>
+
+    <p style="margin:0 0 28px;font-size:14px;color:#64748b;">
+      We look forward to seeing you. If you have any questions, please feel free to contact us.
+    </p>
+
+    <table role="presentation" cellpadding="0" cellspacing="0">
+      <tr>
+        <td style="border-radius:6px;background-color:#2563eb;">
+          <a href="${process.env.NEXT_PUBLIC_APP_URL}/dashboard/participant"
+             style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:6px;">
+            View My Dashboard
+          </a>
+        </td>
+      </tr>
+    </table>
+  `);
+
+  await sendEmail({
+    to,
+    subject: `Your Presence Has Been Confirmed – ${sessionDate} | Texas Jury Study`,
+    html,
+  });
+}
+
+export async function sendPresenceDeclinedEmail(
+  to: string,
+  firstName: string,
+  sessionDate: string,
+) {
+  const html = emailWrapper(`
+    <h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#dc2626;">Session Invitation Declined</h2>
+    <p style="margin:0 0 20px;font-size:15px;color:#475569;">
+      Hi ${firstName}, we wanted to let you know that your attendance for the upcoming Texas Jury Study session has been marked as declined on your behalf.
+    </p>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#fef2f2;border-left:4px solid #dc2626;border-radius:6px;margin:0 0 24px;">
+      <tr>
+        <td style="padding:16px 20px;">
+          <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#991b1b;text-transform:uppercase;letter-spacing:0.08em;">Session Date</p>
+          <p style="margin:0;font-size:20px;font-weight:700;color:#dc2626;">${sessionDate}</p>
+        </td>
+      </tr>
+    </table>
+
+    <p style="margin:0 0 28px;font-size:14px;color:#64748b;">
+      If you believe this was a mistake or have any questions, please contact us as soon as possible.
+    </p>
+
+    <table role="presentation" cellpadding="0" cellspacing="0">
+      <tr>
+        <td style="border-radius:6px;background-color:#2563eb;">
+          <a href="${process.env.NEXT_PUBLIC_APP_URL}/dashboard/participant"
+             style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:6px;">
+            View My Dashboard
+          </a>
+        </td>
+      </tr>
+    </table>
+  `);
+
+  await sendEmail({
+    to,
+    subject: `Session Invitation Declined – ${sessionDate} | Texas Jury Study`,
+    html,
+  });
+}
+
 export async function sendApprovalEmail(to: string, caseTitle: string) {
   const html = emailWrapper(`
     <h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#15803d;">Case Approved</h2>
