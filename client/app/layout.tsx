@@ -6,7 +6,7 @@ import Navbar from "@/components/Navbar-temp";
 import Footer from "@/components/Footer-temp";
 
 export const metadata: Metadata = {
-  title: "FocusGroup",
+  title: "Texas Jury Study",
   description: "Structured focus groups with the right people",
   icons: {
     icon: "/cropped-tjs-fav@2x-8-32x32.png",
