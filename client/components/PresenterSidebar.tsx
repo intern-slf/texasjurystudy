@@ -7,10 +7,11 @@ import {
   PlayCircle,
   History,
   CheckCircle2,
+  HelpCircle,
 } from "lucide-react";
 
 type Props = {
-  activeTab?: "current" | "request" | "approved" | "previous" | "new";
+  activeTab?: "current" | "request" | "approved" | "previous" | "new" | "faqs";
 };
 
 export default function PresenterSidebar({ activeTab }: Props) {
@@ -44,6 +45,12 @@ export default function PresenterSidebar({ activeTab }: Props) {
       id: "previous",
       icon: History,
     },
+    {
+      label: "FAQs",
+      href: "/dashboard/presenter/faqs",
+      id: "faqs",
+      icon: HelpCircle,
+    },
   ];
 
   return (
@@ -59,6 +66,8 @@ export default function PresenterSidebar({ activeTab }: Props) {
           const isActive =
             item.id === "new"
               ? pathname === "/dashboard/presenter/new"
+              : item.id === "faqs"
+              ? pathname === "/dashboard/presenter/faqs"
               : currentTab === item.id;
 
           return (
