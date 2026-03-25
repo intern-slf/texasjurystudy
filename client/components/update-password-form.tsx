@@ -13,7 +13,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 export function UpdatePasswordForm({
   className,
@@ -22,7 +22,31 @@ export function UpdatePasswordForm({
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [sessionReady, setSessionReady] = useState(false);
   const router = useRouter();
+
+  useEffect(() => {
+    const supabase = createClient();
+
+    const setSessionFromUrl = async () => {
+      const hash = window.location.hash.substring(1);
+      const params = new URLSearchParams(hash);
+
+      const access_token = params.get("access_token");
+      const refresh_token = params.get("refresh_token");
+
+      if (access_token && refresh_token) {
+        await supabase.auth.setSession({
+          access_token,
+          refresh_token,
+        });
+      }
+
+      setSessionReady(true); // ✅ ensures session is ready before submit
+    };
+
+    setSessionFromUrl();
+  }, []);
 
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,7 +57,7 @@ export function UpdatePasswordForm({
     try {
       const { error } = await supabase.auth.updateUser({ password });
       if (error) throw error;
-      // Update this route to redirect to an authenticated route. The user already has an active session.
+
       router.push("/dashboard");
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : "An error occurred");
@@ -65,8 +89,14 @@ export function UpdatePasswordForm({
                   onChange={(e) => setPassword(e.target.value)}
                 />
               </div>
+
               {error && <p className="text-sm text-red-500">{error}</p>}
-              <Button type="submit" className="w-full" disabled={isLoading}>
+
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={isLoading || !sessionReady}
+              >
                 {isLoading ? "Saving..." : "Save new password"}
               </Button>
             </div>
