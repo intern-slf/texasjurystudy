@@ -34,6 +34,7 @@ const FIELD_LABELS: Record<string, string> = {
     heard_about_us: "Referral Source",
     driver_license_number: "Driver's License Number",
     driver_license_image_url: "ID Photo",
+    paypal_username: "PayPal Username",
 };
 
 /* =========================

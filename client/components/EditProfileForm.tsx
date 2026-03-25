@@ -134,6 +134,7 @@ export default function EditProfileForm({ participant, adminMode, onUpdate, onUp
   const [politicalAffiliation, setPoliticalAffiliation] = useState(participant.political_affiliation || "");
   const [familyIncome, setFamilyIncome] = useState(participant.family_income || "");
   const [referralSource, setReferralSource] = useState(participant.heard_about_us || "");
+  const [paypalUsername, setPaypalUsername] = useState(participant.paypal_username || "");
 
   const isEmployed = currentlyEmployed === "Yes" || currentlyEmployed === "Self-employed";
 
@@ -300,6 +301,7 @@ export default function EditProfileForm({ participant, adminMode, onUpdate, onUp
       heard_about_us: referralSource,
       driver_license_number: driverLicenseNumber || null,
       driver_license_image_url: idImagePath,
+      paypal_username: paypalUsername || null,
       date_updated: new Date().toISOString(),
     };
 
@@ -558,6 +560,24 @@ export default function EditProfileForm({ participant, adminMode, onUpdate, onUp
               )}
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* PAYMENT INFO */}
+      <div className="space-y-4 border-t pt-4">
+        <h3 className="font-semibold text-lg">Payment Information</h3>
+        <div className="space-y-2">
+          <Label>PayPal Username <span className="text-slate-400 font-normal">(Optional)</span></Label>
+          <div className="flex items-center">
+            <span className="inline-flex h-10 items-center rounded-l-md border border-r-0 bg-slate-50 px-3 text-sm text-slate-500">@</span>
+            <Input
+              value={paypalUsername}
+              onChange={(e) => setPaypalUsername(e.target.value)}
+              placeholder="your-paypal-username"
+              className="rounded-l-none"
+            />
+          </div>
+          <p className="text-xs text-slate-400">Enter your PayPal @username for payment purposes</p>
         </div>
       </div>
 

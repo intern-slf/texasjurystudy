@@ -137,6 +137,12 @@ export default async function ParticipantProfilePage({
           </section>
         )}
 
+        {/* PAYMENT INFO */}
+        <section className="bg-white border rounded-xl p-6">
+          <h2 className="font-bold text-lg mb-4">Payment Information</h2>
+          <p>PayPal: {participant.paypal_username ? `@${participant.paypal_username}` : "—"}</p>
+        </section>
+
         {/* ADMIN AREA */}
         {role === "admin" && (
           <section className="bg-slate-50 border rounded-xl p-6 space-y-4">
