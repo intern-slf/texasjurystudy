@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 import { CaseFilters } from "@/lib/filter-utils";
 
 /* =========================
@@ -27,6 +28,7 @@ interface CaseInfo {
   drive_link: string | null;
   filters: CaseFilters;
   presenter_id: string | null;
+  user_id: string;
   case_documents: CaseDocument[];
 }
 
@@ -56,6 +58,7 @@ export default async function AdminCaseDetailPage({
       drive_link,
       filters,
       presenter_id,
+      user_id,
       case_documents (
         id,
         original_name,
@@ -99,19 +102,24 @@ export default async function AdminCaseDetailPage({
      FETCH PRESENTER PROFILE
      ========================= */
 
+  // Use presenter_id if set, otherwise fall back to user_id (cases are created with only user_id)
+  const presenterUserId = caseInfo.presenter_id || caseInfo.user_id;
+
   let presenterProfile: { id: string; email: string | null; full_name: string | null } | null = null;
-  if (caseInfo.presenter_id) {
-    const [{ data: profile }, { data: roleRow }, { data: agreement }] = await Promise.all([
-      supabase.from("profiles").select("id, email, full_name").eq("id", caseInfo.presenter_id).single(),
-      supabase.from("roles").select("user_id, email").eq("user_id", caseInfo.presenter_id).single(),
-      supabase.from("confidentiality_agreements_presenter").select("first_name, last_name").eq("user_id", caseInfo.presenter_id).single(),
+  if (presenterUserId) {
+    const [{ data: authUser }, { data: profile }, { data: agreement }] = await Promise.all([
+      supabaseAdmin.auth.admin.getUserById(presenterUserId),
+      supabaseAdmin.from("profiles").select("id, email, full_name").eq("id", presenterUserId).single(),
+      supabaseAdmin.from("confidentiality_agreements_presenter").select("first_name, last_name").eq("user_id", presenterUserId).single(),
     ]);
 
-    const email = profile?.email || roleRow?.email || null;
+    const email = authUser?.user?.email || profile?.email || null;
     const full_name = profile?.full_name
-      || (agreement ? `${agreement.first_name} ${agreement.last_name}`.trim() : null);
+      || (agreement ? `${agreement.first_name} ${agreement.last_name}`.trim() : null)
+      || authUser?.user?.user_metadata?.full_name
+      || null;
 
-    presenterProfile = { id: caseInfo.presenter_id, email, full_name };
+    presenterProfile = { id: presenterUserId, email, full_name };
   }
 
   /* =========================
@@ -131,15 +139,15 @@ export default async function AdminCaseDetailPage({
           {caseInfo.description}
         </p>
 
-        {caseInfo.presenter_id && (
+        {presenterProfile && (
           <div className="mt-6 bg-slate-50 p-4 rounded border text-sm space-y-1">
             <p className="font-semibold text-slate-700">Presenter</p>
-            {presenterProfile?.full_name && (
-              <p className="text-slate-600">{presenterProfile.full_name}</p>
-            )}
-            {presenterProfile?.email && (
-              <p className="text-slate-600">{presenterProfile.email}</p>
-            )}
+            <p className="text-slate-600">
+              {presenterProfile?.full_name || <span className="italic text-slate-400">Name not available</span>}
+            </p>
+            <p className="text-slate-600">
+              {presenterProfile?.email || <span className="italic text-slate-400">Email not available</span>}
+            </p>
           </div>
         )}
       </section>
