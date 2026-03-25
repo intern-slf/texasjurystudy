@@ -99,6 +99,7 @@ export default function NewCasePage() {
   const [form, setForm] = useState({
     title: "",
     description: "",
+    drive_link: "",
     number_of_attendees: 10,
     documentation_type: "Legal Brief", // Default to prevent null constraint error
     scheduled_at: "",
@@ -127,6 +128,9 @@ export default function NewCasePage() {
 
   const [caseId, setCaseId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [driveLink, setDriveLink] = useState("");
+  const [driveLinkSaved, setDriveLinkSaved] = useState(false);
+  const [driveLinkSaving, setDriveLinkSaving] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const searchParams = useSearchParams();
   const parentId = searchParams.get("parent_id");
@@ -145,6 +149,7 @@ export default function NewCasePage() {
           setForm({
             title: `Follow-up: ${data.title}`,
             description: data.description,
+            drive_link: data.drive_link || "",
             number_of_attendees: data.number_of_attendees || 10,
             documentation_type: data.documentation_type || "Legal Brief",
             scheduled_at: "", // Don't pre-fill date
@@ -165,6 +170,14 @@ export default function NewCasePage() {
       fetchParent();
     }
   }, [parentId]);
+
+  async function saveDriveLink() {
+    if (!caseId || !driveLink.trim()) return;
+    setDriveLinkSaving(true);
+    await supabase.from("cases").update({ drive_link: driveLink.trim() }).eq("id", caseId);
+    setDriveLinkSaved(true);
+    setDriveLinkSaving(false);
+  }
 
   async function createCaseAndUpload() {
     if (!form.title.trim()) {
@@ -485,6 +498,46 @@ export default function NewCasePage() {
               <p className="text-green-600 mt-2 text-lg">Your attributes are matched. Please upload the required documents to start finding participants.</p>
             </div>
             <CaseDocumentUploader caseId={caseId} />
+
+            {/* Google Drive Link */}
+            <div className="text-left border border-slate-200 rounded-2xl bg-white p-5 shadow-sm space-y-3">
+              <div className="flex items-center gap-2">
+                <svg className="w-4 h-4 text-slate-500 shrink-0" viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg">
+                  <path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/>
+                  <path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0 -1.2 4.5h27.5z" fill="#00ac47"/>
+                  <path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.502l5.852 11.5z" fill="#ea4335"/>
+                  <path d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d"/>
+                  <path d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc"/>
+                  <path d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 27h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00"/>
+                </svg>
+                <span className="text-sm font-semibold text-slate-800">Add Google Drive Link</span>
+                <span className="text-xs text-slate-400 font-normal">(optional)</span>
+              </div>
+
+              <div className="flex gap-2">
+                <input
+                  className="input flex-1 text-sm"
+                  placeholder="https://drive.google.com/..."
+                  value={driveLink}
+                  onChange={(e) => { setDriveLink(e.target.value); setDriveLinkSaved(false); }}
+                  disabled={driveLinkSaved}
+                />
+                <button
+                  type="button"
+                  onClick={saveDriveLink}
+                  disabled={!driveLink.trim() || driveLinkSaving || driveLinkSaved}
+                  className="px-4 py-2 rounded-xl text-sm font-semibold bg-slate-800 text-white hover:bg-slate-700 disabled:opacity-40 transition-colors shrink-0"
+                >
+                  {driveLinkSaved ? "Saved ✓" : driveLinkSaving ? "Saving…" : "Save"}
+                </button>
+              </div>
+
+              <p className="flex items-start gap-1.5 text-xs text-slate-500 leading-relaxed">
+                <span className="mt-0.5 shrink-0 w-3.5 h-3.5 rounded-full border border-slate-400 text-slate-400 flex items-center justify-center font-bold text-[9px]">i</span>
+                Make sure sharing is set to <strong className="text-slate-700">&ldquo;Anyone with the link can view&rdquo;</strong> in Google Drive so all participants can access it.
+              </p>
+            </div>
+
             <button onClick={() => window.location.href = "/dashboard/presenter"} className="text-sm font-semibold text-muted-foreground hover:text-primary transition-colors underline decoration-2 underline-offset-8">
               Back to Presenter Dashboard
             </button>
