@@ -27,7 +27,7 @@ export default async function ParticipantSessionsPage() {
   ========================= */
   const { data: acceptedInvites } = await supabaseAdmin
     .from("session_participants")
-    .select("id, session_id, sessions(session_date, session_cases(start_time, end_time, cases(title)))")
+    .select("id, session_id, sessions(session_date, zoom_link, session_cases(start_time, end_time, cases(title)))")
     .eq("participant_id", participant.user_id)
     .eq("invite_status", "accepted");
 
@@ -61,6 +61,8 @@ export default async function ParticipantSessionsPage() {
         })
         .filter(Boolean) as string[];
 
+      const zoomLink: string | null = (session as any)?.zoom_link ?? null;
+
       return [{
         sessionId: inv.session_id,
         date,
@@ -69,6 +71,7 @@ export default async function ParticipantSessionsPage() {
         }),
         timeRange,
         caseTitles,
+        zoomLink,
         isPast: new Date(date) < today,
       }];
     })
@@ -131,6 +134,7 @@ function SessionCard({
     displayDate: string;
     timeRange: string;
     caseTitles: string[];
+    zoomLink?: string | null;
   };
   isPast?: boolean;
 }) {
@@ -151,6 +155,23 @@ function SessionCard({
           <p className={`text-sm mt-0.5 ${isPast ? "text-slate-500" : "text-blue-700"}`}>
             {session.timeRange}
           </p>
+
+          {/* Zoom link — only for upcoming sessions that have a link */}
+          {!isPast && session.zoomLink && (
+            <a
+              href={session.zoomLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 mt-2 px-3 py-1.5 rounded-lg bg-[#2D8CFF] text-white text-xs font-semibold hover:bg-[#1a7aee] transition-colors"
+            >
+              {/* Zoom icon */}
+              <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M14.5 10.25V13.75L17.5 15.5V8.5L14.5 10.25Z" fill="white"/>
+                <rect x="6.5" y="8.5" width="7" height="7" rx="1.5" fill="white"/>
+              </svg>
+              Join Zoom Meeting
+            </a>
+          )}
         </div>
         <span
           className={`shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full ${

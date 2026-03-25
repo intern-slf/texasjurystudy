@@ -19,6 +19,7 @@ import ReplaceCaseModal, { type ReplacementCandidate } from "@/components/Replac
 import LocalTimeRange from "@/components/LocalTimeRange";
 import ParticipantActionsMenu from "@/components/ParticipantActionsMenu";
 import { setCompletionFlag, sendCompletionNow } from "@/lib/actions/session";
+import ZoomLinkSender from "@/components/ZoomLinkSender";
 
 
 async function submitSession(formData: FormData) {
@@ -204,7 +205,7 @@ export default async function SessionsPage({
 
   const { data: sessions } = await supabase
     .from("sessions")
-    .select("id, session_date, created_by, completion_notification_enabled, completion_email_sent")
+    .select("id, session_date, created_by, completion_notification_enabled, completion_email_sent, zoom_link")
     .order("session_date", { ascending: false });
 
   /* =========================
@@ -497,6 +498,9 @@ export default async function SessionsPage({
                     )}
                   </div>
                 </div>
+
+                {/* ZOOM LINK SENDER */}
+                <ZoomLinkSender sessionId={s.id} existingZoomLink={s.zoom_link} />
 
                 {/* ACTIONS */}
                 <div className="flex justify-end gap-3">

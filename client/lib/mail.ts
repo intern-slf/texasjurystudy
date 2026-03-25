@@ -441,3 +441,48 @@ export async function sendApprovalEmail(to: string, caseTitle: string) {
     html,
   });
 }
+
+export async function sendZoomLinkEmail(
+  to: string,
+  firstName: string,
+  sessionDate: string,
+  zoomLink: string,
+) {
+  const html = emailWrapper(`
+    <h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#1e3a8a;">Your Zoom Link is Ready</h2>
+    <p style="margin:0 0 20px;font-size:15px;color:#475569;">
+      Hi ${firstName}, your session is coming up. Use the link below to join the Texas Jury Study session on <strong>${sessionDate}</strong>.
+    </p>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#eff6ff;border-left:4px solid #2563eb;border-radius:6px;margin:0 0 24px;">
+      <tr>
+        <td style="padding:16px 20px;">
+          <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#1e40af;text-transform:uppercase;letter-spacing:0.08em;">Session Date</p>
+          <p style="margin:0;font-size:16px;font-weight:700;color:#1e3a8a;">${sessionDate}</p>
+        </td>
+      </tr>
+    </table>
+
+    <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 24px;">
+      <tr>
+        <td style="border-radius:6px;background-color:#2563eb;">
+          <a href="${zoomLink}"
+             style="display:inline-block;padding:14px 32px;font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:6px;">
+            Join Zoom Meeting
+          </a>
+        </td>
+      </tr>
+    </table>
+
+    <p style="margin:0;font-size:13px;color:#64748b;">
+      Or copy this link into your browser:<br/>
+      <span style="color:#2563eb;word-break:break-all;">${zoomLink}</span>
+    </p>
+  `);
+
+  await sendEmail({
+    to,
+    subject: `Zoom Link for Your Session on ${sessionDate} | Texas Jury Study`,
+    html,
+  });
+}

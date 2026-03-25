@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { sendEmail, sendRescheduleEmail, sendSessionCreatedEmail, sendSessionCompletedEmail, sendPresenceConfirmedEmail, sendPresenceDeclinedEmail, emailWrapper } from "@/lib/mail";
+import { sendEmail, sendRescheduleEmail, sendSessionCreatedEmail, sendSessionCompletedEmail, sendPresenceConfirmedEmail, sendPresenceDeclinedEmail, sendZoomLinkEmail, emailWrapper } from "@/lib/mail";
 import { revalidatePath } from "next/cache";
 import { localToUTC, localToUTCTime } from "@/lib/timezone";
 
@@ -603,6 +603,59 @@ export async function sendCompletionNow(formData: FormData) {
     .from("sessions")
     .update({ completion_notification_enabled: true, completion_email_sent: true })
     .eq("id", sessionId);
+
+  revalidatePath("/dashboard/Admin/sessions");
+}
+
+/* =========================
+   SEND ZOOM LINK TO ACCEPTED PARTICIPANTS
+========================= */
+export async function sendZoomLink(formData: FormData) {
+  const supabase = await createClient();
+  const sessionId = formData.get("sessionId") as string;
+  const zoomLink = (formData.get("zoomLink") as string)?.trim();
+
+  if (!zoomLink) throw new Error("Zoom link is required");
+
+  // Fetch session date
+  const { data: session } = await supabase
+    .from("sessions")
+    .select("session_date")
+    .eq("id", sessionId)
+    .single();
+
+  if (!session) throw new Error("Session not found");
+  const sessionDate = session.session_date as string;
+
+  // Fetch accepted participants
+  const { data: participants } = await supabase
+    .from("session_participants")
+    .select("participant_id")
+    .eq("session_id", sessionId)
+    .eq("invite_status", "accepted");
+
+  if (!participants?.length) return;
+
+  // Send email to each accepted participant
+  for (const p of participants) {
+    try {
+      const { data: userData } = await supabaseAdmin.auth.admin.getUserById(p.participant_id);
+      const email = userData?.user?.email;
+      const firstName =
+        userData?.user?.user_metadata?.first_name ||
+        userData?.user?.user_metadata?.full_name?.split(" ")[0] ||
+        "Participant";
+
+      if (email) {
+        await sendZoomLinkEmail(email, firstName, sessionDate, zoomLink);
+      }
+    } catch (e) {
+      console.error(`[sendZoomLink] Failed for participant ${p.participant_id}:`, e);
+    }
+  }
+
+  // Persist the zoom link on the session row
+  await supabase.from("sessions").update({ zoom_link: zoomLink }).eq("id", sessionId);
 
   revalidatePath("/dashboard/Admin/sessions");
 }
