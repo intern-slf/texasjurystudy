@@ -17,9 +17,6 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Calendar, Clock, AlertCircle, FileText, Upload, ArrowRight } from "lucide-react";
-import { getAncestorCaseIds } from "@/lib/case-lineage";
-import PreviousParticipantsModal from "@/components/PreviousParticipantsModal";
-import ReschedulePopup, { type RescheduleItem } from "@/components/ReschedulePopup";
 import LocalDateTime from "@/components/LocalDateTime";
 
 // Define a proper interface for your case object to replace 'any'
@@ -120,24 +117,6 @@ export default async function PresenterDashboard({
   }
 
   const { data: cases } = await caseQuery;
-
-  // Always fetch cases pending schedule confirmation (regardless of current tab)
-  const { data: pendingConfirmCases } = await supabase
-    .from("cases")
-    .select("id, title, admin_scheduled_at")
-    .eq("user_id", user.id)
-    .eq("admin_status", "approved")
-    .eq("status", "current")
-    .not("admin_scheduled_at", "is", null)
-    .or("schedule_status.is.null,schedule_status.eq.pending");
-
-  // Pre-fetch ancestor IDs for previous and approved cases to avoid await in map
-  const ancestorMap: Record<string, string[]> = {};
-  if ((tab === "previous" || tab === "approved") && cases) {
-    for (const c of cases) {
-      ancestorMap[c.id] = await getAncestorCaseIds(c.id);
-    }
-  }
 
   /* ===========================
       SERVER ACTIONS
@@ -280,65 +259,8 @@ export default async function PresenterDashboard({
       UI
       =========================== */
 
-  // Build reschedule popup items from all approved cases awaiting confirmation (any tab)
-  const presenterRescheduleItems: RescheduleItem[] = (pendingConfirmCases ?? []).map((c) => ({
-    id: c.id,
-    actionId: c.id,
-    title: c.title,
-    newDate: c.admin_scheduled_at!,
-    displayDate: new Date(c.admin_scheduled_at!).toLocaleDateString("en-US", {
-      weekday: "long",
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    }),
-  }));
-
-  async function acceptScheduleFromPopup(caseId: string) {
-    "use server";
-    const supabase = await createClient();
-    const { data: { user: activeUser } } = await supabase.auth.getUser();
-    if (!activeUser) return;
-    const { data: caseData } = await supabase
-      .from("cases")
-      .select("admin_scheduled_at")
-      .eq("id", caseId)
-      .single();
-    await supabase
-      .from("cases")
-      .update({
-        schedule_status: "accepted",
-        scheduled_at: caseData?.admin_scheduled_at ?? null,
-      })
-      .eq("id", caseId)
-      .eq("user_id", activeUser.id);
-    revalidatePath("/dashboard/presenter");
-  }
-
-  async function declineScheduleFromPopup(caseId: string) {
-    "use server";
-    const supabase = await createClient();
-    const { data: { user: activeUser } } = await supabase.auth.getUser();
-    if (!activeUser) return;
-    await supabase
-      .from("cases")
-      .update({ schedule_status: "rejected" })
-      .eq("id", caseId)
-      .eq("user_id", activeUser.id);
-    revalidatePath("/dashboard/presenter");
-  }
-
   return (
     <div className="flex min-h-screen bg-muted/10 font-sans">
-      {presenterRescheduleItems.length > 0 && (
-        <ReschedulePopup
-          items={presenterRescheduleItems}
-          role="presenter"
-          onAccept={acceptScheduleFromPopup}
-          onDecline={declineScheduleFromPopup}
-        />
-      )}
-
       <PresenterSidebar activeTab={tab} />
 
       <main className="flex-1 overflow-y-auto">
@@ -468,12 +390,6 @@ export default async function PresenterDashboard({
                           </div>
                         )}
 
-                      <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg border">
-                        <PreviousParticipantsModal
-                          caseId={c.id}
-                          ancestorIds={ancestorMap[c.id] || []}
-                        />
-                      </div>
                     </div>
                   )}
 
@@ -568,11 +484,6 @@ export default async function PresenterDashboard({
                       </div>
 
                       <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg border">
-                        <PreviousParticipantsModal
-                          caseId={c.id}
-                          ancestorIds={ancestorMap[c.id] || []}
-                        />
-
                         <Button
                           asChild
                           size="sm"

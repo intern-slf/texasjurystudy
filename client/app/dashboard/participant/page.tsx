@@ -1,5 +1,4 @@
 import { createClient } from "@/lib/supabase/server";
-import { supabaseAdmin } from "@/lib/supabase/admin";
 import ParticipantForm from "@/components/ParticipantForm";
 import Link from "next/link";
 import { getPendingInvites } from "@/lib/participant/getPendingInvites";
@@ -7,7 +6,6 @@ import { updateInviteStatus } from "@/lib/participant/updateInviteStatus";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { unstable_noStore as noStore } from "next/cache";
-import ReschedulePopup, { type RescheduleItem } from "@/components/ReschedulePopup";
 
 export default async function ParticipantDashboard({
   searchParams,
@@ -74,72 +72,10 @@ export default async function ParticipantDashboard({
   const pendingInvites = await getPendingInvites(participant.user_id);
 
   /* =========================
-     FETCH ACCEPTED SESSIONS (for reschedule popup)
-     ========================= */
-  const { data: acceptedInvites } = await supabaseAdmin
-    .from("session_participants")
-    .select("id, session_id, sessions(session_date, session_cases(start_time, end_time, cases(title)))")
-    .eq("participant_id", participant.user_id)
-    .eq("invite_status", "accepted");
-
-  const fmtUtc = (t: string) => {
-    const [h, m] = t.split(":");
-    const d = new Date();
-    d.setUTCHours(parseInt(h), parseInt(m), 0, 0);
-    return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "UTC" });
-  };
-
-  const rescheduleItems: RescheduleItem[] = (acceptedInvites ?? []).flatMap((inv) => {
-    const session = Array.isArray(inv.sessions) ? inv.sessions[0] : inv.sessions;
-    const date: string = (session as any)?.session_date ?? "";
-    if (!date) return [];
-
-    const sessionCases: any[] = (session as any)?.session_cases ?? [];
-    const starts = sessionCases.map((c: any) => c.start_time).filter(Boolean).sort();
-    const ends   = sessionCases.map((c: any) => c.end_time).filter(Boolean).sort();
-    const timeRange = starts.length && ends.length
-      ? `${fmtUtc(starts[0])} – ${fmtUtc(ends[ends.length - 1])} (UTC)`
-      : undefined;
-
-    return [{
-      id: inv.session_id,
-      actionId: inv.id,
-      title: `Session on ${date}`,
-      newDate: date,
-      displayDate: new Date(date).toLocaleDateString("en-US", {
-        weekday: "long", year: "numeric", month: "long", day: "numeric",
-      }),
-      timeRange,
-    }];
-  });
-
-  async function acceptReschedule(inviteId: string) {
-    "use server";
-    await updateInviteStatus(inviteId, "accepted");
-    revalidatePath("/dashboard/participant");
-  }
-
-  async function declineReschedule(inviteId: string) {
-    "use server";
-    await updateInviteStatus(inviteId, "declined");
-    revalidatePath("/dashboard/participant");
-  }
-
-  /* =========================
      DASHBOARD VIEW
      ========================= */
   return (
     <div className="max-w-5xl mx-auto p-8 space-y-8">
-      {/* RESCHEDULE POPUP */}
-      {rescheduleItems.length > 0 && (
-        <ReschedulePopup
-          items={rescheduleItems}
-          role="participant"
-          onAccept={acceptReschedule}
-          onDecline={declineReschedule}
-        />
-      )}
-
       {/* HEADER */}
       <div className="bg-white border rounded-xl p-6">
         <h1 className="text-2xl font-bold">
