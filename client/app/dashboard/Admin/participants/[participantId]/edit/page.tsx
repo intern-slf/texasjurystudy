@@ -29,18 +29,14 @@ export default async function AdminEditParticipantPage({
 
   if (roleRow?.role !== "admin") redirect("/dashboard/participant");
 
-  // Fetch the full participant record and DOB using admin client
-  const [{ data: participant }, { data: agreement }] = await Promise.all([
-    supabaseAdmin.from("jury_participants").select("*").eq("user_id", participantId).single(),
-    supabaseAdmin.from("confidentiality_agreements").select("date_of_birth").eq("user_id", participantId).maybeSingle(),
-  ]);
+  // Fetch the full participant record — date_of_birth is stored directly on jury_participants
+  const { data: participant } = await supabaseAdmin
+    .from("jury_participants")
+    .select("*")
+    .eq("user_id", participantId)
+    .single();
 
   if (!participant) redirect("/dashboard/Admin/participants");
-
-  const participantWithDob = {
-    ...participant,
-    date_of_birth: agreement?.date_of_birth ?? null,
-  };
 
   const backHref = `/dashboard/participant/${participantId}`;
 
@@ -68,7 +64,7 @@ export default async function AdminEditParticipantPage({
         ← Back to Profile
       </Link>
       <EditProfileForm
-        participant={participantWithDob}
+        participant={participant}
         adminMode
         onUpdate={handleUpdate}
         onUpdateDob={handleUpdateDob}
