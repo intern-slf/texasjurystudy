@@ -133,13 +133,10 @@ function successPage(action: "accepted" | "declined", dashboardUrl: string): str
     : "We have recorded your response. Thank you for letting us know — we hope to see you at a future session.";
 
   return page(headline, `
-    <meta http-equiv="refresh" content="4;url=${dashboardUrl}"/>
-    <script>setTimeout(function(){ window.location.href = ${JSON.stringify(dashboardUrl)}; }, 4000);</script>
     <div style="width:64px;height:64px;border-radius:50%;background-color:${bgColor};border:2px solid ${color};margin:0 auto 20px;font-size:28px;line-height:64px;">${isAccepted ? "✓" : "✕"}</div>
     <h1 style="margin:0 0 12px;font-size:26px;font-weight:700;color:${color};">${headline}</h1>
-    <p style="margin:0 0 16px;font-size:16px;color:#475569;line-height:1.6;">${message}</p>
-    <p style="margin:0 0 24px;font-size:13px;color:#94a3b8;">Redirecting you to your dashboard in 4 seconds…</p>
-    <a href="${dashboardUrl}" style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;background-color:#2563eb;text-decoration:none;border-radius:6px;">Go Now</a>
+    <p style="margin:0 0 28px;font-size:16px;color:#475569;line-height:1.6;">${message}</p>
+    <a href="${dashboardUrl}" style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;background-color:#2563eb;text-decoration:none;border-radius:6px;">View My Dashboard</a>
   `);
 }
 
