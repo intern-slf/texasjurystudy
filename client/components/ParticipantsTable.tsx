@@ -15,12 +15,22 @@ import Link from "next/link";
 import { Search, X } from "lucide-react";
 import { unblacklistParticipant } from "@/lib/actions/adminParticipant";
 
+function calcAge(dob: string | null | undefined): number | null {
+  if (!dob) return null;
+  const birth = new Date(dob + "T00:00:00");
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  const m = today.getMonth() - birth.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+  return age >= 0 ? age : null;
+}
+
 type Participant = {
   user_id: string;
   first_name: string | null;
   last_name: string | null;
   email: string | null;
-  age: number | null;
+  date_of_birth: string | null;
   gender: string | null;
   city: string | null;
   state: string | null;
@@ -53,7 +63,7 @@ export default function ParticipantsTable({ participants, tab }: Props) {
       const location = `${p.city ?? ""} ${p.state ?? ""}`.toLowerCase();
       const phone = (p.phone ?? "").toLowerCase();
       const gender = (p.gender ?? "").toLowerCase();
-      const age = String(p.age ?? "");
+      const age = String(calcAge(p.date_of_birth) ?? "");
 
       return (
         name.includes(q) ||
@@ -168,7 +178,7 @@ export default function ParticipantsTable({ participants, tab }: Props) {
                       {p.email || "—"}
                     </TableCell>
                     <TableCell className="py-4 text-sm">
-                      {p.age || "—"}
+                      {calcAge(p.date_of_birth) ?? "—"}
                     </TableCell>
                     <TableCell className="py-4 text-sm capitalize">
                       {p.gender || "—"}

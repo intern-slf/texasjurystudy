@@ -4,11 +4,21 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { inviteParticipants } from "@/lib/actions/session";
 
+function calcAge(dob: string | null | undefined): number | null {
+  if (!dob) return null;
+  const birth = new Date(dob + "T00:00:00");
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  const m = today.getMonth() - birth.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+  return age >= 0 ? age : null;
+}
+
 export interface Candidate {
   id: string;
   first_name: string;
   last_name: string;
-  age?: number;
+  date_of_birth?: string;
   city?: string;
   political_affiliation?: string;
   matchLevel?: number;
@@ -183,7 +193,7 @@ export default function InviteMoreModal({ sessionId, sessionDate, candidates }: 
                         {p.first_name} {p.last_name}
                       </div>
                       <div className="text-xs text-slate-500">
-                        Age {p.age ?? "N/A"} &bull; {p.city ?? "N/A"} &bull;{" "}
+                        Age {calcAge(p.date_of_birth) ?? "N/A"} &bull; {p.city ?? "N/A"} &bull;{" "}
                         {p.political_affiliation ?? "N/A"}
                       </div>
                       <div className="mt-1">
