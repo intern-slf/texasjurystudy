@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { sendEmail, sendRescheduleEmail, sendSessionCreatedEmail, sendSessionCompletedEmail, sendPresenceConfirmedEmail, sendPresenceDeclinedEmail, sendZoomLinkEmail, emailWrapper } from "@/lib/mail";
+import { generateEmailActionToken } from "@/lib/emailActionToken";
 import { revalidatePath } from "next/cache";
 import { localToUTC, localToUTCTime } from "@/lib/timezone";
 
@@ -140,7 +141,7 @@ export async function inviteParticipants(
   }
 
   // Send invitation emails to each participant
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "");
 
   for (const row of (insertedRows || [])) {
     const participantId = row.participant_id;
@@ -168,8 +169,11 @@ export async function inviteParticipants(
         })
         : "TBD";
 
-      const acceptLink = `${appUrl}/dashboard/participant?inviteId=${inviteRecordId}&status=accepted`;
-      const declineLink = `${appUrl}/dashboard/participant?inviteId=${inviteRecordId}&status=declined`;
+      const secret = process.env.EMAIL_ACTION_SECRET!;
+      const acceptToken = generateEmailActionToken(inviteRecordId, "accepted", secret);
+      const declineToken = generateEmailActionToken(inviteRecordId, "declined", secret);
+      const acceptLink = `${appUrl}/api/email-action?token=${acceptToken}`;
+      const declineLink = `${appUrl}/api/email-action?token=${declineToken}`;
 
 
       await sendEmail({
