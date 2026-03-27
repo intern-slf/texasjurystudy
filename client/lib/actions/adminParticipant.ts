@@ -8,6 +8,7 @@ import { sendProfileUpdatedEmail } from "@/lib/mail";
 const FIELD_LABELS: Record<string, string> = {
     first_name: "First Name",
     last_name: "Last Name",
+    age: "Age",
     gender: "Gender",
     race: "Race",
     phone: "Phone Number",

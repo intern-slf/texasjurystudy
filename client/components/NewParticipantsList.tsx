@@ -6,22 +6,12 @@ import { useRouter } from "next/navigation";
 import { Input } from "@/components/ui/input";
 import { Search, X } from "lucide-react";
 
-function calcAge(dob: string | null | undefined): number | null {
-  if (!dob) return null;
-  const birth = new Date(dob + "T00:00:00");
-  const today = new Date();
-  let age = today.getFullYear() - birth.getFullYear();
-  const m = today.getMonth() - birth.getMonth();
-  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
-  return age >= 0 ? age : null;
-}
-
 type Participant = {
   user_id: string;
   first_name: string;
   last_name: string;
   email: string | null;
-  date_of_birth: string | null;
+  age: number | null;
   gender: string | null;
   city: string | null;
   state: string | null;
@@ -48,7 +38,7 @@ export default function NewParticipantsList({
       const email = (p.email ?? "").toLowerCase();
       const location = `${p.city ?? ""} ${p.state ?? ""}`.toLowerCase();
       const phone = (p.phone ?? "").toLowerCase();
-      const age = String(calcAge(p.date_of_birth) ?? "");
+      const age = String(p.age ?? "");
       return name.includes(q) || email.includes(q) || location.includes(q) || phone.includes(q) || age.includes(q);
     });
   }, [participants, query]);
@@ -107,9 +97,9 @@ export default function NewParticipantsList({
 
               {/* Details row */}
               <div className="flex flex-wrap gap-2 mt-3">
-                {calcAge(p.date_of_birth) !== null && (
+                {p.age && (
                   <span className="text-[11px] px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full">
-                    Age {calcAge(p.date_of_birth)}
+                    Age {p.age}
                   </span>
                 )}
                 {p.gender && (

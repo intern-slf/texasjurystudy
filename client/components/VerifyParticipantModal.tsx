@@ -5,22 +5,12 @@ import Image from "next/image";
 import Link from "next/link";
 import { verifyParticipant, blacklistParticipant } from "@/lib/actions/adminParticipant";
 
-function calcAge(dob: string | null | undefined): number | null {
-  if (!dob) return null;
-  const birth = new Date(dob + "T00:00:00");
-  const today = new Date();
-  let age = today.getFullYear() - birth.getFullYear();
-  const m = today.getMonth() - birth.getMonth();
-  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
-  return age >= 0 ? age : null;
-}
-
 type Participant = {
   user_id: string;
   first_name: string;
   last_name: string;
   email: string | null;
-  date_of_birth: string | null;
+  age: number | null;
   gender: string | null;
   city: string | null;
   state: string | null;
@@ -144,7 +134,7 @@ export default function VerifyParticipantModal({
             <div className="space-y-3 flex-1 text-sm">
               <DetailRow label="Email" value={p.email} />
               <DetailRow label="Phone" value={p.phone} />
-              <DetailRow label="Age" value={calcAge(p.date_of_birth)?.toString()} />
+              <DetailRow label="Age" value={p.age?.toString()} />
               <DetailRow label="Gender" value={p.gender} />
               <DetailRow
                 label="Location"

@@ -165,7 +165,7 @@ async function fetchCandidates(
     id: p.user_id || p.id,
     first_name: p.first_name,
     last_name: p.last_name,
-    date_of_birth: p.date_of_birth,
+    age: p.age,
     city: p.city,
     political_affiliation: p.political_affiliation,
     matchLevel: p.matchLevel,

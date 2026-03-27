@@ -339,7 +339,7 @@ export default function EditProfileForm({ participant, adminMode, onUpdate, onUp
       } else {
         await supabase
           .from("jury_participants")
-          .update({ date_of_birth: dob })
+          .update({ date_of_birth: dob, age: calculatedAge ?? participant.age })
           .eq("user_id", participant.user_id);
       }
     }
