@@ -57,9 +57,9 @@ export default function EditProfileForm({ participant, adminMode, onUpdate, onUp
 
   useEffect(() => {
     if (adminMode) return;
-    async function fetchFromAgreement() {
+    async function fetchFromParticipant() {
       const { data, error } = await supabase
-        .from("confidentiality_agreements")
+        .from("jury_participants")
         .select("first_name, last_name, date_of_birth")
         .eq("user_id", participant.user_id)
         .maybeSingle();
@@ -71,7 +71,7 @@ export default function EditProfileForm({ participant, adminMode, onUpdate, onUp
       }
       setNamesLoading(false);
     }
-    fetchFromAgreement();
+    fetchFromParticipant();
   }, [adminMode, participant.user_id, supabase]);
 
   const calculatedAge = useMemo(() => {
@@ -338,8 +338,8 @@ export default function EditProfileForm({ participant, adminMode, onUpdate, onUp
         }
       } else {
         await supabase
-          .from("confidentiality_agreements")
-          .update({ date_of_birth: dob })
+          .from("jury_participants")
+          .update({ date_of_birth: dob, age: calculatedAge ?? participant.age })
           .eq("user_id", participant.user_id);
       }
     }

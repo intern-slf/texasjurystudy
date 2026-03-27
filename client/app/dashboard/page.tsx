@@ -156,6 +156,19 @@ export default function DashboardPage() {
       return;
     }
 
+    // Sync name + DOB into jury_participants (no-op if the row doesn't exist yet;
+    // ParticipantForm will populate it when the participant completes their profile)
+    if (role === "participant") {
+      await supabase
+        .from("jury_participants")
+        .update({
+          first_name: form.firstName.trim(),
+          last_name: form.lastName.trim(),
+          date_of_birth: form.dob || null,
+        })
+        .eq("user_id", user.id);
+    }
+
     router.replace(
       role === "presenter"
         ? "/dashboard/presenter"

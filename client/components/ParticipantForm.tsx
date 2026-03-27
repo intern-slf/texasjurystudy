@@ -242,6 +242,7 @@ export default function ParticipantForm({ userId, email }: Props) {
       user_id: userId,
       first_name: firstName,
       last_name: lastName,
+      date_of_birth: dob ?? null,
       age: calculatedAge ?? 0,
       gender,
       race,
