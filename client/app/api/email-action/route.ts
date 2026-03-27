@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
   try {
     const { data: row, error } = await supabaseAdmin
       .from("session_participants")
-      .select("invite_status")
+      .select("invite_status, participant_id")
       .eq("id", inviteId)
       .single();
 
@@ -42,15 +42,40 @@ export async function GET(req: NextRequest) {
       return html(errorPage("Invitation Not Found", "This invitation could not be found. It may have been removed."), 404);
     }
 
+    // Generate a magic link so the dashboard button logs them in automatically
+    const magicLink = await getMagicLink(row.participant_id);
+
     if (row.invite_status === "accepted" || row.invite_status === "declined") {
-      return html(alreadyRespondedPage(row.invite_status));
+      return html(alreadyRespondedPage(row.invite_status, magicLink));
     }
 
     await updateInviteStatus(inviteId, action);
-    return html(successPage(action));
+    return html(successPage(action, magicLink));
   } catch (err) {
     console.error("[email-action] Error updating invite status:", err);
     return html(errorPage("Something Went Wrong", "We could not update your response. Please try again or contact support."), 500);
+  }
+}
+
+async function getMagicLink(participantId: string): Promise<string> {
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
+  const fallback = `${appUrl}/dashboard/participant`;
+
+  try {
+    const { data: userData } = await supabaseAdmin.auth.admin.getUserById(participantId);
+    const email = userData?.user?.email;
+    if (!email) return fallback;
+
+    const { data, error } = await supabaseAdmin.auth.admin.generateLink({
+      type: "magiclink",
+      email,
+      options: { redirectTo: `${appUrl}/dashboard/participant` },
+    });
+
+    if (error || !data?.properties?.action_link) return fallback;
+    return data.properties.action_link;
+  } catch {
+    return fallback;
   }
 }
 
@@ -98,7 +123,7 @@ function page(title: string, content: string): string {
 </html>`;
 }
 
-function successPage(action: "accepted" | "declined"): string {
+function successPage(action: "accepted" | "declined", dashboardUrl: string): string {
   const isAccepted = action === "accepted";
   const color = isAccepted ? "#16a34a" : "#dc2626";
   const bgColor = isAccepted ? "#f0fdf4" : "#fef2f2";
@@ -106,25 +131,25 @@ function successPage(action: "accepted" | "declined"): string {
   const message = isAccepted
     ? "Thank you for accepting. We look forward to seeing you at the session. You will receive a Zoom link closer to the date."
     : "We have recorded your response. Thank you for letting us know — we hope to see you at a future session.";
-  const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
 
   return page(headline, `
+    <meta http-equiv="refresh" content="4;url=${dashboardUrl}"/>
+    <script>setTimeout(function(){ window.location.href = ${JSON.stringify(dashboardUrl)}; }, 4000);</script>
     <div style="width:64px;height:64px;border-radius:50%;background-color:${bgColor};border:2px solid ${color};margin:0 auto 20px;font-size:28px;line-height:64px;">${isAccepted ? "✓" : "✕"}</div>
     <h1 style="margin:0 0 12px;font-size:26px;font-weight:700;color:${color};">${headline}</h1>
-    <p style="margin:0 0 28px;font-size:16px;color:#475569;line-height:1.6;">${message}</p>
-    <a href="${appUrl}/dashboard/participant" style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;background-color:#2563eb;text-decoration:none;border-radius:6px;">View My Dashboard</a>
+    <p style="margin:0 0 16px;font-size:16px;color:#475569;line-height:1.6;">${message}</p>
+    <p style="margin:0 0 24px;font-size:13px;color:#94a3b8;">Redirecting you to your dashboard in 4 seconds…</p>
+    <a href="${dashboardUrl}" style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;background-color:#2563eb;text-decoration:none;border-radius:6px;">Go Now</a>
   `);
 }
 
-function alreadyRespondedPage(existingAction: string): string {
-  const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
-
+function alreadyRespondedPage(existingAction: string, dashboardUrl: string): string {
   return page("Already Responded", `
     <div style="width:64px;height:64px;border-radius:50%;background-color:#f0f9ff;border:2px solid #0ea5e9;margin:0 auto 20px;font-size:28px;line-height:64px;">ℹ</div>
     <h1 style="margin:0 0 12px;font-size:24px;font-weight:700;color:#0369a1;">You Have Already Responded</h1>
     <p style="margin:0 0 8px;font-size:16px;color:#475569;">You already <strong>${existingAction}</strong> this invitation.</p>
     <p style="margin:0 0 28px;font-size:14px;color:#64748b;">To change your response, please log in to your participant dashboard.</p>
-    <a href="${appUrl}/dashboard/participant" style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;background-color:#2563eb;text-decoration:none;border-radius:6px;">Go to Dashboard</a>
+    <a href="${dashboardUrl}" style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;background-color:#2563eb;text-decoration:none;border-radius:6px;">Go to Dashboard</a>
   `);
 }
 
