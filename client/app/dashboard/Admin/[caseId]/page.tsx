@@ -32,6 +32,7 @@ interface CaseInfo {
   description: string;
   drive_link: string | null;
   filters: CaseFilters;
+  admin_scheduled_at: string | null;
   presenter_id: string | null;
   user_id: string;
   case_documents: CaseDocument[];
@@ -63,6 +64,7 @@ export default async function AdminCaseDetailPage({
       description,
       drive_link,
       filters,
+      admin_scheduled_at,
       presenter_id,
       user_id,
       case_documents (
@@ -233,6 +235,73 @@ export default async function AdminCaseDetailPage({
             ) : null
           )}
         </div>
+      </section>
+
+      {/* PARTICIPANT FILTERS */}
+      <section className="bg-white p-8 rounded-xl border shadow-sm">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-xl font-bold">Participant Filters</h3>
+          {caseInfo.admin_scheduled_at ? (
+            <span className="text-xs bg-slate-100 border border-slate-300 text-slate-600 px-2 py-0.5 rounded-full">
+              🔒 Locked — session scheduled
+            </span>
+          ) : (
+            <span className="text-xs bg-green-50 border border-green-200 text-green-700 px-2 py-0.5 rounded-full">
+              Editable by presenter
+            </span>
+          )}
+        </div>
+
+        {(() => {
+          const f = caseInfo.filters as CaseFilters | null;
+          if (!f) {
+            return <p className="text-sm text-slate-400 italic">No filters set by presenter.</p>;
+          }
+
+          const rows: { label: string; value: string }[] = [];
+
+          if (f.age?.min !== undefined || f.age?.max !== undefined) {
+            const min = f.age?.min ?? 18;
+            const max = f.age?.max ?? 99;
+            const isDefault = min === 18 && max === 99;
+            if (!isDefault) rows.push({ label: "Age", value: `${min} – ${max}` });
+          }
+          if (f.gender?.length) rows.push({ label: "Gender", value: f.gender.join(", ") });
+          if (f.race?.length) rows.push({ label: "Race", value: f.race.join(", ") });
+          if (f.location?.state?.length) rows.push({ label: "Location", value: f.location.state.join(", ") });
+          if (f.political_affiliation?.length) rows.push({ label: "Political Affiliation", value: f.political_affiliation.join(", ") });
+
+          const elig = f.eligibility;
+          if (elig) {
+            if (elig.served_on_jury && elig.served_on_jury !== "Any") rows.push({ label: "Served on Jury", value: elig.served_on_jury });
+            if (elig.has_children && elig.has_children !== "Any") rows.push({ label: "Has Children", value: elig.has_children });
+            if (elig.served_armed_forces && elig.served_armed_forces !== "Any") rows.push({ label: "Served Armed Forces", value: elig.served_armed_forces });
+            if (elig.currently_employed && elig.currently_employed !== "Any") rows.push({ label: "Currently Employed", value: elig.currently_employed });
+          }
+
+          const socio = f.socioeconomic;
+          if (socio) {
+            if (socio.marital_status?.length) rows.push({ label: "Marital Status", value: socio.marital_status.join(", ") });
+            if (socio.education_level?.length) rows.push({ label: "Education Level", value: socio.education_level.join(", ") });
+            if (socio.family_income?.length) rows.push({ label: "Family Income", value: socio.family_income.join(", ") });
+            if (socio.availability?.length) rows.push({ label: "Availability", value: socio.availability.join(", ") });
+          }
+
+          if (rows.length === 0) {
+            return <p className="text-sm text-slate-400 italic">No specific filters applied (all participants eligible).</p>;
+          }
+
+          return (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {rows.map(({ label, value }) => (
+                <div key={label} className="bg-slate-50 border rounded-lg px-4 py-3">
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-0.5">{label}</p>
+                  <p className="text-sm text-slate-800">{value}</p>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
       </section>
     </div>
   );

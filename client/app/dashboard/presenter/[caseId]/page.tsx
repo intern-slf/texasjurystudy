@@ -4,6 +4,7 @@ import Link from "next/link";
 import PresenterSidebar from "@/components/PresenterSidebar";
 import CaseDocumentUploader from "@/components/CaseDocumentUploader";
 import DriveLinkEditor from "@/components/DriveLinkEditor";
+import CaseFilterEditor from "@/components/CaseFilterEditor";
 import LocalDateTime from "@/components/LocalDateTime";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -81,40 +82,6 @@ export default async function PresenterCaseDetailPage({
     return null;
   }
 
-  function FilterPill({ label }: { label: string }) {
-    return (
-      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-700 border border-slate-200">
-        {label}
-      </span>
-    );
-  }
-
-  function FilterRow({ title, values }: { title: string; values?: string[] | null }) {
-    if (!values?.length) return null;
-    return (
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">{title}</p>
-        <div className="flex flex-wrap gap-1.5">
-          {values.map((v) => <FilterPill key={v} label={v} />)}
-        </div>
-      </div>
-    );
-  }
-
-  const hasFilters =
-    filters &&
-    (filters.gender?.length ||
-      filters.race?.length ||
-      filters.location?.state?.length ||
-      filters.political_affiliation?.length ||
-      filters.socioeconomic?.education_level?.length ||
-      filters.socioeconomic?.marital_status?.length ||
-      filters.socioeconomic?.family_income?.length ||
-      filters.eligibility?.served_on_jury ||
-      filters.eligibility?.has_children ||
-      filters.eligibility?.served_armed_forces ||
-      filters.eligibility?.currently_employed ||
-      (filters.age && (filters.age.min || filters.age.max)));
 
   return (
     <div className="flex min-h-screen bg-muted/10 font-sans">
@@ -216,50 +183,23 @@ export default async function PresenterCaseDetailPage({
           </section>
 
           {/* PARTICIPANT FILTERS */}
-          {hasFilters && (
-            <section className="bg-white border rounded-xl p-6 space-y-4">
+          <section className="bg-white border rounded-xl p-6 space-y-4">
+            <div className="flex items-center justify-between flex-wrap gap-2">
               <h2 className="text-base font-semibold flex items-center gap-2">
                 <AlertCircle className="h-4 w-4 text-muted-foreground" /> Participant Filters
               </h2>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                {filters?.age && (filters.age.min || filters.age.max) && (
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">Age Range</p>
-                    <FilterPill label={`${filters.age.min ?? 0} – ${filters.age.max ?? "99+"}`} />
-                  </div>
-                )}
-                <FilterRow title="Gender" values={filters?.gender} />
-                <FilterRow title="Race" values={filters?.race} />
-                <FilterRow title="Location (States)" values={filters?.location?.state} />
-                <FilterRow title="Political Affiliation" values={filters?.political_affiliation} />
-                <FilterRow title="Education Level" values={filters?.socioeconomic?.education_level} />
-                <FilterRow title="Marital Status" values={filters?.socioeconomic?.marital_status} />
-                <FilterRow title="Family Income" values={filters?.socioeconomic?.family_income} />
-                <FilterRow title="Availability" values={filters?.socioeconomic?.availability} />
-
-                {filters?.eligibility && (
-                  <div className="sm:col-span-2">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">Eligibility</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {filters.eligibility.served_on_jury && filters.eligibility.served_on_jury !== "Any" && (
-                        <FilterPill label={`Jury service: ${filters.eligibility.served_on_jury}`} />
-                      )}
-                      {filters.eligibility.has_children && filters.eligibility.has_children !== "Any" && (
-                        <FilterPill label={`Has children: ${filters.eligibility.has_children}`} />
-                      )}
-                      {filters.eligibility.served_armed_forces && filters.eligibility.served_armed_forces !== "Any" && (
-                        <FilterPill label={`Armed forces: ${filters.eligibility.served_armed_forces}`} />
-                      )}
-                      {filters.eligibility.currently_employed && filters.eligibility.currently_employed !== "Any" && (
-                        <FilterPill label={`Employed: ${filters.eligibility.currently_employed}`} />
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </section>
-          )}
+              {!c.admin_scheduled_at && (
+                <span className="text-xs text-green-700 bg-green-50 border border-green-200 px-2 py-0.5 rounded-full">
+                  Editable until a session is scheduled
+                </span>
+              )}
+            </div>
+            <CaseFilterEditor
+              caseId={c.id}
+              initialFilters={filters}
+              locked={!!c.admin_scheduled_at}
+            />
+          </section>
 
         </div>
       </main>
