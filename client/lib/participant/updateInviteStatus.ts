@@ -1,6 +1,7 @@
 "use server";
 
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { sendInviteAcceptedConfirmationEmail, sendInviteDeclinedConfirmationEmail } from "@/lib/mail";
 
 export async function updateInviteStatus(
   sessionParticipantId: string,
@@ -25,10 +26,11 @@ export async function updateInviteStatus(
 
   console.log(`[updateInviteStatus] Success:`, updatedRows);
 
-  // 2. Only set cooldown when participant ACCEPTS
-  if (status === "accepted" && updatedRows?.length) {
-    const { session_id, participant_id } = updatedRows[0];
+  if (!updatedRows?.length) return;
+  const { session_id, participant_id } = updatedRows[0];
 
+  // 2. Only set cooldown + send accepted email when participant ACCEPTS
+  if (status === "accepted") {
     try {
       const { data: session } = await supabaseAdmin
         .from("sessions")
@@ -38,7 +40,7 @@ export async function updateInviteStatus(
 
       const { data: sessionCases } = await supabaseAdmin
         .from("session_cases")
-        .select("end_time")
+        .select("start_time, end_time")
         .eq("session_id", session_id);
 
       if (!session || !sessionCases?.length) return;
@@ -67,8 +69,34 @@ export async function updateInviteStatus(
       if (cooldownErr) {
         console.error("Cooldown update failed:", cooldownErr.message);
       }
+
+      // Send acceptance confirmation email
+      try {
+        const { data: userData } = await supabaseAdmin.auth.admin.getUserById(participant_id);
+        const email = userData?.user?.email;
+        if (email) {
+          const firstCase = sessionCases[0];
+          const timeStr = firstCase ? `${firstCase.start_time} – ${firstCase.end_time}` : "See your dashboard for details";
+          await sendInviteAcceptedConfirmationEmail(email, session.session_date as string, timeStr);
+        }
+      } catch (emailErr) {
+        console.error("[updateInviteStatus] Failed to send acceptance email:", emailErr);
+      }
     } catch (err) {
       console.error("Cooldown computation error:", err);
+    }
+  }
+
+  // 3. Send declined confirmation email
+  if (status === "declined") {
+    try {
+      const { data: userData } = await supabaseAdmin.auth.admin.getUserById(participant_id);
+      const email = userData?.user?.email;
+      if (email) {
+        await sendInviteDeclinedConfirmationEmail(email);
+      }
+    } catch (emailErr) {
+      console.error("[updateInviteStatus] Failed to send decline email:", emailErr);
     }
   }
 }

@@ -442,6 +442,100 @@ export async function sendApprovalEmail(to: string, caseTitle: string) {
   });
 }
 
+export async function sendInviteAcceptedConfirmationEmail(
+  to: string,
+  sessionDate: string,
+  timeStr: string,
+) {
+  const html = emailWrapper(`
+    <h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#15803d;">Thank You for Accepting!</h2>
+    <p style="margin:0 0 20px;font-size:15px;color:#475569;">
+      Thank you for accepting your invitation to the Texas Jury Study. We're excited to have you join us!
+    </p>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f0fdf4;border-left:4px solid #16a34a;border-radius:6px;margin:0 0 16px;">
+      <tr>
+        <td style="padding:16px 20px;">
+          <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#166534;text-transform:uppercase;letter-spacing:0.08em;">Scheduled Date</p>
+          <p style="margin:0;font-size:20px;font-weight:700;color:#15803d;">${sessionDate}</p>
+        </td>
+      </tr>
+    </table>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f8fafc;border-left:4px solid #94a3b8;border-radius:6px;margin:0 0 24px;">
+      <tr>
+        <td style="padding:16px 20px;">
+          <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;">Scheduled Time</p>
+          <p style="margin:0;font-size:16px;font-weight:600;color:#1e293b;">${timeStr}</p>
+        </td>
+      </tr>
+    </table>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#eff6ff;border-left:4px solid #2563eb;border-radius:6px;margin:0 0 28px;">
+      <tr>
+        <td style="padding:14px 20px;">
+          <p style="margin:0;font-size:14px;color:#1e40af;">
+            We will send you the <strong>meeting link</strong> for your session soon. Please keep an eye on your inbox closer to the date.
+          </p>
+        </td>
+      </tr>
+    </table>
+
+    <table role="presentation" cellpadding="0" cellspacing="0">
+      <tr>
+        <td style="border-radius:6px;background-color:#2563eb;">
+          <a href="${process.env.NEXT_PUBLIC_APP_URL}/dashboard/participant"
+             style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:6px;">
+            View My Dashboard
+          </a>
+        </td>
+      </tr>
+    </table>
+  `);
+
+  await sendEmail({
+    to,
+    subject: `Thank You for Accepting – ${sessionDate} | Texas Jury Study`,
+    html,
+  });
+}
+
+export async function sendInviteDeclinedConfirmationEmail(to: string) {
+  const html = emailWrapper(`
+    <h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#475569;">Thank You for Responding</h2>
+    <p style="margin:0 0 20px;font-size:15px;color:#475569;">
+      We have recorded your response. We completely understand and appreciate you letting us know.
+    </p>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f8fafc;border-left:4px solid #94a3b8;border-radius:6px;margin:0 0 28px;">
+      <tr>
+        <td style="padding:16px 20px;">
+          <p style="margin:0;font-size:14px;color:#475569;">
+            We hope to see you at a future session. We will send you an invitation when another opportunity becomes available that matches your profile.
+          </p>
+        </td>
+      </tr>
+    </table>
+
+    <table role="presentation" cellpadding="0" cellspacing="0">
+      <tr>
+        <td style="border-radius:6px;background-color:#2563eb;">
+          <a href="${process.env.NEXT_PUBLIC_APP_URL}/dashboard/participant"
+             style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:6px;">
+            View My Dashboard
+          </a>
+        </td>
+      </tr>
+    </table>
+  `);
+
+  await sendEmail({
+    to,
+    subject: "Thank You for Responding | Texas Jury Study",
+    html,
+  });
+}
+
 export async function sendZoomLinkEmail(
   to: string,
   firstName: string,
