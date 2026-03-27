@@ -1,4 +1,5 @@
 import CaseDocumentUploader from "@/components/CaseDocumentUploader";
+import DriveLinkEditor from "@/components/DriveLinkEditor";
 import { revalidatePath } from "next/cache";
 import CaseActions from "@/components/CaseActions";
 import Link from "next/link";
@@ -309,8 +310,10 @@ export default async function PresenterDashboard({
               <Card key={c.id} className="overflow-hidden border-muted shadow-sm hover:shadow-md transition-shadow">
                 <CardHeader className="bg-muted/10 pb-4">
                     <div className="flex justify-between items-start">
-                        <div>
-                            <CardTitle className="text-xl">{c.title}</CardTitle>
+                        <div className="flex-1 min-w-0">
+                            <Link href={`/dashboard/presenter/${c.id}`} className="hover:underline underline-offset-4">
+                              <CardTitle className="text-xl">{c.title}</CardTitle>
+                            </Link>
                             <CardDescription className="line-clamp-2 mt-1">
                                 {c.description}
                             </CardDescription>
@@ -327,6 +330,21 @@ export default async function PresenterDashboard({
                 <CardContent className="pt-6">
                   {/* APPROVED AREA */}
                   {tab === "approved" && (
+                    <div className="space-y-6">
+                      <div>
+                        <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                          <Upload className="h-4 w-4" />
+                          Case Documents
+                        </h4>
+                        <div className="bg-muted/30 rounded-lg p-4 border border-dashed">
+                          <CaseDocumentUploader caseId={c.id} />
+                        </div>
+                      </div>
+
+                      <div className="border border-slate-200 rounded-2xl bg-white p-5 shadow-sm">
+                        <DriveLinkEditor caseId={c.id} initialDriveLink={c.drive_link as string | null} />
+                      </div>
+
                     <div className="space-y-4">
                         <div className="flex items-center gap-2 p-3 bg-green-500/10 text-green-700 rounded-lg border border-green-500/20">
                             <AlertCircle className="h-4 w-4" />
@@ -391,6 +409,7 @@ export default async function PresenterDashboard({
                         )}
 
                     </div>
+                    </div>
                   )}
 
                   {/* CURRENT */}
@@ -404,6 +423,10 @@ export default async function PresenterDashboard({
                         <div className="bg-muted/30 rounded-lg p-4 border border-dashed">
                             <CaseDocumentUploader caseId={c.id} />
                         </div>
+                      </div>
+
+                      <div className="border border-slate-200 rounded-2xl bg-white p-5 shadow-sm">
+                        <DriveLinkEditor caseId={c.id} initialDriveLink={c.drive_link as string | null} />
                       </div>
 
                       <details className="group">
@@ -462,7 +485,21 @@ export default async function PresenterDashboard({
 
                   {/* PREVIOUS */}
                   {tab === "previous" && (
-                    <div className="flex flex-col gap-4 pt-2">
+                    <div className="flex flex-col gap-6 pt-2">
+                      <div>
+                        <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                          <Upload className="h-4 w-4" />
+                          Case Documents
+                        </h4>
+                        <div className="bg-muted/30 rounded-lg p-4 border border-dashed">
+                          <CaseDocumentUploader caseId={c.id} />
+                        </div>
+                      </div>
+
+                      <div className="border border-slate-200 rounded-2xl bg-white p-5 shadow-sm">
+                        <DriveLinkEditor caseId={c.id} initialDriveLink={c.drive_link as string | null} />
+                      </div>
+
                       <div className="flex items-center gap-3">
                       {/* Restore only if not expired */}
                       {(!c.scheduled_at ||
@@ -500,6 +537,7 @@ export default async function PresenterDashboard({
                   )}
                   
                   <div className="mt-6 pt-6 border-t flex justify-between items-center">
+                    <div className="flex items-center gap-2">
                        <CaseActions
                         tab={tab}
                         caseId={c.id}
@@ -508,7 +546,11 @@ export default async function PresenterDashboard({
                         new Date(c.scheduled_at).getTime() < Date.now()
                         }
                     />
-                    
+                      <Button asChild size="sm" variant="outline">
+                        <Link href={`/dashboard/presenter/${c.id}`}>View Details</Link>
+                      </Button>
+                    </div>
+
                      {tab === "current" && (
                         <form action={softDeleteCase}>
                             <input type="hidden" name="case_id" value={c.id} />
