@@ -447,6 +447,7 @@ export async function sendZoomLinkEmail(
   firstName: string,
   sessionDate: string,
   zoomLink: string,
+  timeStr?: string,
 ) {
   const html = emailWrapper(`
     <h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#1e3a8a;">Your Zoom Link is Ready</h2>
@@ -456,11 +457,18 @@ export async function sendZoomLinkEmail(
 
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#eff6ff;border-left:4px solid #2563eb;border-radius:6px;margin:0 0 24px;">
       <tr>
-        <td style="padding:16px 20px;">
+        <td style="padding:16px 20px;border-bottom:1px solid #bfdbfe;">
           <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#1e40af;text-transform:uppercase;letter-spacing:0.08em;">Session Date</p>
           <p style="margin:0;font-size:16px;font-weight:700;color:#1e3a8a;">${sessionDate}</p>
         </td>
       </tr>
+      ${timeStr ? `
+      <tr>
+        <td style="padding:16px 20px;">
+          <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#1e40af;text-transform:uppercase;letter-spacing:0.08em;">Session Time</p>
+          <p style="margin:0;font-size:16px;font-weight:700;color:#1e3a8a;">${timeStr}</p>
+        </td>
+      </tr>` : ''}
     </table>
 
     <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 24px;">

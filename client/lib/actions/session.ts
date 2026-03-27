@@ -631,6 +631,28 @@ export async function sendZoomLink(formData: FormData) {
   if (!session) throw new Error("Session not found");
   const sessionDate = session.session_date as string;
 
+  // Fetch session case times to include in email
+  const { data: sessionCaseRows } = await supabase
+    .from("session_cases")
+    .select("start_time, end_time")
+    .eq("session_id", sessionId);
+
+  const formatCentralTime = (t: string) => {
+    const [h, m] = t.split(":");
+    const d = new Date();
+    d.setUTCHours(parseInt(h), parseInt(m), 0, 0);
+    return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Chicago" });
+  };
+
+  let timeStr: string | undefined;
+  if (sessionCaseRows && sessionCaseRows.length > 0) {
+    const starts = sessionCaseRows.map((r) => r.start_time).filter(Boolean).sort();
+    const ends   = sessionCaseRows.map((r) => r.end_time).filter(Boolean).sort();
+    if (starts.length && ends.length) {
+      timeStr = `${formatCentralTime(starts[0])} – ${formatCentralTime(ends[ends.length - 1])} CT`;
+    }
+  }
+
   // Fetch accepted participants
   const { data: participants } = await supabase
     .from("session_participants")
@@ -651,7 +673,7 @@ export async function sendZoomLink(formData: FormData) {
         "Participant";
 
       if (email) {
-        await sendZoomLinkEmail(email, firstName, sessionDate, zoomLink);
+        await sendZoomLinkEmail(email, firstName, sessionDate, zoomLink, timeStr);
       }
     } catch (e) {
       console.error(`[sendZoomLink] Failed for participant ${p.participant_id}:`, e);
