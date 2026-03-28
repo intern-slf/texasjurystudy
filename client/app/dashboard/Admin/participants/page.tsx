@@ -31,7 +31,7 @@ export default async function ParticipantsPage({
   let query = supabase
     .from("jury_participants")
     .select(
-      "user_id, first_name, last_name, email, age, gender, city, state, phone, entry_date, approved_by_admin, driver_license_number, driver_license_image_url, blacklist_reason, blacklisted_at"
+      "user_id, first_name, last_name, email, gender, city, state, phone, date_of_birth, entry_date, approved_by_admin, driver_license_number, driver_license_image_url, blacklist_reason, blacklisted_at"
     )
     .order("entry_date", { ascending: false });
 

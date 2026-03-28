@@ -24,6 +24,30 @@ class MockQueryBuilder {
   }
 }
 
+function testAgeFilter() {
+  const query = new MockQueryBuilder();
+  // Someone 25–45: DOB should be between (today-45yrs) and (today-25yrs)
+  const filters: CaseFilters = { age: { min: 25, max: 45 } };
+
+  applyCaseFilters(query, filters);
+
+  // DOB range filters should be applied on date_of_birth column
+  assert(
+    query.filters["date_of_birth_gte"] !== undefined,
+    "Age filter sets date_of_birth_gte"
+  );
+  assert(
+    query.filters["date_of_birth_lte"] !== undefined,
+    "Age filter sets date_of_birth_lte"
+  );
+  // The gte value (minDOB = today - 45 years) should be a date string
+  const minDOB = query.filters["date_of_birth_gte"][1];
+  const maxDOB = query.filters["date_of_birth_lte"][1];
+  assert(typeof minDOB === "string" && minDOB.length === 10, "minDOB is a date string");
+  assert(typeof maxDOB === "string" && maxDOB.length === 10, "maxDOB is a date string");
+  assert(minDOB < maxDOB, "minDOB is earlier than maxDOB (older person born first)");
+}
+
 function assert(condition: boolean, message: string) {
   if (!condition) {
     console.error(`❌ FAIL: ${message}`);
@@ -43,16 +67,6 @@ function testGenderFilter() {
     JSON.stringify(query.filters["gender"]) === JSON.stringify(["in", ["Male", "im-gender-fluid"]]),
     "Gender filter applied correctly"
   );
-}
-
-function testAgeFilter() {
-  const query = new MockQueryBuilder();
-  const filters: CaseFilters = { age: { min: 18, max: 25 } };
-  
-  applyCaseFilters(query, filters);
-  
-  assert(query.filters["age_gte"][1] === 18, "Age min filter applied");
-  assert(query.filters["age_lte"][1] === 25, "Age max filter applied");
 }
 
 function testLocationFilter() {
@@ -201,17 +215,17 @@ function testCombineFilters() {
     const filters5: CaseFilters = { location: { state: ["TX"] } };
     const filters6: CaseFilters = { location: { state: ["CA"] } };
     const combined3 = combineCaseFilters([filters5, filters6]);
-    
+
     assert(combined3.location?.state?.includes("TX"), "Union includes TX");
     assert(combined3.location?.state?.includes("CA"), "Union includes CA");
 
     // Test 4: Age Range Widening
-    const filters7: CaseFilters = { age: { min: 20, max: 30 } };
-    const filters8: CaseFilters = { age: { min: 40, max: 50 } };
+    const filters7: CaseFilters = { age: { min: 25, max: 40 } };
+    const filters8: CaseFilters = { age: { min: 35, max: 55 } };
     const combined4 = combineCaseFilters([filters7, filters8]);
 
-    assert(combined4.age?.min === 20, "Age min matches lowest");
-    assert(combined4.age?.max === 50, "Age max matches highest");
+    assert(combined4.ageRanges !== undefined && combined4.ageRanges.length === 2, "Age ranges stored as ageRanges array");
+
 }
 
 
@@ -221,8 +235,8 @@ function testRelaxFilters() {
     const fullFilters: CaseFilters = {
         gender: ["Male"],
         race: ["Asian"],
-        political_affiliation: ["Democrat"],
         age: { min: 20, max: 30 },
+        political_affiliation: ["Democrat"],
         location: { state: ["TX"] },
         socioeconomic: { education_level: ["PhD"] },
         eligibility: { us_citizen: "Yes" }
@@ -232,21 +246,20 @@ function testRelaxFilters() {
     const level0 = relaxFilters(fullFilters, 0);
     assert(level0.location !== undefined, "Level 0 keeps location");
 
-    // Level 1: Drop Location (First in NEW priority list)
+    // Level 1: Drop Location (first in priority list)
     const level1 = relaxFilters(fullFilters, 1);
     assert(level1.location === undefined, "Level 1 drops location");
     assert(level1.age !== undefined, "Level 1 keeps age");
 
-    // Level 2: Drop Location + Age
+    // Level 2: Drop Age
     const level2 = relaxFilters(fullFilters, 2);
-    assert(level2.location === undefined, "Level 2 drops location");
     assert(level2.age === undefined, "Level 2 drops age");
     assert(level2.race !== undefined, "Level 2 keeps race");
-    
+
     // Check Political is still there (it's last)
     const levelMax = relaxFilters(fullFilters, 6); // Drop 6 things
     assert(levelMax.political_affiliation !== undefined, "Level 6 keeps political (dropped last)");
-    
+
     const levelAll = relaxFilters(fullFilters, 10);
     assert(levelAll.political_affiliation === undefined, "Level 10 drops political");
 }
@@ -254,8 +267,8 @@ function testRelaxFilters() {
 console.log("Running Filter Tests...");
 testRelaxFilters();
 testCombineFilters();
-testGenderFilter();
 testAgeFilter();
+testGenderFilter();
 testLocationFilter();
 testEducationFilter();
 testRaceFilter();

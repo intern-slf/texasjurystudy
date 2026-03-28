@@ -107,9 +107,9 @@ export default function NewCasePage() {
   });
 
   const [filters, setFilters] = useState({
-    age: { min: "", max: "" },
     gender: [] as string[],
     race: [] as string[],
+    age: { min: "", max: "" },
     location: { state: [] as string[] },
     eligibility: {
       served_on_jury: "",
@@ -195,12 +195,12 @@ export default function NewCasePage() {
     }
 
     const softFilterPayload = {
+      gender: filters.gender,
+      race: filters.race,
       age: {
         min: filters.age.min ? Number(filters.age.min) : 18,
         max: filters.age.max ? Number(filters.age.max) : 99,
       },
-      gender: filters.gender,
-      race: filters.race,
       location: { state: filters.location.state },
       eligibility: {
         served_on_jury: filters.eligibility.served_on_jury || "Any",
@@ -350,9 +350,9 @@ export default function NewCasePage() {
                 if (showFilters) {
                   // Switching to "No Filters" — clear all filters
                   setFilters({
-                    age: { min: "", max: "" },
                     gender: [],
                     race: [],
+                    age: { min: "", max: "" },
                     location: { state: [] },
                     eligibility: {
                       served_on_jury: "",
@@ -449,9 +449,25 @@ export default function NewCasePage() {
                 <div className="space-y-6">
                   <div className="bg-card p-6 rounded-2xl border shadow-sm space-y-4">
                     <h3 className="font-bold text-lg border-b pb-2">Age & Identity</h3>
-                    <div className="flex gap-4">
-                      <input type="number" className="input flex-1" placeholder="Min Age" value={filters.age.min} onChange={(e) => setFilters({ ...filters, age: { ...filters.age, min: e.target.value } })} />
-                      <input type="number" className="input flex-1" placeholder="Max Age" value={filters.age.max} onChange={(e) => setFilters({ ...filters, age: { ...filters.age, max: e.target.value } })} />
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium">Age Range</p>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          placeholder="Min"
+                          className="border rounded px-3 py-2 text-sm w-24"
+                          value={filters.age.min}
+                          onChange={(e) => setFilters({ ...filters, age: { ...filters.age, min: e.target.value } })}
+                        />
+                        <span className="text-sm text-muted-foreground">–</span>
+                        <input
+                          type="number"
+                          placeholder="Max"
+                          className="border rounded px-3 py-2 text-sm w-24"
+                          value={filters.age.max}
+                          onChange={(e) => setFilters({ ...filters, age: { ...filters.age, max: e.target.value } })}
+                        />
+                      </div>
                     </div>
                     <MultiCheckbox label="Gender" options={["Male", "Female", "Other"]} values={filters.gender} onChange={(v) => setFilters({ ...filters, gender: v })} />
                     <MultiCheckbox label="Race" options={["Caucasian", "African American", "Asian", "Native American", "Middle Eastern", "Latino/Hispanic", "Multi-racial", "Other"]} values={filters.race} onChange={(v) => setFilters({ ...filters, race: v })} />

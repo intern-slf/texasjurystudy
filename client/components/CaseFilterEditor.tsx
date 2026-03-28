@@ -87,9 +87,9 @@ export default function CaseFilterEditor({ caseId, initialFilters, locked }: Pro
   const f = initialFilters ?? {};
 
   const [filters, setFilters] = useState({
-    age: { min: String(f.age?.min ?? ""), max: String(f.age?.max ?? "") },
     gender: f.gender ?? [],
     race: f.race ?? [],
+    age: { min: String(f.age?.min ?? ""), max: String(f.age?.max ?? "") },
     location: { state: f.location?.state ?? [] },
     political_affiliation: f.political_affiliation ?? [],
     eligibility: {
@@ -111,12 +111,12 @@ export default function CaseFilterEditor({ caseId, initialFilters, locked }: Pro
 
   function handleSave() {
     const payload = {
+      gender: filters.gender,
+      race: filters.race,
       age: {
         min: filters.age.min ? Number(filters.age.min) : 18,
         max: filters.age.max ? Number(filters.age.max) : 99,
       },
-      gender: filters.gender,
-      race: filters.race,
       location: { state: filters.location.state },
       political_affiliation: filters.political_affiliation,
       eligibility: {
@@ -175,13 +175,25 @@ export default function CaseFilterEditor({ caseId, initialFilters, locked }: Pro
         <div className="space-y-5">
           <div className="bg-card p-5 rounded-xl border space-y-4">
             <h4 className="font-semibold text-sm border-b pb-2">Age & Identity</h4>
-            <div className="flex gap-3">
-              <input type="number" className="border rounded px-3 py-2 text-sm flex-1" placeholder="Min Age"
-                value={filters.age.min}
-                onChange={(e) => { setFilters({ ...filters, age: { ...filters.age, min: e.target.value } }); setSaved(false); }} />
-              <input type="number" className="border rounded px-3 py-2 text-sm flex-1" placeholder="Max Age"
-                value={filters.age.max}
-                onChange={(e) => { setFilters({ ...filters, age: { ...filters.age, max: e.target.value } }); setSaved(false); }} />
+            <div className="space-y-1">
+              <p className="text-sm font-medium">Age Range</p>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  placeholder="Min"
+                  className="w-20 border rounded px-2 py-1 text-sm"
+                  value={filters.age.min}
+                  onChange={(e) => { setFilters({ ...filters, age: { ...filters.age, min: e.target.value } }); setSaved(false); }}
+                />
+                <span className="text-sm text-muted-foreground">–</span>
+                <input
+                  type="number"
+                  placeholder="Max"
+                  className="w-20 border rounded px-2 py-1 text-sm"
+                  value={filters.age.max}
+                  onChange={(e) => { setFilters({ ...filters, age: { ...filters.age, max: e.target.value } }); setSaved(false); }}
+                />
+              </div>
             </div>
             <MultiCheckbox label="Gender" options={["Male", "Female", "Other"]} values={filters.gender}
               onChange={(v) => { setFilters({ ...filters, gender: v }); setSaved(false); }} />

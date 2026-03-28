@@ -1,17 +1,27 @@
 import { PostgrestFilterBuilder } from "@supabase/postgrest-js";
 
 export interface AgeRange {
-  min?: number;
-  max?: number;
-  caseLabel?: string;   // e.g. "Case A" — set during combine
-  caseIndex?: number;   // 0-based index of the source case
+  min: number;
+  max: number;
+  caseLabel?: string;
+  caseIndex?: number;
+}
+
+/** Calculate age in years from a date-of-birth string (YYYY-MM-DD or ISO). */
+export function calcAgeFromDob(dob: string): number {
+  const birth = new Date(dob);
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  const m = today.getMonth() - birth.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+  return age;
 }
 
 export interface CaseFilters {
   gender?: string[];
-  age?: AgeRange;                  // single-case age range
-  ageRanges?: AgeRange[];          // multi-case union (populated by combineCaseFilters)
   race?: string[];
+  age?: AgeRange;
+  ageRanges?: AgeRange[];
   location?: { state?: string[] };
   political_affiliation?: string[];
   eligibility?: {
@@ -57,32 +67,30 @@ export function applyCaseFilters(
     query = query.in("race", filters.race);
   }
 
-  // --- AGE (union of ranges when multiple cases) ---
-  if (filters.ageRanges && filters.ageRanges.length > 0) {
-    // Build OR condition: participant fits ANY of the case age ranges
-    const orClauses = filters.ageRanges.map((r) => {
-      const parts: string[] = [];
-      if (r.min !== undefined) parts.push(`age.gte.${r.min}`);
-      if (r.max !== undefined) parts.push(`age.lte.${r.max}`);
-      return parts.length > 1 ? `and(${parts.join(",")})` : parts[0] || "";
-    }).filter(Boolean);
-
-    if (orClauses.length === 1) {
-      // Single range — apply directly
-      const r = filters.ageRanges[0];
-      if (r.min !== undefined) query = query.gte("age", r.min);
-      if (r.max !== undefined) query = query.lte("age", r.max);
-    } else if (orClauses.length > 1) {
-      query = query.or(orClauses.join(","));
-    }
+  // --- AGE (computed from date_of_birth) ---
+  if (filters.ageRanges?.length) {
+    // Union of ranges → use widest range to approximate (Supabase can't do OR on same col easily)
+    const minAge = Math.min(...filters.ageRanges.map((r) => r.min));
+    const maxAge = Math.max(...filters.ageRanges.map((r) => r.max));
+    const today = new Date();
+    const minDOB = new Date(today.getFullYear() - maxAge, today.getMonth(), today.getDate())
+      .toISOString()
+      .slice(0, 10);
+    const maxDOB = new Date(today.getFullYear() - minAge, today.getMonth(), today.getDate())
+      .toISOString()
+      .slice(0, 10);
+    query = query.gte("date_of_birth", minDOB).lte("date_of_birth", maxDOB);
   } else if (filters.age) {
-    // Single-case fallback
-    if (filters.age.min !== undefined) {
-      query = query.gte("age", filters.age.min);
-    }
-    if (filters.age.max !== undefined) {
-      query = query.lte("age", filters.age.max);
-    }
+    const minAge = filters.age.min ?? 18;
+    const maxAge = filters.age.max ?? 99;
+    const today = new Date();
+    const minDOB = new Date(today.getFullYear() - maxAge, today.getMonth(), today.getDate())
+      .toISOString()
+      .slice(0, 10);
+    const maxDOB = new Date(today.getFullYear() - minAge, today.getMonth(), today.getDate())
+      .toISOString()
+      .slice(0, 10);
+    query = query.gte("date_of_birth", minDOB).lte("date_of_birth", maxDOB);
   }
 
   // --- LOCATION ---
@@ -152,7 +160,7 @@ export function applyCaseFilters(
  * 
  * Strategy:
  * - Arrays (Gender, Race, etc): Union of values. Participant passes if they match ANY case.
- * - Ranges (Age): Union — each case's range kept separately.
+ * - Ranges: Union — each case's range kept separately.
  * - Single Values (Eligibility): If cases agree → keep. If conflict → undefined (Any).
  * - _perCaseFilters: Stores each case's original filters for per-case UI display.
  */
@@ -175,33 +183,18 @@ export function combineCaseFilters(filtersList: CaseFilters[]): CaseFilters {
   // --- IDENTITY ARRAYS (Union) ---
   result.gender = unionArrays(valid.map(f => f.gender));
   result.race = unionArrays(valid.map(f => f.race));
-  result.political_affiliation = unionArrays(valid.map(f => f.political_affiliation));
 
-  // --- AGE (Union of ranges — keep each case's range separate) ---
-  const ages = valid.map((f, idx) => {
-    if (!f.age) return null;
-    const isEffectivelyAny =
-      (f.age.min === undefined || f.age.min <= 18) &&
-      (f.age.max === undefined || f.age.max >= 99);
-    if (isEffectivelyAny) return null;
-    return {
-      min: f.age.min,
-      max: f.age.max,
-      caseLabel: `Case ${idx + 1}`,
-      caseIndex: idx,
-    } as AgeRange;
-  }).filter(Boolean) as AgeRange[];
-
-  if (ages.length > 0) {
-    result.ageRanges = ages;
-    // Also set result.age to the widest envelope for backward compat
-    const allMins = ages.map(a => a.min ?? 0);
-    const allMaxes = ages.map(a => a.max ?? 100);
-    result.age = {
-      min: Math.min(...allMins),
-      max: Math.max(...allMaxes),
-    };
+  // --- AGE (Union: keep each case's range separately for per-case UI) ---
+  const ageRanges: AgeRange[] = [];
+  valid.forEach((f, idx) => {
+    if (f.age) {
+      ageRanges.push({ ...f.age, caseIndex: idx });
+    }
+  });
+  if (ageRanges.length > 0) {
+    result.ageRanges = ageRanges;
   }
+  result.political_affiliation = unionArrays(valid.map(f => f.political_affiliation));
 
   // --- LOCATION (Union) ---
   if (!result.location) result.location = {};
@@ -373,32 +366,27 @@ export function checkFilterMatch(
     }
 
     case "age": {
-      const caseRanges = (filters as any).ageRanges as AgeRange[] | undefined;
-      if (caseRanges && caseRanges.length > 0) {
-        const pAge = participant.age;
+      const dob = participant.date_of_birth as string | null | undefined;
+      const participantAge = dob ? calcAgeFromDob(dob) : null;
+
+      if (hasMultipleCases) {
         const subRows: string[] = [];
         let allPass = true;
-        for (const r of caseRanges) {
-          const minOk = r.min === undefined || pAge >= r.min;
-          const maxOk = r.max === undefined || pAge <= r.max;
-          const pass = minOk && maxOk;
+        for (const pc of perCase!) {
+          const range = pc.filters.age;
+          if (!range) { subRows.push(`${pc.caseTitle}: Any ✅`); continue; }
+          const pass = participantAge !== null && participantAge >= range.min && participantAge <= range.max;
           if (!pass) allPass = false;
-          const label = r.caseLabel || "Case";
-          const rangeStr = `${r.min ?? 0}–${r.max ?? "99+"}`;
-          subRows.push(`${label}: ${rangeStr} (participant: ${pAge}) ${pass ? "✅" : "❌"}`);
+          subRows.push(`${pc.caseTitle}: ${range.min}–${range.max} (participant: ${participantAge ?? "N/A"}) ${pass ? "✅" : "❌"}`);
         }
         return { passes: allPass, detail: allPass ? "All cases matched" : "Not all cases matched", subRows };
       }
 
-      const ageFilter = filterVal as { min?: number; max?: number } | undefined;
+      const ageFilter = filterVal as AgeRange | undefined;
       if (!ageFilter) return { passes: true, detail: "Any" };
-      const pAge = participant.age;
-      const minOk = ageFilter.min === undefined || pAge >= ageFilter.min;
-      const maxOk = ageFilter.max === undefined || pAge <= ageFilter.max;
-      return {
-        passes: minOk && maxOk,
-        detail: `${ageFilter.min ?? 0}–${ageFilter.max ?? "99+"} (participant: ${pAge})`,
-      };
+      if (participantAge === null) return { passes: false, detail: "Unknown age (no DOB)" };
+      const match = participantAge >= ageFilter.min && participantAge <= ageFilter.max;
+      return { passes: match, detail: `${ageFilter.min}–${ageFilter.max} (participant: ${participantAge})` };
     }
 
     case "location": {
@@ -578,8 +566,8 @@ export function checkFilterMatch(
 
 // Low index = Dropped First
 export const FILTER_PRIORITY = [
-  "location",      // Drop location first (least important?)
-  "age",
+  "location",      // Drop location first
+  "age",           // Drop age second
   "race",
   "gender",
   "socioeconomic",
@@ -634,21 +622,23 @@ export function getMatchScoreDetailed(
     if (filters.race.includes(participant.race)) score++;
   }
 
+  // --- AGE ---
+  if (filters.ageRanges?.length || filters.age) {
+    total++;
+    const dob = participant.date_of_birth as string | null | undefined;
+    const participantAge = dob ? calcAgeFromDob(dob) : null;
+    if (participantAge !== null) {
+      if (filters.ageRanges?.length) {
+        if (filters.ageRanges.some((r) => participantAge >= r.min && participantAge <= r.max)) score++;
+      } else if (filters.age) {
+        if (participantAge >= filters.age.min && participantAge <= filters.age.max) score++;
+      }
+    }
+  }
+
   if (filters.political_affiliation?.length) {
     total++;
     if (filters.political_affiliation.includes(participant.political_affiliation)) score++;
-  }
-
-  // --- AGE ---
-  if (filters.age) {
-    total++;
-    const { min, max } = filters.age;
-    if (
-      (min === undefined || participant.age >= min) &&
-      (max === undefined || participant.age <= max)
-    ) {
-      score++;
-    }
   }
 
   // --- LOCATION ---

@@ -243,7 +243,6 @@ export default function ParticipantForm({ userId, email }: Props) {
       first_name: firstName,
       last_name: lastName,
       date_of_birth: dob ?? null,
-      age: calculatedAge ?? 0,
       gender,
       race,
       county: form.get("county"),
@@ -321,19 +320,6 @@ export default function ParticipantForm({ userId, email }: Props) {
             </div>
           ) : (
             <p className="text-sm text-red-500 py-2">Not found — please complete the agreement first.</p>
-          )}
-        </div>
-        <div className="space-y-2">
-          <Label>Age</Label>
-          {dobLoading ? (
-            <p className="text-sm text-slate-400 py-2">Loading...</p>
-          ) : calculatedAge !== null ? (
-            <div className="flex items-center gap-2 h-10 px-3 rounded-md border bg-slate-50">
-              <span className="text-base font-semibold text-slate-900">{calculatedAge}</span>
-              <span className="text-xs text-slate-500"></span>
-            </div>
-          ) : (
-            <p className="text-sm text-red-500 py-2">DOB not found — please complete the agreement first.</p>
           )}
         </div>
         <div className="space-y-2">

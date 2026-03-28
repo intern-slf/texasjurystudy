@@ -414,7 +414,10 @@ export default async function NewSessionPage({
                       {p.first_name} {p.last_name}
                     </a>
                     <div className="text-xs text-slate-500 mt-1">
-                      Age {p.age} &bull; {p.city} &bull; {p.political_affiliation ?? "N/A"}
+                      {p.date_of_birth
+                        ? `Age ${(() => { const b = new Date(p.date_of_birth); const t = new Date(); let a = t.getFullYear() - b.getFullYear(); const m = t.getMonth() - b.getMonth(); if (m < 0 || (m === 0 && t.getDate() < b.getDate())) a--; return a; })()} \u2022 `
+                        : ""}
+                      {p.city} &bull; {p.political_affiliation ?? "N/A"}
                     </div>
 
                     {/* ====== MATCH BADGE (clickable to expand) ====== */}

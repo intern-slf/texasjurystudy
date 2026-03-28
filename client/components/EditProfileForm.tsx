@@ -75,14 +75,14 @@ export default function EditProfileForm({ participant, adminMode, onUpdate, onUp
   }, [adminMode, participant.user_id, supabase]);
 
   const calculatedAge = useMemo(() => {
-    if (!dob) return adminMode ? (participant.age ?? null) : null;
+    if (!dob) return null;
     const birth = new Date(dob + "T00:00:00");
     const today = new Date();
     let age = today.getFullYear() - birth.getFullYear();
     const monthDiff = today.getMonth() - birth.getMonth();
     if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) age--;
     return age >= 0 ? age : null;
-  }, [adminMode, dob, participant.age]);
+  }, [dob]);
   const [gender, setGender] = useState(participant.gender || "");
   const [race, setRace] = useState(participant.race || "");
   const [phone, setPhone] = useState(participant.phone || "");
@@ -273,7 +273,6 @@ export default function EditProfileForm({ participant, adminMode, onUpdate, onUp
     const payload = {
       first_name: firstName,
       last_name: lastName,
-      age: calculatedAge ?? participant.age,
       gender,
       race,
       email: participant.email,
@@ -339,7 +338,7 @@ export default function EditProfileForm({ participant, adminMode, onUpdate, onUp
       } else {
         await supabase
           .from("jury_participants")
-          .update({ date_of_birth: dob, age: calculatedAge ?? participant.age })
+          .update({ date_of_birth: dob })
           .eq("user_id", participant.user_id);
       }
     }

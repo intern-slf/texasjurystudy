@@ -68,9 +68,18 @@ export default async function ParticipantProfilePage({
         <section className="bg-white border rounded-xl p-6">
           <h2 className="font-bold text-lg mb-4">Demographics</h2>
           <div className="grid grid-cols-2 gap-3">
-            <p>Age: {participant.age}</p>
             <p>Gender: {participant.gender}</p>
             <p>Race: {participant.race}</p>
+            {participant.date_of_birth && (
+              <p>Age: {(() => {
+                const b = new Date(participant.date_of_birth);
+                const t = new Date();
+                let a = t.getFullYear() - b.getFullYear();
+                const m = t.getMonth() - b.getMonth();
+                if (m < 0 || (m === 0 && t.getDate() < b.getDate())) a--;
+                return a;
+              })()}</p>
+            )}
             <p>Marital Status: {participant.marital_status}</p>
             <p>Has Children: {participant.has_children}</p>
           </div>

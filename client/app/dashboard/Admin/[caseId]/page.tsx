@@ -260,14 +260,14 @@ export default async function AdminCaseDetailPage({
 
           const rows: { label: string; value: string }[] = [];
 
+          if (f.gender?.length) rows.push({ label: "Gender", value: f.gender.join(", ") });
+          if (f.race?.length) rows.push({ label: "Race", value: f.race.join(", ") });
           if (f.age?.min !== undefined || f.age?.max !== undefined) {
             const min = f.age?.min ?? 18;
             const max = f.age?.max ?? 99;
             const isDefault = min === 18 && max === 99;
             if (!isDefault) rows.push({ label: "Age", value: `${min} – ${max}` });
           }
-          if (f.gender?.length) rows.push({ label: "Gender", value: f.gender.join(", ") });
-          if (f.race?.length) rows.push({ label: "Race", value: f.race.join(", ") });
           if (f.location?.state?.length) rows.push({ label: "Location", value: f.location.state.join(", ") });
           if (f.political_affiliation?.length) rows.push({ label: "Political Affiliation", value: f.political_affiliation.join(", ") });
 

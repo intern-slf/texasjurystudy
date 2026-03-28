@@ -6,7 +6,6 @@ const case1 = {
   id: "1",
   filters: {
     political_affiliation: ["Republican"],
-    age: { min: 20, max: 50 }
   }
 };
 
@@ -14,7 +13,6 @@ const case2 = {
   id: "2",
   filters: {
     political_affiliation: ["Democrat"],
-    age: { min: 20, max: 50 }
   }
 };
 
