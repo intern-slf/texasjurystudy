@@ -752,3 +752,76 @@ export async function replaceCaseInSession(
 
   revalidatePath("/dashboard/Admin/sessions");
 }
+
+/* =========================
+   SEARCH ELIGIBLE PARTICIPANTS
+   Excludes: blocked, ineligible (eligible_after_at), already invited to this session
+========================= */
+export async function searchEligibleParticipants(
+  sessionId: string,
+  query: string,
+) {
+  const supabase = await createClient();
+
+  // 1. Get already-invited participant IDs for this session
+  const { data: sessionParts } = await supabase
+    .from("session_participants")
+    .select("participant_id")
+    .eq("session_id", sessionId);
+  const alreadyInvitedIds = (sessionParts ?? []).map((p: any) => p.participant_id);
+
+  // 2. Get blacklisted user IDs from roles table
+  const { data: blacklistedRoles } = await supabase
+    .from("roles")
+    .select("user_id")
+    .eq("role", "blacklisted");
+  const blacklistedIds = (blacklistedRoles ?? []).map((r: any) => r.user_id as string);
+
+  // Combine all IDs to exclude
+  const excludeIds = Array.from(new Set([...alreadyInvitedIds, ...blacklistedIds]));
+
+  const { count } = await supabase
+    .from("jury_participants")
+    .select("*", { count: "exact", head: true });
+  const testTable = count === 0 || count === null ? "oldData" : "jury_participants";
+  const isOldData = testTable === "oldData";
+
+  const nowIso = new Date().toISOString();
+
+  let q = supabase.from(testTable).select("*");
+
+  if (!isOldData) {
+    q = q
+      .or(`eligible_after_at.is.null,eligible_after_at.lte.${nowIso}`)
+      .eq("approved_by_admin", true)
+      .is("blacklisted_at", null);
+  }
+
+  if (excludeIds.length > 0) {
+    const idField = isOldData ? "id" : "user_id";
+    // @ts-ignore
+    q = q.not(idField, "in", `(${excludeIds.map((id) => `"${id}"`).join(",")})`);
+  }
+
+  // Search by name
+  if (query.trim()) {
+    const term = query.trim().toLowerCase();
+    q = q.or(
+      `first_name.ilike.%${term}%,last_name.ilike.%${term}%`
+    );
+  }
+
+  // @ts-ignore
+  const { data, error } = await q.limit(50);
+
+  if (error) throw error;
+
+  return (data ?? []).map((p: any) => ({
+    id: p.user_id || p.id,
+    first_name: p.first_name,
+    last_name: p.last_name,
+    city: p.city,
+    date_of_birth: p.date_of_birth,
+    political_affiliation: p.political_affiliation,
+  }));
+}

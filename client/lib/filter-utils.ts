@@ -22,7 +22,7 @@ export interface CaseFilters {
   race?: string[];
   age?: AgeRange;
   ageRanges?: AgeRange[];
-  location?: { state?: string[] };
+  location?: { state?: string[]; county?: string[] };
   political_affiliation?: string[];
   eligibility?: {
     served_on_jury?: string;
@@ -96,6 +96,9 @@ export function applyCaseFilters(
   // --- LOCATION ---
   if (filters.location?.state?.length) {
     query = query.in("state", filters.location.state);
+  }
+  if (filters.location?.county?.length) {
+    query = query.in("county", filters.location.county);
   }
 
   // --- POLITICAL ---
@@ -199,6 +202,7 @@ export function combineCaseFilters(filtersList: CaseFilters[]): CaseFilters {
   // --- LOCATION (Union) ---
   if (!result.location) result.location = {};
   result.location.state = unionArrays(valid.map(f => f.location?.state));
+  result.location.county = unionArrays(valid.map(f => f.location?.county));
 
   // --- SOCIOECONOMIC (Union) ---
   if (!result.socioeconomic) result.socioeconomic = {};
@@ -391,25 +395,53 @@ export function checkFilterMatch(
 
     case "location": {
       const pState = participant.state ?? "";
+      const pCounty = participant.county ?? "";
 
       if (hasMultipleCases) {
-        const subRows: string[] = [];
+        const subTypes: { label: string; passes: boolean; subRows: string[] }[] = [];
         let allPass = true;
+
+        // State
+        const stateRows: string[] = [];
+        let statePass = true;
         for (const pc of perCase!) {
           const caseStates = pc.filters.location?.state;
           const noFilter = !caseStates || caseStates.length === 0;
           const pass = noFilter || caseStates!.includes(pState);
-          if (!pass) allPass = false;
+          if (!pass) statePass = false;
           const needs = noFilter ? "Any" : caseStates!.join(", ");
-          subRows.push(`${pc.caseTitle}: ${needs} (participant: ${pState || "N/A"}) ${pass ? "✅" : "❌"}`);
+          stateRows.push(`${pc.caseTitle}: ${needs} (participant: ${pState || "N/A"}) ${pass ? "✅" : "❌"}`);
         }
-        return { passes: allPass, detail: allPass ? "All cases matched" : "Not all cases matched", subRows };
+        if (!statePass) allPass = false;
+        subTypes.push({ label: "State", passes: statePass, subRows: stateRows });
+
+        // County
+        const countyRows: string[] = [];
+        let countyPass = true;
+        for (const pc of perCase!) {
+          const caseCounties = pc.filters.location?.county;
+          const noFilter = !caseCounties || caseCounties.length === 0;
+          const pass = noFilter || caseCounties!.includes(pCounty);
+          if (!pass) countyPass = false;
+          const needs = noFilter ? "Any" : caseCounties!.join(", ");
+          countyRows.push(`${pc.caseTitle}: ${needs} (participant: ${pCounty || "N/A"}) ${pass ? "✅" : "❌"}`);
+        }
+        if (!countyPass) allPass = false;
+        subTypes.push({ label: "County", passes: countyPass, subRows: countyRows });
+
+        return { passes: allPass, detail: allPass ? "All cases matched" : "Not all cases matched", subTypes };
       }
 
-      const loc = filterVal as { state?: string[] } | undefined;
-      if (!loc?.state || loc.state.length === 0) return { passes: true, detail: "Any" };
-      const match = loc.state.includes(pState);
-      return { passes: match, detail: `${loc.state.join(", ")} (participant: ${pState || "N/A"})` };
+      const loc = filterVal as { state?: string[]; county?: string[] } | undefined;
+      const stateMatch = !loc?.state?.length || loc.state.includes(pState);
+      const countyMatch = !loc?.county?.length || loc.county.includes(pCounty);
+      const match = stateMatch && countyMatch;
+
+      const subTypes: { label: string; passes: boolean; subRows: string[] }[] = [];
+      subTypes.push({ label: "State", passes: stateMatch, subRows: [`${pState || "N/A"} (Needs: ${loc?.state?.length ? loc.state.join(", ") : "Any"}) ${stateMatch ? "✅" : "❌"}`] });
+      subTypes.push({ label: "County", passes: countyMatch, subRows: [`${pCounty || "N/A"} (Needs: ${loc?.county?.length ? loc.county.join(", ") : "Any"}) ${countyMatch ? "✅" : "❌"}`] });
+
+      return { passes: match, detail: match ? "Matches" : "Failed", subTypes };
     }
 
     case "socioeconomic": {
@@ -645,6 +677,10 @@ export function getMatchScoreDetailed(
   if (filters.location?.state?.length) {
     total++;
     if (filters.location.state.includes(participant.state)) score++;
+  }
+  if (filters.location?.county?.length) {
+    total++;
+    if (filters.location.county.includes(participant.county)) score++;
   }
 
   // --- SOCIOECONOMIC ---
