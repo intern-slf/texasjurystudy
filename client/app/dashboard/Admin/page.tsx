@@ -19,7 +19,7 @@ import { localToUTC } from "@/lib/timezone";
 import { AdminActionButton } from "@/components/AdminActionButton";
 import { Button } from "@/components/ui/button";
 import TimezoneInput from "@/components/TimezoneInput";
-import { Calendar, FileText, Users } from "lucide-react"; // User icon removed - unused
+import { Calendar, FileText } from "lucide-react";
 
 /* =========================
    TYPES
@@ -37,7 +37,7 @@ interface JuryCase {
   title: string;
   status: "current" | "previous";
   admin_status: "all" | "approved" | "submitted";
-  number_of_attendees: number;
+
   case_documents: CaseDocument[];
   scheduled_at: string | null;
   schedule_status: string | null;
@@ -122,7 +122,7 @@ export default async function AdminDashboardPage({
       title,
       status,
       admin_status,
-      number_of_attendees,
+
       scheduled_at,
       schedule_status,
       admin_scheduled_at,
@@ -265,9 +265,6 @@ export default async function AdminDashboardPage({
                   Status
                 </TableHead>
 
-                <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Attendees
-                </TableHead>
 
                 <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   Preferred Schedule
@@ -356,13 +353,6 @@ export default async function AdminDashboardPage({
                       )}
                     </TableCell>
 
-                    {/* ATTENDEES */}
-                    <TableCell className="py-4">
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <Users className="h-4 w-4" />
-                        <span>{c.number_of_attendees}</span>
-                      </div>
-                    </TableCell>
 
                     {/* SCHEDULE */}
                     <TableCell className="py-4">

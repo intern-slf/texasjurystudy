@@ -100,7 +100,7 @@ export default function NewCasePage() {
     title: "",
     description: "",
     drive_link: "",
-    number_of_attendees: 10,
+
     documentation_type: "Legal Brief", // Default to prevent null constraint error
     scheduled_at: "",
     deadline_date: "",
@@ -150,7 +150,7 @@ export default function NewCasePage() {
             title: `Follow-up: ${data.title}`,
             description: data.description,
             drive_link: data.drive_link || "",
-            number_of_attendees: data.number_of_attendees || 10,
+
             documentation_type: data.documentation_type || "Legal Brief",
             scheduled_at: "", // Don't pre-fill date
             deadline_date: "", // Don't pre-fill deadline
@@ -223,7 +223,7 @@ export default function NewCasePage() {
         user_id: user.id,
         title: form.title,
         description: form.description,
-        number_of_attendees: form.number_of_attendees,
+
         documentation_type: form.documentation_type, // Now explicitly handled
         status: "current",
         scheduled_at: form.scheduled_at ? new Date(form.scheduled_at).toISOString() : null,
@@ -337,10 +337,8 @@ export default function NewCasePage() {
                   />
                 </div>
               </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Number of Attendees</label>
-                <input type="number" className="input w-full" placeholder="10" value={form.number_of_attendees} onChange={(e) => setForm({ ...form, number_of_attendees: Number(e.target.value) })} />
-              </div>
+
+
             </div>
 
             {/* Toggle button */}

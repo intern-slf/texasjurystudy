@@ -20,7 +20,7 @@ const sections: { title: string; faqs: FAQ[] }[] = [
         answer: (
           <ol className="space-y-2 list-none">
             <li><span className="font-medium text-slate-800">1. Click &ldquo;Create New Case&rdquo;</span> in the left sidebar.</li>
-            <li><span className="font-medium text-slate-800">2. Fill in Case Details</span> — title, brief description, deadline date &amp; time, and number of attendees.</li>
+            <li><span className="font-medium text-slate-800">2. Fill in Case Details</span> — title, brief description, and deadline date &amp; time.</li>
             <li><span className="font-medium text-slate-800">3. Apply Filters (optional)</span> — narrow the juror pool by demographics.</li>
             <li><span className="font-medium text-slate-800">4. Click &ldquo;Save Case &amp; Filter&rdquo;</span> to submit for admin review.</li>
             <li><span className="font-medium text-slate-800">5. Upload case files</span> on the case detail page that opens after saving.</li>
@@ -103,7 +103,7 @@ const sections: { title: string; faqs: FAQ[] }[] = [
               </li>
               <li className="flex gap-2">
                 <span className="shrink-0 w-5 h-5 rounded-full bg-slate-800 text-white text-xs font-bold flex items-center justify-center">5</span>
-                <span>Set a new <span className="font-medium text-slate-800">Deadline Date</span> and <span className="font-medium text-slate-800">Number of Attendees</span> for this session.</span>
+                <span>Set a new <span className="font-medium text-slate-800">Deadline Date</span> for this session.</span>
               </li>
               <li className="flex gap-2">
                 <span className="shrink-0 w-5 h-5 rounded-full bg-slate-800 text-white text-xs font-bold flex items-center justify-center">6</span>

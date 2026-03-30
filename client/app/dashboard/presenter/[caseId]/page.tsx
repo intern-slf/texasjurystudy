@@ -12,7 +12,7 @@ import { CaseFilters } from "@/lib/filter-utils";
 import {
   Calendar,
   Clock,
-  Users,
+
   FileText,
   ChevronLeft,
   Upload,
@@ -40,7 +40,7 @@ export default async function PresenterCaseDetailPage({
     .select(`
       id, title, description, status, admin_status, schedule_status,
       scheduled_at, admin_scheduled_at, deadline_date,
-      number_of_attendees, documentation_type, filters, created_at
+      documentation_type, filters, created_at
     `)
     .eq("id", caseId)
     .eq("user_id", user.id)
@@ -112,12 +112,7 @@ export default async function PresenterCaseDetailPage({
 
           {/* META CARDS */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div className="bg-white border rounded-xl p-4 space-y-1">
-              <p className="text-xs text-muted-foreground font-medium flex items-center gap-1">
-                <Users className="h-3.5 w-3.5" /> Attendees
-              </p>
-              <p className="text-lg font-bold">{c.number_of_attendees ?? "—"}</p>
-            </div>
+
             <div className="bg-white border rounded-xl p-4 space-y-1">
               <p className="text-xs text-muted-foreground font-medium flex items-center gap-1">
                 <FileText className="h-3.5 w-3.5" /> Doc Type
