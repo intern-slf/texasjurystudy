@@ -233,12 +233,21 @@ export default async function SessionsPage({
         caseDetails.every((c) => c.admin_status === "submitted")
       );
 
-      const { data: sParticipants } = await supabase
+      const { data: rawSParticipants } = await supabase
         .from("session_participants")
         .select("participant_id, invite_status")
         .eq("session_id", s.id);
 
-      const participantIds = sParticipants?.map((p) => p.participant_id) ?? [];
+      // Deduplicate by participant_id (keep the latest status)
+      const participantMap = new Map<string, typeof rawSParticipants extends (infer T)[] | null ? T : never>();
+      for (const p of rawSParticipants ?? []) {
+        if (!participantMap.has(p.participant_id)) {
+          participantMap.set(p.participant_id, p);
+        }
+      }
+      const sParticipants = Array.from(participantMap.values());
+
+      const participantIds = sParticipants.map((p) => p.participant_id);
 
       let participantDetails: any[] = [];
       if (participantIds.length) {

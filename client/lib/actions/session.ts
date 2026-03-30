@@ -755,13 +755,30 @@ export async function replaceCaseInSession(
 
 /* =========================
    SEARCH ELIGIBLE PARTICIPANTS
-   Search from all eligible & eligible_after_at participants
+   Excludes: blocked, ineligible (eligible_after_at), already invited to this session
 ========================= */
 export async function searchEligibleParticipants(
+  sessionId: string,
   query: string,
-  excludeIds: string[]
 ) {
   const supabase = await createClient();
+
+  // 1. Get already-invited participant IDs for this session
+  const { data: sessionParts } = await supabase
+    .from("session_participants")
+    .select("participant_id")
+    .eq("session_id", sessionId);
+  const alreadyInvitedIds = (sessionParts ?? []).map((p: any) => p.participant_id);
+
+  // 2. Get blacklisted user IDs from roles table
+  const { data: blacklistedRoles } = await supabase
+    .from("roles")
+    .select("user_id")
+    .eq("role", "blacklisted");
+  const blacklistedIds = (blacklistedRoles ?? []).map((r: any) => r.user_id as string);
+
+  // Combine all IDs to exclude
+  const excludeIds = Array.from(new Set([...alreadyInvitedIds, ...blacklistedIds]));
 
   const { count } = await supabase
     .from("jury_participants")
