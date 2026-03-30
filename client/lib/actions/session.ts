@@ -752,3 +752,59 @@ export async function replaceCaseInSession(
 
   revalidatePath("/dashboard/Admin/sessions");
 }
+
+/* =========================
+   SEARCH ELIGIBLE PARTICIPANTS
+   Search from all eligible & eligible_after_at participants
+========================= */
+export async function searchEligibleParticipants(
+  query: string,
+  excludeIds: string[]
+) {
+  const supabase = await createClient();
+
+  const { count } = await supabase
+    .from("jury_participants")
+    .select("*", { count: "exact", head: true });
+  const testTable = count === 0 || count === null ? "oldData" : "jury_participants";
+  const isOldData = testTable === "oldData";
+
+  const nowIso = new Date().toISOString();
+
+  let q = supabase.from(testTable).select("*");
+
+  if (!isOldData) {
+    q = q
+      .or(`eligible_after_at.is.null,eligible_after_at.lte.${nowIso}`)
+      .eq("approved_by_admin", true)
+      .is("blacklisted_at", null);
+  }
+
+  if (excludeIds.length > 0) {
+    const idField = isOldData ? "id" : "user_id";
+    // @ts-ignore
+    q = q.not(idField, "in", `(${excludeIds.map((id) => `"${id}"`).join(",")})`);
+  }
+
+  // Search by name
+  if (query.trim()) {
+    const term = query.trim().toLowerCase();
+    q = q.or(
+      `first_name.ilike.%${term}%,last_name.ilike.%${term}%`
+    );
+  }
+
+  // @ts-ignore
+  const { data, error } = await q.limit(50);
+
+  if (error) throw error;
+
+  return (data ?? []).map((p: any) => ({
+    id: p.user_id || p.id,
+    first_name: p.first_name,
+    last_name: p.last_name,
+    city: p.city,
+    date_of_birth: p.date_of_birth,
+    political_affiliation: p.political_affiliation,
+  }));
+}
