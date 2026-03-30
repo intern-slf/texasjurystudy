@@ -17,6 +17,7 @@ import { revalidatePath } from "next/cache";
 import { approveCaseAction } from "@/lib/actions/adminCase";
 import { localToUTC } from "@/lib/timezone";
 import { AdminActionButton } from "@/components/AdminActionButton";
+import { RejectCaseButton } from "@/components/RejectCaseButton";
 import { Button } from "@/components/ui/button";
 import TimezoneInput from "@/components/TimezoneInput";
 import { Calendar, FileText } from "lucide-react";
@@ -36,7 +37,7 @@ interface JuryCase {
   id: string;
   title: string;
   status: "current" | "previous";
-  admin_status: "all" | "approved" | "submitted";
+  admin_status: "all" | "approved" | "submitted" | "rejected";
 
   case_documents: CaseDocument[];
   scheduled_at: string | null;
@@ -272,11 +273,13 @@ export default async function AdminDashboardPage({
                   by Presenter
                 </TableHead>
 
-                <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Scheduled
-                  <br />
-                  by Admin
-                </TableHead>
+                {tab === "approved" && (
+                  <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Scheduled
+                    <br />
+                    by Admin
+                  </TableHead>
+                )}
 
                 <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   Deadline
@@ -376,25 +379,27 @@ export default async function AdminDashboardPage({
                     </TableCell>
 
                     {/* ADMIN SCHEDULE */}
-                    <TableCell className="py-4">
-                      {adminDate ? (
-                        <div className="flex items-center gap-2 text-sm text-foreground">
-                          <Calendar className="h-4 w-4 text-muted-foreground" />
-                          <div className="flex flex-col">
-                            <span className="font-medium">
-                              {adminDate.toLocaleDateString()}
-                            </span>
-                            <span className="text-muted-foreground text-xs">
-                              {adminDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
-                            </span>
+                    {tab === "approved" && (
+                      <TableCell className="py-4">
+                        {adminDate ? (
+                          <div className="flex items-center gap-2 text-sm text-foreground">
+                            <Calendar className="h-4 w-4 text-muted-foreground" />
+                            <div className="flex flex-col">
+                              <span className="font-medium">
+                                {adminDate.toLocaleDateString()}
+                              </span>
+                              <span className="text-muted-foreground text-xs">
+                                {adminDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                              </span>
+                            </div>
                           </div>
-                        </div>
-                      ) : (
-                        <span className="text-xs text-muted-foreground italic">
-                          Not set
-                        </span>
-                      )}
-                    </TableCell>
+                        ) : (
+                          <span className="text-xs text-muted-foreground italic">
+                            Not set
+                          </span>
+                        )}
+                      </TableCell>
+                    )}
 
                     {/* DEADLINE */}
                     <TableCell className="py-4">
@@ -446,14 +451,17 @@ export default async function AdminDashboardPage({
                     <TableCell className="text-right py-4 pr-6">
                       <div className="flex justify-end flex-wrap gap-2">
                         {tab === "requested" && (
-                          <form action={approveCase}>
-                            <input type="hidden" name="caseId" value={c.id} />
-                            <AdminActionButton
-                              label="Approve"
-                              activeColor="bg-green-600"
-                              hoverColor="hover:bg-green-700"
-                            />
-                          </form>
+                          <>
+                            <form action={approveCase}>
+                              <input type="hidden" name="caseId" value={c.id} />
+                              <AdminActionButton
+                                label="Approve"
+                                activeColor="bg-green-600"
+                                hoverColor="hover:bg-green-700"
+                              />
+                            </form>
+                            <RejectCaseButton caseId={c.id} />
+                          </>
                         )}
 
                         {tab === "approved" && (
