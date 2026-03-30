@@ -536,6 +536,54 @@ export async function sendInviteDeclinedConfirmationEmail(to: string) {
   });
 }
 
+export async function sendRejectionEmail(to: string, caseTitle: string, reason: string) {
+  const html = emailWrapper(`
+    <h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#dc2626;">Case Rejected</h2>
+    <p style="margin:0 0 20px;font-size:15px;color:#475569;">
+      We regret to inform you that your case has been reviewed and was not approved by the program administrator.
+    </p>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#fef2f2;border-left:4px solid #dc2626;border-radius:6px;margin:0 0 16px;">
+      <tr>
+        <td style="padding:16px 20px;">
+          <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#991b1b;text-transform:uppercase;letter-spacing:0.08em;">Case</p>
+          <p style="margin:0;font-size:18px;font-weight:700;color:#991b1b;">${caseTitle}</p>
+        </td>
+      </tr>
+    </table>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#fef2f2;border-left:4px solid #f87171;border-radius:6px;margin:0 0 28px;">
+      <tr>
+        <td style="padding:16px 20px;">
+          <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#991b1b;text-transform:uppercase;letter-spacing:0.08em;">Reason for Rejection</p>
+          <p style="margin:0;font-size:14px;color:#1e293b;line-height:1.6;">${reason}</p>
+        </td>
+      </tr>
+    </table>
+
+    <p style="margin:0 0 28px;font-size:14px;color:#64748b;">
+      If you have any questions or would like to discuss this further, please feel free to contact us.
+    </p>
+
+    <table role="presentation" cellpadding="0" cellspacing="0">
+      <tr>
+        <td style="border-radius:6px;background-color:#2563eb;">
+          <a href="${process.env.NEXT_PUBLIC_APP_URL}/dashboard/presenter"
+             style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:6px;">
+            View My Dashboard
+          </a>
+        </td>
+      </tr>
+    </table>
+  `);
+
+  await sendEmail({
+    to,
+    subject: `Case Rejected: ${caseTitle} | Texas Jury Study`,
+    html,
+  });
+}
+
 export async function sendZoomLinkEmail(
   to: string,
   firstName: string,

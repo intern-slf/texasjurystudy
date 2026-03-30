@@ -104,7 +104,7 @@ export default async function PresenterDashboard({
   if (tab === "current") {
     caseQuery = caseQuery
       .eq("status", "current")
-      .eq("admin_status", "all");
+      .in("admin_status", ["all", "rejected"]);
   }
 
   if (tab === "approved") {
@@ -256,6 +256,23 @@ export default async function PresenterDashboard({
     revalidatePath("/dashboard/presenter");
   }
 
+  async function requestAgain(formData: FormData) {
+    "use server";
+
+    const caseId = formData.get("case_id") as string;
+    const supabase = await createClient();
+    const { data: { user: activeUser } } = await supabase.auth.getUser();
+    if (!activeUser) return;
+
+    await supabase
+      .from("cases")
+      .update({ admin_status: "all", rejection_reason: null })
+      .eq("id", caseId)
+      .eq("user_id", activeUser.id);
+
+    revalidatePath("/dashboard/presenter");
+  }
+
   /* ===========================
       UI
       =========================== */
@@ -318,12 +335,16 @@ export default async function PresenterDashboard({
                                 {c.description}
                             </CardDescription>
                         </div>
-                         {(c.admin_scheduled_at || c.scheduled_at) && (
+                         {(c as any).admin_status === "rejected" ? (
+                            <Badge variant="destructive" className="font-medium">
+                              Rejected
+                            </Badge>
+                         ) : (c.admin_scheduled_at || c.scheduled_at) ? (
                             <Badge variant="secondary" className="flex items-center gap-1.5 font-medium">
                                 <Calendar className="h-3 w-3" />
                                 <LocalDateTime iso={(c.admin_scheduled_at || c.scheduled_at) as string} mode="date" />
                             </Badge>
-                        )}
+                        ) : null}
                     </div>
                 </CardHeader>
                 
@@ -415,6 +436,30 @@ export default async function PresenterDashboard({
                   {/* CURRENT */}
                   {tab === "current" && (
                     <div className="space-y-6">
+                      {/* Rejection banner */}
+                      {(c as any).admin_status === "rejected" && (
+                        <div className="space-y-4">
+                          <div className="flex items-start gap-3 p-4 bg-red-50 text-red-800 rounded-lg border border-red-200">
+                            <AlertCircle className="h-5 w-5 mt-0.5 shrink-0 text-red-600" />
+                            <div className="flex-1">
+                              <p className="text-sm font-semibold">This case has been rejected by the admin.</p>
+                              {(c as any).rejection_reason && (
+                                <div className="mt-2 p-3 bg-white/70 rounded border border-red-100">
+                                  <p className="text-xs font-medium uppercase tracking-wide text-red-600 mb-1">Reason</p>
+                                  <p className="text-sm text-red-900">{(c as any).rejection_reason}</p>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <form action={requestAgain}>
+                            <input type="hidden" name="case_id" value={c.id} />
+                            <Button size="sm" className="bg-primary hover:bg-primary/90">
+                              Request Again
+                            </Button>
+                          </form>
+                        </div>
+                      )}
+
                       <div>
                         <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
                             <Upload className="h-4 w-4" />
