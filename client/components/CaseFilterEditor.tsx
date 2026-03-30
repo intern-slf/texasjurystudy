@@ -13,6 +13,42 @@ const EDUCATION_LEVELS = [
   "Graduate Degree",
 ];
 
+const TEXAS_COUNTIES = [
+  "Anderson","Andrews","Angelina","Aransas","Archer","Armstrong","Atascosa",
+  "Austin","Bailey","Bandera","Bastrop","Baylor","Bee","Bell","Bexar","Blanco",
+  "Borden","Bosque","Bowie","Brazoria","Brazos","Brewster","Briscoe","Brooks",
+  "Brown","Burleson","Burnet","Caldwell","Calhoun","Callahan","Cameron","Camp",
+  "Carson","Cass","Castro","Chambers","Cherokee","Childress","Clay","Cochran",
+  "Coke","Coleman","Collin","Collingsworth","Colorado","Comal","Comanche",
+  "Concho","Cooke","Coryell","Cottle","Crane","Crockett","Crosby","Culberson",
+  "Dallam","Dallas","Dawson","Deaf Smith","Delta","Denton","DeWitt","Dickens",
+  "Dimmit","Donley","Duval","Eastland","Ector","Edwards","Ellis","El Paso",
+  "Erath","Falls","Fannin","Fayette","Fisher","Floyd","Foard","Fort Bend",
+  "Franklin","Freestone","Frio","Gaines","Galveston","Garza","Gillespie",
+  "Glasscock","Goliad","Gonzales","Gray","Grayson","Gregg","Grimes","Guadalupe",
+  "Hale","Hall","Hamilton","Hansford","Hardeman","Hardin","Harris","Harrison",
+  "Hartley","Haskell","Hays","Hemphill","Henderson","Hidalgo","Hill","Hockley",
+  "Hood","Hopkins","Houston","Howard","Hudspeth","Hunt","Hutchinson","Irion",
+  "Jack","Jackson","Jasper","Jeff Davis","Jefferson","Jim Hogg","Jim Wells",
+  "Johnson","Jones","Karnes","Kaufman","Kendall","Kenedy","Kent","Kerr",
+  "Kimble","King","Kinney","Kleberg","Knox","Lamar","Lamb","Lampasas","La Salle",
+  "Lavaca","Lee","Leon","Liberty","Limestone","Lipscomb","Live Oak","Llano",
+  "Loving","Lubbock","Lynn","Madison","Marion","Martin","Mason","Matagorda",
+  "Maverick","McCulloch","McLennan","McMullen","Medina","Menard","Midland",
+  "Milam","Mills","Mitchell","Montague","Montgomery","Moore","Morris","Motley",
+  "Nacogdoches","Navarro","Newton","Nolan","Nueces","Ochiltree","Oldham",
+  "Orange","Palo Pinto","Panola","Parker","Parmer","Pecos","Polk","Potter",
+  "Presidio","Rains","Randall","Reagan","Real","Red River","Reeves","Refugio",
+  "Roberts","Robertson","Rockwall","Runnels","Rusk","Sabine","San Augustine",
+  "San Jacinto","San Patricio","San Saba","Schleicher","Scurry","Shackelford",
+  "Shelby","Sherman","Smith","Somervell","Starr","Stephens","Sterling","Stonewall",
+  "Sutton","Swisher","Tarrant","Taylor","Terrell","Terry","Throckmorton","Titus",
+  "Tom Green","Travis","Trinity","Tyler","Upshur","Upton","Uvalde","Val Verde",
+  "Van Zandt","Victoria","Walker","Waller","Ward","Washington","Webb","Wharton",
+  "Wheeler","Wichita","Wilbarger","Willacy","Williamson","Wilson","Winkler",
+  "Wise","Wood","Yoakum","Young","Zapata","Zavala",
+];
+
 const US_STATES = [
   "Alabama","Alaska","Arizona","Arkansas","California","Colorado","Connecticut",
   "Delaware","Florida","Georgia","Hawaii","Idaho","Illinois","Indiana","Iowa",
@@ -90,7 +126,7 @@ export default function CaseFilterEditor({ caseId, initialFilters, locked }: Pro
     gender: f.gender ?? [],
     race: f.race ?? [],
     age: { min: String(f.age?.min ?? ""), max: String(f.age?.max ?? "") },
-    location: { state: f.location?.state ?? [] },
+    location: { state: f.location?.state ?? [], county: f.location?.county ?? [] },
     political_affiliation: f.political_affiliation ?? [],
     eligibility: {
       served_on_jury: f.eligibility?.served_on_jury ?? "",
@@ -117,7 +153,7 @@ export default function CaseFilterEditor({ caseId, initialFilters, locked }: Pro
         min: filters.age.min ? Number(filters.age.min) : 18,
         max: filters.age.max ? Number(filters.age.max) : 99,
       },
-      location: { state: filters.location.state },
+      location: { state: filters.location.state, county: filters.location.county },
       political_affiliation: filters.political_affiliation,
       eligibility: {
         served_on_jury: filters.eligibility.served_on_jury || "Any",
@@ -157,9 +193,15 @@ export default function CaseFilterEditor({ caseId, initialFilters, locked }: Pro
         <div className="space-y-5">
           <div className="bg-card p-5 rounded-xl border space-y-4">
             <h4 className="font-semibold text-sm border-b pb-2">Location</h4>
+            <p className="text-sm font-medium">State</p>
             <div className="max-h-48 overflow-y-auto">
               <MultiCheckbox label="" options={US_STATES} values={filters.location.state}
-                onChange={(v) => { setFilters({ ...filters, location: { state: v } }); setSaved(false); }} />
+                onChange={(v) => { setFilters({ ...filters, location: { ...filters.location, state: v } }); setSaved(false); }} />
+            </div>
+            <p className="text-sm font-medium mt-3">County</p>
+            <div className="max-h-48 overflow-y-auto">
+              <MultiCheckbox label="" options={TEXAS_COUNTIES} values={filters.location.county}
+                onChange={(v) => { setFilters({ ...filters, location: { ...filters.location, county: v } }); setSaved(false); }} />
             </div>
           </div>
 

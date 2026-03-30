@@ -28,6 +28,41 @@ function applyEducationAutoSelect(option: string, current: string[]): string[] {
     return Array.from(new Set([...current, ...toAdd]));
   }
 }
+const TEXAS_COUNTIES = [
+  "Anderson","Andrews","Angelina","Aransas","Archer","Armstrong","Atascosa",
+  "Austin","Bailey","Bandera","Bastrop","Baylor","Bee","Bell","Bexar","Blanco",
+  "Borden","Bosque","Bowie","Brazoria","Brazos","Brewster","Briscoe","Brooks",
+  "Brown","Burleson","Burnet","Caldwell","Calhoun","Callahan","Cameron","Camp",
+  "Carson","Cass","Castro","Chambers","Cherokee","Childress","Clay","Cochran",
+  "Coke","Coleman","Collin","Collingsworth","Colorado","Comal","Comanche",
+  "Concho","Cooke","Coryell","Cottle","Crane","Crockett","Crosby","Culberson",
+  "Dallam","Dallas","Dawson","Deaf Smith","Delta","Denton","DeWitt","Dickens",
+  "Dimmit","Donley","Duval","Eastland","Ector","Edwards","Ellis","El Paso",
+  "Erath","Falls","Fannin","Fayette","Fisher","Floyd","Foard","Fort Bend",
+  "Franklin","Freestone","Frio","Gaines","Galveston","Garza","Gillespie",
+  "Glasscock","Goliad","Gonzales","Gray","Grayson","Gregg","Grimes","Guadalupe",
+  "Hale","Hall","Hamilton","Hansford","Hardeman","Hardin","Harris","Harrison",
+  "Hartley","Haskell","Hays","Hemphill","Henderson","Hidalgo","Hill","Hockley",
+  "Hood","Hopkins","Houston","Howard","Hudspeth","Hunt","Hutchinson","Irion",
+  "Jack","Jackson","Jasper","Jeff Davis","Jefferson","Jim Hogg","Jim Wells",
+  "Johnson","Jones","Karnes","Kaufman","Kendall","Kenedy","Kent","Kerr",
+  "Kimble","King","Kinney","Kleberg","Knox","Lamar","Lamb","Lampasas","La Salle",
+  "Lavaca","Lee","Leon","Liberty","Limestone","Lipscomb","Live Oak","Llano",
+  "Loving","Lubbock","Lynn","Madison","Marion","Martin","Mason","Matagorda",
+  "Maverick","McCulloch","McLennan","McMullen","Medina","Menard","Midland",
+  "Milam","Mills","Mitchell","Montague","Montgomery","Moore","Morris","Motley",
+  "Nacogdoches","Navarro","Newton","Nolan","Nueces","Ochiltree","Oldham",
+  "Orange","Palo Pinto","Panola","Parker","Parmer","Pecos","Polk","Potter",
+  "Presidio","Rains","Randall","Reagan","Real","Red River","Reeves","Refugio",
+  "Roberts","Robertson","Rockwall","Runnels","Rusk","Sabine","San Augustine",
+  "San Jacinto","San Patricio","San Saba","Schleicher","Scurry","Shackelford",
+  "Shelby","Sherman","Smith","Somervell","Starr","Stephens","Sterling","Stonewall",
+  "Sutton","Swisher","Tarrant","Taylor","Terrell","Terry","Throckmorton","Titus",
+  "Tom Green","Travis","Trinity","Tyler","Upshur","Upton","Uvalde","Val Verde",
+  "Van Zandt","Victoria","Walker","Waller","Ward","Washington","Webb","Wharton",
+  "Wheeler","Wichita","Wilbarger","Willacy","Williamson","Wilson","Winkler",
+  "Wise","Wood","Yoakum","Young","Zapata","Zavala"
+];
 
 const US_STATES = [
   "Alabama","Alaska","Arizona","Arkansas","California","Colorado","Connecticut",
@@ -100,6 +135,11 @@ export default function NewCasePage() {
     title: "",
     description: "",
     drive_link: "",
+    case_type: "",
+    hours_requested: "",
+    focus_group_type: "",
+    county: "",
+    participants_from_county: "",
 
     documentation_type: "Legal Brief", // Default to prevent null constraint error
     scheduled_at: "",
@@ -110,7 +150,7 @@ export default function NewCasePage() {
     gender: [] as string[],
     race: [] as string[],
     age: { min: "", max: "" },
-    location: { state: [] as string[] },
+    location: { state: [] as string[], county: [] as string[] },
     eligibility: {
       served_on_jury: "",
       has_children: "",
@@ -132,6 +172,17 @@ export default function NewCasePage() {
   const [driveLinkSaved, setDriveLinkSaved] = useState(false);
   const [driveLinkSaving, setDriveLinkSaving] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
+  const [countyQuery, setCountyQuery] = useState("");
+  const [showCountySuggestions, setShowCountySuggestions] = useState(false);
+  const countyRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const fn = (e: MouseEvent) => {
+      if (countyRef.current && !countyRef.current.contains(e.target as Node)) setShowCountySuggestions(false);
+    };
+    document.addEventListener("mousedown", fn);
+    return () => document.removeEventListener("mousedown", fn);
+  }, []);
   const searchParams = useSearchParams();
   const parentId = searchParams.get("parent_id");
 
@@ -150,6 +201,11 @@ export default function NewCasePage() {
             title: `Follow-up: ${data.title}`,
             description: data.description,
             drive_link: data.drive_link || "",
+            case_type: data.case_type || "",
+            hours_requested: data.hours_requested ? String(data.hours_requested) : "",
+            focus_group_type: data.focus_group_type || "",
+            county: data.county || "",
+            participants_from_county: data.participants_from_county || "",
 
             documentation_type: data.documentation_type || "Legal Brief",
             scheduled_at: "", // Don't pre-fill date
@@ -201,7 +257,7 @@ export default function NewCasePage() {
         min: filters.age.min ? Number(filters.age.min) : 18,
         max: filters.age.max ? Number(filters.age.max) : 99,
       },
-      location: { state: filters.location.state },
+      location: { state: filters.location.state, county: filters.location.county },
       eligibility: {
         served_on_jury: filters.eligibility.served_on_jury || "Any",
         has_children: filters.eligibility.has_children || "Any",
@@ -223,6 +279,11 @@ export default function NewCasePage() {
         user_id: user.id,
         title: form.title,
         description: form.description,
+        case_type: form.case_type || null,
+        hours_requested: form.hours_requested ? Number(form.hours_requested) : null,
+        focus_group_type: form.focus_group_type || null,
+        county: form.county || null,
+        participants_from_county: form.participants_from_county || null,
 
         documentation_type: form.documentation_type, // Now explicitly handled
         status: "current",
@@ -314,6 +375,82 @@ export default function NewCasePage() {
               <label className="text-sm font-bold uppercase tracking-wider text-primary">Case Details</label>
               <input className="input w-full" placeholder="Case Title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
               <textarea className="input w-full" rows={2} placeholder="Brief Case Description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+              <p className="text-xs text-muted-foreground">Only TexasJuryStudy will see this description.</p>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Type of Case</label>
+                <select className="input w-full" value={form.case_type} onChange={(e) => setForm({ ...form, case_type: e.target.value })}>
+                  <option value="">Select case type...</option>
+                  <option value="Criminal Cases">Criminal Cases</option>
+                  <option value="Personal Injury">Personal Injury</option>
+                  <option value="Civil Cases">Civil Cases</option>
+                  <option value="Administrative Cases">Administrative Cases</option>
+                  <option value="Constitutional Cases">Constitutional Cases</option>
+                  <option value="Family Law Cases">Family Law Cases</option>
+                  <option value="Bankruptcy Cases">Bankruptcy Cases</option>
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Number of Hours Requested</label>
+                <input type="number" className="input w-full" placeholder="1" min="1" value={form.hours_requested} onChange={(e) => setForm({ ...form, hours_requested: e.target.value })} />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Type of Focus Group</label>
+                <select className="input w-full" value={form.focus_group_type} onChange={(e) => setForm({ ...form, focus_group_type: e.target.value })}>
+                  <option value="">Select focus group type...</option>
+                  <option value="Narrative Type">Narrative Type</option>
+                  <option value="Opening Statement">Opening Statement</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+
+              <div className="space-y-2 relative" ref={countyRef}>
+                <label className="text-sm font-medium">What county is your pending case in?</label>
+                <input
+                  className="input w-full"
+                  placeholder="Start typing county..."
+                  value={countyQuery}
+                  onChange={(e) => {
+                    setCountyQuery(e.target.value);
+                    setShowCountySuggestions(true);
+                    if (!e.target.value) setForm({ ...form, county: "" });
+                  }}
+                  onFocus={() => { if (countyQuery) setShowCountySuggestions(true); }}
+                />
+                {showCountySuggestions && countyQuery && (() => {
+                  const filtered = TEXAS_COUNTIES.filter((c: string) =>
+                    c.toLowerCase().includes(countyQuery.toLowerCase())
+                  );
+                  return filtered.length > 0 ? (
+                    <div className="absolute z-50 w-full bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                      {filtered.slice(0, 8).map((c: string) => (
+                        <div
+                          key={c}
+                          onClick={() => {
+                            setCountyQuery(c);
+                            setForm({ ...form, county: c });
+                            setShowCountySuggestions(false);
+                          }}
+                          className="px-3 py-2 text-sm hover:bg-slate-100 cursor-pointer"
+                        >
+                          {c}
+                        </div>
+                      ))}
+                    </div>
+                  ) : null;
+                })()}
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Do you need participants from your county?</label>
+                <select className="input w-full" value={form.participants_from_county} onChange={(e) => setForm({ ...form, participants_from_county: e.target.value })}>
+                  <option value="">Select...</option>
+                  <option value="Yes">Yes</option>
+                  <option value="No">No</option>
+                </select>
+              </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium">Deadline Date</label>
                 <div className="flex gap-2">
@@ -351,7 +488,7 @@ export default function NewCasePage() {
                     gender: [],
                     race: [],
                     age: { min: "", max: "" },
-                    location: { state: [] },
+                    location: { state: [], county: [] },
                     eligibility: {
                       served_on_jury: "",
                       has_children: "",
@@ -432,8 +569,13 @@ export default function NewCasePage() {
 
                   <div className="bg-card p-6 rounded-2xl border shadow-sm space-y-4">
                     <h3 className="font-bold text-lg border-b pb-2">Location</h3>
+                    <p className="text-sm font-medium">State</p>
                     <div className="max-h-48 overflow-y-auto">
-                      <MultiCheckbox label="" options={US_STATES} values={filters.location.state} onChange={(v) => setFilters({ ...filters, location: { state: v } })} />
+                      <MultiCheckbox label="" options={US_STATES} values={filters.location.state} onChange={(v) => setFilters({ ...filters, location: { ...filters.location, state: v } })} />
+                    </div>
+                    <p className="text-sm font-medium mt-3">County</p>
+                    <div className="max-h-48 overflow-y-auto">
+                      <MultiCheckbox label="" options={TEXAS_COUNTIES} values={filters.location.county} onChange={(v) => setFilters({ ...filters, location: { ...filters.location, county: v } })} />
                     </div>
                   </div>
 
