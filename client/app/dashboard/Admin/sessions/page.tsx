@@ -18,7 +18,7 @@ import RescheduleModal from "@/components/RescheduleModal";
 import ReplaceCaseModal, { type ReplacementCandidate } from "@/components/ReplaceCaseModal";
 import LocalTimeRange from "@/components/LocalTimeRange";
 import ParticipantActionsMenu from "@/components/ParticipantActionsMenu";
-import { setCompletionFlag, sendCompletionNow } from "@/lib/actions/session";
+import { sendCompletionNow } from "@/lib/actions/session";
 import ZoomLinkSender from "@/components/ZoomLinkSender";
 
 
@@ -368,21 +368,23 @@ export default async function SessionsPage({
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <form action={activeTab === "past" ? sendCompletionNow : setCompletionFlag}>
-                      <input type="hidden" name="sessionId" value={s.id} />
-                      <button
-                        disabled={!!s.completion_notification_enabled}
-                        className={`px-3 py-1.5 rounded text-sm text-white ${
-                          s.completion_notification_enabled
-                            ? "bg-gray-400 cursor-not-allowed"
-                            : "bg-blue-600 hover:bg-blue-700"
-                        }`}
-                      >
-                        {s.completion_notification_enabled
-                          ? "Completion Notification Enabled"
-                          : "Send Notification of Completion"}
-                      </button>
-                    </form>
+                    {activeTab === "past" && (
+                      <form action={sendCompletionNow}>
+                        <input type="hidden" name="sessionId" value={s.id} />
+                        <button
+                          disabled={!!s.completion_notification_enabled}
+                          className={`px-3 py-1.5 rounded text-sm text-white ${
+                            s.completion_notification_enabled
+                              ? "bg-gray-400 cursor-not-allowed"
+                              : "bg-blue-600 hover:bg-blue-700"
+                          }`}
+                        >
+                          {s.completion_notification_enabled
+                            ? "Completion Notification Enabled"
+                            : "Send Notification of Completion"}
+                        </button>
+                      </form>
+                    )}
                     <RescheduleModal
                       sessionId={s.id}
                       sessionDate={s.session_date}
