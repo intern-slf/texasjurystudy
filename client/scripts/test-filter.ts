@@ -136,8 +136,7 @@ function testEligibilityFilters() {
             us_citizen: "Yes",
             has_children: "Yes", // Should ignore "Any" if implemented that way, but here we test explicit values
             served_armed_forces: "No",
-            currently_employed: "Yes",
-            internet_access: "Yes"
+            currently_employed: "Yes"
         }
     };
     
@@ -149,7 +148,6 @@ function testEligibilityFilters() {
     assert(query.filters["has_children"][1] === "Yes", "Has children filter");
     assert(query.filters["served_armed_forces"][1] === "No", "Armed forces filter");
     assert(query.filters["currently_employed"][1] === "Yes", "Employed filter");
-    assert(query.filters["internet_access"][1] === "Yes", "Internet access filter");
 }
 
 function testEligibilityAnyFilter() {

@@ -106,7 +106,6 @@ export default async function ParticipantProfilePage({
             <p>Education: {participant.education_level}</p>
             <p>Family Income: {participant.family_income}</p>
             <p>Currently Employed: {participant.currently_employed}</p>
-            <p>Internet Access: {participant.internet_access}</p>
           </div>
         </section>
 

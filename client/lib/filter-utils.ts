@@ -31,7 +31,6 @@ export interface CaseFilters {
     currently_employed?: string;
     convicted_felon?: string;
     us_citizen?: string;
-    internet_access?: string;
   };
   socioeconomic?: {
     education_level?: string[];
