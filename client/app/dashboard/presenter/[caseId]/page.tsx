@@ -6,13 +6,15 @@ import CaseDocumentUploader from "@/components/CaseDocumentUploader";
 import DriveLinkEditor from "@/components/DriveLinkEditor";
 import CaseFilterEditor from "@/components/CaseFilterEditor";
 import LocalDateTime from "@/components/LocalDateTime";
+import PresenterParticipantHistory from "@/components/PresenterParticipantHistory";
+import AddParticipantPresenter from "@/components/AddParticipantPresenter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CaseFilters } from "@/lib/filter-utils";
 import {
   Calendar,
   Clock,
-
+  Users,
   FileText,
   ChevronLeft,
   Upload,
@@ -40,11 +42,24 @@ export default async function PresenterCaseDetailPage({
     .select(`
       id, title, description, status, admin_status, schedule_status,
       scheduled_at, admin_scheduled_at, deadline_date,
-      documentation_type, filters, created_at
+      documentation_type, filters, created_at, parent_case_id
     `)
     .eq("id", caseId)
     .eq("user_id", user.id)
     .single();
+
+  // Check if this case has a session (for Add Participant button)
+  let hasSession = false;
+  if (c) {
+    const { data: sessionCaseRow } = await supabase
+      .from("session_cases")
+      .select("session_id")
+      .eq("case_id", caseId)
+      .limit(1)
+      .maybeSingle();
+    hasSession = !!sessionCaseRow?.session_id;
+  }
+
 
   if (!c) {
     return (
@@ -175,6 +190,29 @@ export default async function PresenterCaseDetailPage({
               <LinkIcon className="h-4 w-4 text-muted-foreground" /> Drive Links
             </h2>
             <DriveLinkEditor caseId={c.id} />
+          </section>
+
+          {/* ADD PARTICIPANT */}
+          <section className="bg-white border rounded-xl p-6 space-y-4">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <h2 className="text-base font-semibold flex items-center gap-2">
+                <Users className="h-4 w-4 text-muted-foreground" /> Participants
+              </h2>
+              <AddParticipantPresenter caseId={c.id} hasSession={hasSession} />
+            </div>
+            {!hasSession && (
+              <p className="text-xs text-muted-foreground">
+                A session must be scheduled by the admin before you can add participants.
+              </p>
+            )}
+          </section>
+
+          {/* CASE LINEAGE & PARTICIPANT HISTORY */}
+          <section className="bg-white border rounded-xl p-6 space-y-4">
+            <h2 className="text-base font-semibold flex items-center gap-2">
+              <Users className="h-4 w-4 text-muted-foreground" /> Case Lineage & Participants
+            </h2>
+            <PresenterParticipantHistory caseId={c.id} currentCaseId={c.id} />
           </section>
 
           {/* PARTICIPANT FILTERS */}

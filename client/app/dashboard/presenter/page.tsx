@@ -1,5 +1,7 @@
 import CaseDocumentUploader from "@/components/CaseDocumentUploader";
 import DriveLinkEditor from "@/components/DriveLinkEditor";
+import CaseParticipantSummary from "@/components/CaseParticipantSummary";
+import PresenterParticipantHistory from "@/components/PresenterParticipantHistory";
 import { revalidatePath } from "next/cache";
 import CaseActions from "@/components/CaseActions";
 import Link from "next/link";
@@ -352,6 +354,25 @@ export default async function PresenterDashboard({
                   {/* APPROVED AREA */}
                   {tab === "approved" && (
                     <div className="space-y-6">
+                      {/* Participant History — current case */}
+                      <div className="bg-slate-50/50 rounded-lg p-4 border">
+                        <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                            <circle cx="9" cy="7" r="4" />
+                            <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+                            <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                          </svg>
+                          Participant History
+                        </h4>
+                        <CaseParticipantSummary caseId={c.id} />
+                      </div>
+
+                      {/* Case lineage tree with participants */}
+                      <div className="bg-slate-50/50 rounded-lg p-4 border">
+                        <PresenterParticipantHistory caseId={c.id} currentCaseId={c.id} />
+                      </div>
+
                       <div>
                         <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
                           <Upload className="h-4 w-4" />
@@ -531,6 +552,25 @@ export default async function PresenterDashboard({
                   {/* PREVIOUS */}
                   {tab === "previous" && (
                     <div className="flex flex-col gap-6 pt-2">
+                      {/* Participant History — current case */}
+                      <div className="bg-slate-50/50 rounded-lg p-4 border">
+                        <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                            <circle cx="9" cy="7" r="4" />
+                            <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+                            <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                          </svg>
+                          Participant History
+                        </h4>
+                        <CaseParticipantSummary caseId={c.id} />
+                      </div>
+
+                      {/* Case lineage tree with participants */}
+                      <div className="bg-slate-50/50 rounded-lg p-4 border">
+                        <PresenterParticipantHistory caseId={c.id} currentCaseId={c.id} />
+                      </div>
+
                       <div>
                         <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
                           <Upload className="h-4 w-4" />
