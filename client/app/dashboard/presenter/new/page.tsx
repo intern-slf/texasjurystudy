@@ -101,7 +101,7 @@ export default function NewCasePage() {
     description: "",
     drive_link: "",
     case_type: "",
-    hours_requested: "",
+    hours_requested: "1",
     focus_group_type: "",
     county: "",
     participants_from_county: "",

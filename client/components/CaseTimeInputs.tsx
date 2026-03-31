@@ -7,10 +7,13 @@ const HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0"));
 const MINUTES = ["00", "30"];
 
 type TimeVal = { h: string; m: string };
-type Props = { caseId: string };
+type Props = { caseId: string; hoursRequested?: number };
 
-function addOneHour({ h, m }: TimeVal): TimeVal {
-  return { h: String((parseInt(h) + 1) % 24).padStart(2, "0"), m };
+function addHours({ h, m }: TimeVal, hours: number): TimeVal {
+  const totalMinutes = parseInt(h) * 60 + parseInt(m) + hours * 60;
+  const newH = Math.floor(totalMinutes / 60) % 24;
+  const newM = totalMinutes % 60;
+  return { h: String(newH).padStart(2, "0"), m: String(newM).padStart(2, "0") };
 }
 
 /* ── Reusable dropdown picker ──────────────────────────────── */
@@ -126,13 +129,14 @@ function TimePicker({
 }
 
 /* ── Exported wrapper ──────────────────────────────────────── */
-export default function CaseTimeInputs({ caseId }: Props) {
+export default function CaseTimeInputs({ caseId, hoursRequested }: Props) {
+  const hours = hoursRequested && hoursRequested > 0 ? hoursRequested : 1;
   const [start, setStart] = useState<TimeVal>({ h: "", m: "" });
   const [end, setEnd] = useState<TimeVal>({ h: "", m: "" });
 
   function handleStart(v: TimeVal) {
     setStart(v);
-    if (v.h && v.m) setEnd(addOneHour(v));
+    if (v.h && v.m) setEnd(addHours(v, hours));
   }
 
   return (

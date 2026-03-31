@@ -75,7 +75,7 @@ export default async function NewSessionPage({
   const { data: cases } = selectedIds.length
     ? await supabase
       .from("cases")
-      .select("id, title, scheduled_at, admin_scheduled_at, schedule_status, filters, county, participants_from_county")
+      .select("id, title, scheduled_at, admin_scheduled_at, schedule_status, filters, county, participants_from_county, hours_requested")
       .in("id", selectedIds)
       .order("created_at", { ascending: false })
     : { data: [] };
@@ -390,7 +390,7 @@ export default async function NewSessionPage({
                   </div>
                 </div>
 
-                <CaseTimeInputs caseId={c.id} />
+                <CaseTimeInputs caseId={c.id} hoursRequested={c.hours_requested ?? undefined} />
               </div>
             ))
           ) : (
