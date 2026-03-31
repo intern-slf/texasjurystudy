@@ -60,10 +60,21 @@ async function fetchCandidates(
 
   const { data: cases } = await supabase
     .from("cases")
-    .select("id, title, filters")
+    .select("id, title, filters, county, participants_from_county")
     .in("id", caseIds);
 
-  const filtersList = (cases ?? []).map((c: any) => c.filters as CaseFilters);
+  const filtersList = (cases ?? []).map((c: any) => {
+    const f = (c.filters ?? {}) as CaseFilters;
+    // Inject case-level county into filters when presenter wants participants from their county
+    if (c.participants_from_county === "Yes" && c.county) {
+      if (!f.location) f.location = {};
+      const existing = f.location.county ?? [];
+      if (!existing.some((v: string) => v.toLowerCase() === c.county.toLowerCase())) {
+        f.location.county = [...existing, c.county];
+      }
+    }
+    return f;
+  });
   const combinedFilters = combineCaseFilters(filtersList);
 
   if (combinedFilters.ageRanges && cases) {

@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { autoBlacklistIfIneligible } from "@/lib/actions/autoBlacklist";
 import { Pencil, Upload, X, CreditCard } from "lucide-react";
+import { TEXAS_COUNTIES } from "@/lib/constants/texas-counties";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -92,6 +93,9 @@ export default function EditProfileForm({ participant, adminMode, onUpdate, onUp
   const [addressLine2, setAddressLine2] = useState(participant.address_line_2 || "");
   const [city, setCity] = useState(participant.city || "");
   const [county, setCounty] = useState(participant.county || "");
+  const [countyQuery, setCountyQuery] = useState(participant.county || "");
+  const [showCountySuggestions, setShowCountySuggestions] = useState(false);
+  const countyRef = useRef<HTMLDivElement>(null);
   const [state, setState] = useState(participant.state || "");
   const [zipCode, setZipCode] = useState(participant.zip_code || "");
 
@@ -102,6 +106,14 @@ export default function EditProfileForm({ participant, adminMode, onUpdate, onUp
   const [existingIdUrl, setExistingIdUrl] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (countyRef.current && !countyRef.current.contains(e.target as Node)) setShowCountySuggestions(false);
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   useEffect(() => {
     if (!participant.driver_license_image_url) return;
@@ -469,9 +481,41 @@ export default function EditProfileForm({ participant, adminMode, onUpdate, onUp
             <Label>City</Label>
             <Input value={city} onChange={(e) => setCity(e.target.value)} required />
           </div>
-          <div className="space-y-2">
+          <div className="space-y-2 relative" ref={countyRef}>
             <Label>County</Label>
-            <Input value={county} onChange={(e) => setCounty(e.target.value)} required />
+            <Input
+              placeholder="Start typing county..."
+              value={countyQuery}
+              onChange={(e) => {
+                setCountyQuery(e.target.value);
+                setShowCountySuggestions(true);
+                if (!e.target.value) setCounty("");
+              }}
+              onFocus={() => { if (countyQuery) setShowCountySuggestions(true); }}
+              required={!county}
+            />
+            {showCountySuggestions && countyQuery && (() => {
+              const filtered = TEXAS_COUNTIES.filter((c) =>
+                c.toLowerCase().includes(countyQuery.toLowerCase())
+              );
+              return filtered.length > 0 ? (
+                <div className="absolute z-50 w-full bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                  {filtered.slice(0, 8).map((c) => (
+                    <div
+                      key={c}
+                      onClick={() => {
+                        setCountyQuery(c);
+                        setCounty(c);
+                        setShowCountySuggestions(false);
+                      }}
+                      className="px-3 py-2 text-sm hover:bg-slate-100 cursor-pointer"
+                    >
+                      {c}
+                    </div>
+                  ))}
+                </div>
+              ) : null;
+            })()}
           </div>
           <div className="space-y-2">
             <Label>State</Label>

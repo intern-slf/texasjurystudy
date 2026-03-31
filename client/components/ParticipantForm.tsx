@@ -5,6 +5,7 @@ import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
 import { autoBlacklistIfIneligible } from "@/lib/actions/autoBlacklist";
 import { Upload, X, CreditCard } from "lucide-react";
+import { TEXAS_COUNTIES } from "@/lib/constants/texas-counties";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -51,6 +52,12 @@ export default function ParticipantForm({ userId, email }: Props) {
   const [familyIncome, setFamilyIncome] = useState("");
   const [referralSource, setReferralSource] = useState("");
 
+  // County autocomplete
+  const [county, setCounty] = useState("");
+  const [countyQuery, setCountyQuery] = useState("");
+  const [showCountySuggestions, setShowCountySuggestions] = useState(false);
+  const countyRef = useRef<HTMLDivElement>(null);
+
   // Yes/No logic states
   const [servedOnJury, setServedOnJury] = useState("");
   const [convictedFelon, setConvictedFelon] = useState("");
@@ -63,6 +70,14 @@ export default function ParticipantForm({ userId, email }: Props) {
   const [lastName, setLastName] = useState<string | null>(null);
   const [dob, setDob] = useState<string | null>(null);
   const [dobLoading, setDobLoading] = useState(true);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (countyRef.current && !countyRef.current.contains(e.target as Node)) setShowCountySuggestions(false);
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   useEffect(() => {
     async function fetchFromAgreement() {
@@ -245,7 +260,7 @@ export default function ParticipantForm({ userId, email }: Props) {
       date_of_birth: dob ?? null,
       gender,
       race,
-      county: form.get("county"),
+      county,
       availability_weekdays: form.get("availability_weekdays") ? "Yes" : "No",
       availability_weekends: form.get("availability_weekends") ? "Yes" : "No",
       email: email,
@@ -377,9 +392,41 @@ export default function ParticipantForm({ userId, email }: Props) {
             <Label>City</Label>
             <Input name="city" required />
           </div>
-          <div className="space-y-2">
+          <div className="space-y-2 relative" ref={countyRef}>
             <Label>County</Label>
-            <Input name="county" required />
+            <Input
+              placeholder="Start typing county..."
+              value={countyQuery}
+              onChange={(e) => {
+                setCountyQuery(e.target.value);
+                setShowCountySuggestions(true);
+                if (!e.target.value) setCounty("");
+              }}
+              onFocus={() => { if (countyQuery) setShowCountySuggestions(true); }}
+              required={!county}
+            />
+            {showCountySuggestions && countyQuery && (() => {
+              const filtered = TEXAS_COUNTIES.filter((c) =>
+                c.toLowerCase().includes(countyQuery.toLowerCase())
+              );
+              return filtered.length > 0 ? (
+                <div className="absolute z-50 w-full bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                  {filtered.slice(0, 8).map((c) => (
+                    <div
+                      key={c}
+                      onClick={() => {
+                        setCountyQuery(c);
+                        setCounty(c);
+                        setShowCountySuggestions(false);
+                      }}
+                      className="px-3 py-2 text-sm hover:bg-slate-100 cursor-pointer"
+                    >
+                      {c}
+                    </div>
+                  ))}
+                </div>
+              ) : null;
+            })()}
           </div>
           <div className="space-y-2">
             <Label>State</Label>

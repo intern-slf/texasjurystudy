@@ -75,13 +75,23 @@ export default async function NewSessionPage({
   const { data: cases } = selectedIds.length
     ? await supabase
       .from("cases")
-      .select("id, title, scheduled_at, admin_scheduled_at, schedule_status, filters")
+      .select("id, title, scheduled_at, admin_scheduled_at, schedule_status, filters, county, participants_from_county")
       .in("id", selectedIds)
       .order("created_at", { ascending: false })
     : { data: [] };
 
   // Calculate combined filters
-  const filtersList = (cases || []).map((c: any) => c.filters as CaseFilters);
+  const filtersList = (cases || []).map((c: any) => {
+    const f = (c.filters ?? {}) as CaseFilters;
+    if (c.participants_from_county === "Yes" && c.county) {
+      if (!f.location) f.location = {};
+      const existing = f.location.county ?? [];
+      if (!existing.some((v: string) => v.toLowerCase() === c.county.toLowerCase())) {
+        f.location.county = [...existing, c.county];
+      }
+    }
+    return f;
+  });
   const combinedFilters = combineCaseFilters(filtersList);
 
   // Enrich ageRanges with actual case titles
