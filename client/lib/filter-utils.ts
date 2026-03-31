@@ -17,6 +17,12 @@ export function calcAgeFromDob(dob: string): number {
   return age;
 }
 
+/** Case-insensitive check: does the array contain this value? */
+function includesCI(arr: string[], val: string): boolean {
+  const lower = val.toLowerCase();
+  return arr.some((v) => v.toLowerCase() === lower);
+}
+
 export interface CaseFilters {
   gender?: string[];
   race?: string[];
@@ -97,7 +103,13 @@ export function applyCaseFilters(
     query = query.in("state", filters.location.state);
   }
   if (filters.location?.county?.length) {
-    query = query.in("county", filters.location.county);
+    // Case-insensitive: use ilike OR chain instead of .in()
+    const counties = filters.location.county;
+    if (counties.length === 1) {
+      query = query.ilike("county", counties[0]);
+    } else {
+      query = query.or(counties.map((c) => `county.ilike.${c}`).join(","));
+    }
   }
 
   // --- POLITICAL ---
@@ -420,7 +432,7 @@ export function checkFilterMatch(
         for (const pc of perCase!) {
           const caseCounties = pc.filters.location?.county;
           const noFilter = !caseCounties || caseCounties.length === 0;
-          const pass = noFilter || caseCounties!.includes(pCounty);
+          const pass = noFilter || includesCI(caseCounties!, pCounty);
           if (!pass) countyPass = false;
           const needs = noFilter ? "Any" : caseCounties!.join(", ");
           countyRows.push(`${pc.caseTitle}: ${needs} (participant: ${pCounty || "N/A"}) ${pass ? "✅" : "❌"}`);
@@ -433,7 +445,7 @@ export function checkFilterMatch(
 
       const loc = filterVal as { state?: string[]; county?: string[] } | undefined;
       const stateMatch = !loc?.state?.length || loc.state.includes(pState);
-      const countyMatch = !loc?.county?.length || loc.county.includes(pCounty);
+      const countyMatch = !loc?.county?.length || includesCI(loc.county, pCounty);
       const match = stateMatch && countyMatch;
 
       const subTypes: { label: string; passes: boolean; subRows: string[] }[] = [];
@@ -679,7 +691,7 @@ export function getMatchScoreDetailed(
   }
   if (filters.location?.county?.length) {
     total++;
-    if (filters.location.county.includes(participant.county)) score++;
+    if (includesCI(filters.location.county, participant.county ?? "")) score++;
   }
 
   // --- SOCIOECONOMIC ---
