@@ -43,7 +43,9 @@ interface JuryCase {
   scheduled_at: string | null;
   schedule_status: string | null;
   admin_scheduled_at: string | null;
-  deadline_date: string | null; // timestamptz
+  session_completion_timeframe: string | null;
+  preferred_day: string | null;
+  deadline_date: string | null;
   is_in_session: boolean;
 }
 
@@ -127,6 +129,8 @@ export default async function AdminDashboardPage({
       scheduled_at,
       schedule_status,
       admin_scheduled_at,
+      session_completion_timeframe,
+      preferred_day,
       deadline_date,
       case_documents (
         id,
@@ -409,18 +413,13 @@ export default async function AdminDashboardPage({
                         return (
                           <div className="flex items-center gap-2 text-sm">
                             <Calendar className={`h-4 w-4 ${isPast ? "text-red-500" : "text-muted-foreground"}`} />
-                            <div className="flex flex-col">
-                              <span className={`font-medium ${isPast ? "text-red-600" : "text-foreground"}`}>
-                                {dl.toLocaleDateString()}
-                              </span>
-                              <span className={`text-xs ${isPast ? "text-red-400" : "text-muted-foreground"}`}>
-                                {dl.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
-                              </span>
-                            </div>
+                            <span className={`font-medium ${isPast ? "text-red-600" : "text-foreground"}`}>
+                              {dl.toLocaleDateString()}
+                            </span>
                           </div>
                         );
                       })() : (
-                        <span className="text-xs text-muted-foreground italic">No deadline</span>
+                        <span className="text-xs text-muted-foreground italic">Not specified</span>
                       )}
                     </TableCell>
 

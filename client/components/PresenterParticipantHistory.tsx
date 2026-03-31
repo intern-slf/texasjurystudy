@@ -78,13 +78,6 @@ export default function PresenterParticipantHistory({ caseId, currentCaseId }: P
         if (allIds.length > 50) break;
       }
 
-      // Only show chain if there are multiple cases (i.e., follow-ups exist)
-      if (allIds.length <= 1) {
-        setChain([]);
-        setLoading(false);
-        return;
-      }
-
       // Fetch case details
       const { data: cases } = await supabase
         .from("cases")
@@ -261,7 +254,7 @@ export default function PresenterParticipantHistory({ caseId, currentCaseId }: P
     <div className="space-y-3">
       <div className="flex items-center gap-2 mb-1">
         <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-          Case Lineage ({chain.length} cases)
+          {chain.length > 1 ? `Case Lineage (${chain.length} cases)` : `Case (1)`}
         </span>
       </div>
 

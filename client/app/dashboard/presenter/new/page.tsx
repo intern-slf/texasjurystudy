@@ -143,7 +143,8 @@ export default function NewCasePage() {
 
     documentation_type: "Legal Brief", // Default to prevent null constraint error
     scheduled_at: "",
-    deadline_date: "",
+    session_completion_timeframe: "",
+    preferred_day: "",
   });
 
   const [filters, setFilters] = useState({
@@ -209,7 +210,8 @@ export default function NewCasePage() {
 
             documentation_type: data.documentation_type || "Legal Brief",
             scheduled_at: "", // Don't pre-fill date
-            deadline_date: "", // Don't pre-fill deadline
+            session_completion_timeframe: "",
+            preferred_day: "",
           });
           if (data.filters) {
             setFilters({
@@ -288,7 +290,22 @@ export default function NewCasePage() {
         documentation_type: form.documentation_type, // Now explicitly handled
         status: "current",
         scheduled_at: form.scheduled_at ? new Date(form.scheduled_at).toISOString() : null,
-        deadline_date: form.deadline_date ? new Date(form.deadline_date).toISOString() : null,
+        session_completion_timeframe: form.session_completion_timeframe || null,
+        deadline_date: (() => {
+          const daysMap: Record<string, number> = {
+            "Within a Week": 7,
+            "Within 2 Weeks": 14,
+            "Within a Month": 30,
+            "Within 3 Months": 90,
+          };
+          const days = daysMap[form.session_completion_timeframe];
+          if (!days) return null;
+          const d = new Date();
+          d.setDate(d.getDate() + days);
+          d.setHours(23, 59, 0, 0);
+          return d.toISOString();
+        })(),
+        preferred_day: form.preferred_day || null,
         filters: softFilterPayload,
         parent_case_id: parentId || null,
       })
@@ -444,7 +461,7 @@ export default function NewCasePage() {
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium">Do you need participants from your county?</label>
+                <label className="text-sm font-medium">Do you prefer participants from your county?</label>
                 <select className="input w-full" value={form.participants_from_county} onChange={(e) => setForm({ ...form, participants_from_county: e.target.value })}>
                   <option value="">Select...</option>
                   <option value="Yes">Yes</option>
@@ -452,29 +469,37 @@ export default function NewCasePage() {
                 </select>
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium">Deadline Date</label>
-                <div className="flex gap-2">
-                  <input
-                    type="date"
-                    className="border rounded px-3 py-2 text-sm flex-1"
-                    value={form.deadline_date ? form.deadline_date.slice(0, 10) : ""}
-                    onChange={(e) => {
-                      const hour = form.deadline_date ? form.deadline_date.slice(11, 13) : "00";
-                      const val = e.target.value ? `${e.target.value}T${hour}:00` : "";
-                      setForm({ ...form, deadline_date: val });
-                    }}
-                  />
-                  <HourPicker
-                    value={form.deadline_date ? form.deadline_date.slice(11, 13) : ""}
-                    onChange={(h) => {
-                      const date = form.deadline_date ? form.deadline_date.slice(0, 10) : "";
-                      const val = date ? `${date}T${h}:00` : "";
-                      setForm({ ...form, deadline_date: val });
-                    }}
-                  />
-                </div>
+                <label className="text-sm font-medium">Session Completion Timeframe</label>
+                <select
+                  className="input w-full"
+                  value={form.session_completion_timeframe}
+                  onChange={(e) => setForm({ ...form, session_completion_timeframe: e.target.value })}
+                >
+                  <option value="">Select a timeframe...</option>
+                  <option value="Within a Week">Within a Week</option>
+                  <option value="Within 2 Weeks">Within 2 Weeks</option>
+                  <option value="Within a Month">Within a Month</option>
+                  <option value="Within 3 Months">Within 3 Months</option>
+                </select>
               </div>
 
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Preferred Day of the Week</label>
+                <select
+                  className="input w-full"
+                  value={form.preferred_day}
+                  onChange={(e) => setForm({ ...form, preferred_day: e.target.value })}
+                >
+                  <option value="">No preference</option>
+                  <option value="Monday">Monday</option>
+                  <option value="Tuesday">Tuesday</option>
+                  <option value="Wednesday">Wednesday</option>
+                  <option value="Thursday">Thursday</option>
+                  <option value="Friday">Friday</option>
+                  <option value="Saturday">Saturday</option>
+                  <option value="Sunday">Sunday</option>
+                </select>
+              </div>
 
             </div>
 
