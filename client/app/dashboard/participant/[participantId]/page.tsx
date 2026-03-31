@@ -35,7 +35,11 @@ export default async function ParticipantProfilePage({
         {/* BACK LINK */}
         {fromCase && role !== "participant" && (
           <Link
-            href={`/dashboard/Admin/${schParams?.caseId}${isOldData ? "?test_table=oldData" : ""}`}
+            href={
+              role === "presenter"
+                ? `/dashboard/presenter/${schParams?.caseId}`
+                : `/dashboard/Admin/${schParams?.caseId}${isOldData ? "?test_table=oldData" : ""}`
+            }
             className="text-blue-600 underline"
           >
             ← Back to Case
@@ -116,7 +120,7 @@ export default async function ParticipantProfilePage({
         </section>
 
         {/* IDENTIFICATION */}
-        {(participant.driver_license_number || participant.driver_license_image_url) && (
+        {role !== "presenter" && (participant.driver_license_number || participant.driver_license_image_url) && (
           <section className="bg-white border rounded-xl p-6">
             <h2 className="font-bold text-lg mb-4">Identification</h2>
             <div className="grid grid-cols-2 gap-3">
@@ -147,10 +151,12 @@ export default async function ParticipantProfilePage({
         )}
 
         {/* PAYMENT INFO */}
-        <section className="bg-white border rounded-xl p-6">
-          <h2 className="font-bold text-lg mb-4">Payment Information</h2>
-          <p>PayPal: {participant.paypal_username ? `@${participant.paypal_username}` : "—"}</p>
-        </section>
+        {role !== "presenter" && (
+          <section className="bg-white border rounded-xl p-6">
+            <h2 className="font-bold text-lg mb-4">Payment Information</h2>
+            <p>PayPal: {participant.paypal_username ? `@${participant.paypal_username}` : "—"}</p>
+          </section>
+        )}
 
         {/* ADMIN AREA */}
         {role === "admin" && (

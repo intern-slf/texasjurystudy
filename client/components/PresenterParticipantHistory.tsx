@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
+import Link from "next/link";
 
 interface ChainParticipant {
   id: string;
@@ -334,17 +335,22 @@ export default function PresenterParticipantHistory({ caseId, currentCaseId }: P
                     </div>
                     <div className="divide-y divide-slate-50">
                       {node.participants.map((p) => (
-                        <div key={p.id} className="flex items-center gap-2 px-3 py-2">
+                        <Link
+                          key={p.id}
+                          href={`/dashboard/participant/${p.id}?from=case&caseId=${node.id}`}
+                          className="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 transition-colors"
+                          onClick={(e) => e.stopPropagation()}
+                        >
                           <div className="h-6 w-6 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center text-[10px] font-bold shrink-0">
                             {p.first_name?.[0]}{p.last_name?.[0]}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <span className="text-xs font-medium">
+                            <span className="text-xs font-medium hover:underline">
                               {p.first_name} {p.last_name}
                             </span>
                           </div>
                           {inviteStatusBadge(p.invite_status)}
-                        </div>
+                        </Link>
                       ))}
                     </div>
                   </div>
