@@ -407,7 +407,7 @@ export default async function NewSessionPage({
             <SelectAllParticipants total={participants.length} isOldData={isOldData} />
           </div>
 
-          <ParticipantSearch />
+          <ParticipantSearch testTable={testTable} isOldData={isOldData} />
 
           <div className="border rounded divide-y max-h-[500px] overflow-y-auto" data-participant-list>
             {participants?.map((p) => {
