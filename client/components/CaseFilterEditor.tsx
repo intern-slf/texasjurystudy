@@ -154,9 +154,10 @@ export default function CaseFilterEditor({ caseId, initialFilters, locked }: Pro
     <div className="space-y-6">
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-        {/* COLUMN 1 — Location & Political */}
+        {/* COLUMN 1 — Location, Political & Eligibility */}
         <div className="space-y-5">
-          <div className="bg-card p-5 rounded-xl border space-y-4">
+          {/* Location filter — hidden, defaults to No Preference (empty arrays) */}
+          {/* <div className="bg-card p-5 rounded-xl border space-y-4">
             <h4 className="font-semibold text-sm border-b pb-2">Location</h4>
             <p className="text-sm font-medium">State</p>
             <div className="max-h-48 overflow-y-auto">
@@ -168,7 +169,7 @@ export default function CaseFilterEditor({ caseId, initialFilters, locked }: Pro
               <MultiCheckbox label="" options={TEXAS_COUNTIES} values={filters.location.county}
                 onChange={(v) => { setFilters({ ...filters, location: { ...filters.location, county: v } }); setSaved(false); }} />
             </div>
-          </div>
+          </div> */}
 
           <div className="bg-card p-5 rounded-xl border space-y-4">
             <h4 className="font-semibold text-sm border-b pb-2">Political Context</h4>
@@ -176,9 +177,19 @@ export default function CaseFilterEditor({ caseId, initialFilters, locked }: Pro
               values={filters.political_affiliation}
               onChange={(v) => { setFilters({ ...filters, political_affiliation: v }); setSaved(false); }} />
           </div>
+
+          <div className="bg-card p-5 rounded-xl border space-y-4">
+            <h4 className="font-semibold text-sm border-b pb-2">Eligibility & Status</h4>
+            <YesNoSelect label="Served on a jury?" value={filters.eligibility.served_on_jury}
+              onChange={(v) => { setFilters({ ...filters, eligibility: { ...filters.eligibility, served_on_jury: v } }); setSaved(false); }} />
+            <YesNoSelect label="Has children?" value={filters.eligibility.has_children}
+              onChange={(v) => { setFilters({ ...filters, eligibility: { ...filters.eligibility, has_children: v } }); setSaved(false); }} />
+            <YesNoSelect label="Currently employed?" value={filters.eligibility.currently_employed}
+              onChange={(v) => { setFilters({ ...filters, eligibility: { ...filters.eligibility, currently_employed: v } }); setSaved(false); }} />
+          </div>
         </div>
 
-        {/* COLUMN 2 — Demographics & Eligibility */}
+        {/* COLUMN 2 — Demographics */}
         <div className="space-y-5">
           <div className="bg-card p-5 rounded-xl border space-y-4">
             <h4 className="font-semibold text-sm border-b pb-2">Age & Identity</h4>
@@ -208,16 +219,6 @@ export default function CaseFilterEditor({ caseId, initialFilters, locked }: Pro
               options={["Caucasian", "African American", "Asian", "Native American", "Middle Eastern", "Latino/Hispanic", "Multi-racial", "Other"]}
               values={filters.race}
               onChange={(v) => { setFilters({ ...filters, race: v }); setSaved(false); }} />
-          </div>
-
-          <div className="bg-card p-5 rounded-xl border space-y-4">
-            <h4 className="font-semibold text-sm border-b pb-2">Eligibility & Status</h4>
-            <YesNoSelect label="Served on a jury?" value={filters.eligibility.served_on_jury}
-              onChange={(v) => { setFilters({ ...filters, eligibility: { ...filters.eligibility, served_on_jury: v } }); setSaved(false); }} />
-            <YesNoSelect label="Has children?" value={filters.eligibility.has_children}
-              onChange={(v) => { setFilters({ ...filters, eligibility: { ...filters.eligibility, has_children: v } }); setSaved(false); }} />
-            <YesNoSelect label="Currently employed?" value={filters.eligibility.currently_employed}
-              onChange={(v) => { setFilters({ ...filters, eligibility: { ...filters.eligibility, currently_employed: v } }); setSaved(false); }} />
           </div>
         </div>
 

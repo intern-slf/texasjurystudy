@@ -518,7 +518,7 @@ export default function NewCasePage() {
             {showFilters && (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
 
-                {/* COLUMN 1 — Preferable Date + Location */}
+                {/* COLUMN 1 — Scheduling, Location & Political */}
                 <div className="space-y-6 self-start">
                   <div className="space-y-4 bg-card p-6 rounded-2xl border shadow-sm">
                     <label className="text-sm font-bold uppercase tracking-wider text-primary">Scheduling</label>
@@ -557,7 +557,8 @@ export default function NewCasePage() {
                     </div>
                   </div>
 
-                  <div className="bg-card p-6 rounded-2xl border shadow-sm space-y-4">
+                  {/* Location filter — hidden, defaults to No Preference (empty arrays) */}
+                  {/* <div className="bg-card p-6 rounded-2xl border shadow-sm space-y-4">
                     <h3 className="font-bold text-lg border-b pb-2">Location</h3>
                     <p className="text-sm font-medium">State</p>
                     <div className="max-h-48 overflow-y-auto">
@@ -567,16 +568,23 @@ export default function NewCasePage() {
                     <div className="max-h-48 overflow-y-auto">
                       <MultiCheckbox label="" options={TEXAS_COUNTIES} values={filters.location.county} onChange={(v) => setFilters({ ...filters, location: { ...filters.location, county: v } })} />
                     </div>
-                  </div>
+                  </div> */}
 
                   <div className="bg-card p-6 rounded-2xl border shadow-sm space-y-4">
                     <h3 className="font-bold text-lg border-b pb-2">Political Context</h3>
                     <MultiCheckbox label="Political Affiliation" options={["Republican", "Democrat", "Other"]} values={filters.political_affiliation} onChange={(v) => setFilters({ ...filters, political_affiliation: v })} />
                   </div>
+
+                  <div className="bg-card p-6 rounded-2xl border shadow-sm space-y-4">
+                    <h3 className="font-bold text-lg border-b pb-2">Eligibility & Status</h3>
+                    <YesNoSelect label="Served on a jury?" value={filters.eligibility.served_on_jury} onChange={(v) => setFilters({ ...filters, eligibility: { ...filters.eligibility, served_on_jury: v } })} />
+                    <YesNoSelect label="Has children?" value={filters.eligibility.has_children} onChange={(v) => setFilters({ ...filters, eligibility: { ...filters.eligibility, has_children: v } })} />
+                    <YesNoSelect label="Currently employed?" value={filters.eligibility.currently_employed} onChange={(v) => setFilters({ ...filters, eligibility: { ...filters.eligibility, currently_employed: v } })} />
+                  </div>
                 </div>
 
-                {/* COLUMN 2 — Demographics & Eligibility */}
-                <div className="space-y-6">
+                {/* COLUMN 2 — Demographics */}
+                <div className="space-y-6 self-start">
                   <div className="bg-card p-6 rounded-2xl border shadow-sm space-y-4">
                     <h3 className="font-bold text-lg border-b pb-2">Age & Identity</h3>
                     <div className="space-y-2">
@@ -602,17 +610,10 @@ export default function NewCasePage() {
                     <MultiCheckbox label="Gender" options={["Male", "Female", "Other"]} values={filters.gender} onChange={(v) => setFilters({ ...filters, gender: v })} />
                     <MultiCheckbox label="Race" options={["Caucasian", "African American", "Asian", "Native American", "Middle Eastern", "Latino/Hispanic", "Multi-racial", "Other"]} values={filters.race} onChange={(v) => setFilters({ ...filters, race: v })} />
                   </div>
-
-                  <div className="bg-card p-6 rounded-2xl border shadow-sm space-y-4">
-                    <h3 className="font-bold text-lg border-b pb-2">Eligibility & Status</h3>
-                    <YesNoSelect label="Served on a jury?" value={filters.eligibility.served_on_jury} onChange={(v) => setFilters({ ...filters, eligibility: { ...filters.eligibility, served_on_jury: v } })} />
-                    <YesNoSelect label="Has children?" value={filters.eligibility.has_children} onChange={(v) => setFilters({ ...filters, eligibility: { ...filters.eligibility, has_children: v } })} />
-                    <YesNoSelect label="Currently employed?" value={filters.eligibility.currently_employed} onChange={(v) => setFilters({ ...filters, eligibility: { ...filters.eligibility, currently_employed: v } })} />
-                  </div>
                 </div>
 
-                {/* COLUMN 3 — Socioeconomic & Political */}
-                <div className="space-y-6">
+                {/* COLUMN 3 — Socioeconomic */}
+                <div className="space-y-6 self-start">
                   <div className="bg-card p-6 rounded-2xl border shadow-sm space-y-4">
                     <h3 className="font-bold text-lg border-b pb-2">Socioeconomic Factors</h3>
                     <MultiCheckbox label="Marital Status" options={["Single / Never Married", "Married", "Divorced", "Separated", "Widowed"]} values={filters.socioeconomic.marital_status} onChange={(v) => setFilters({ ...filters, socioeconomic: { ...filters.socioeconomic, marital_status: v } })} />
@@ -625,7 +626,6 @@ export default function NewCasePage() {
                       })} />
                     <MultiCheckbox label="Family Income" options={["less than $40K", "$41-75K", "$75-100K", "$101-$150K", "$150K+"]} values={filters.socioeconomic.family_income} onChange={(v) => setFilters({ ...filters, socioeconomic: { ...filters.socioeconomic, family_income: v } })} />
                   </div>
-
                 </div>
 
               </div>
