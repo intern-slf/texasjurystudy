@@ -131,6 +131,10 @@ function SignUpFormFields({ className, ...props }: React.ComponentPropsWithoutRe
               <Link href="/auth/login" className="underline underline-offset-4 hover:text-primary transition-colors font-medium">
                 Login
               </Link>
+              {" OR "}
+              <Link href="/auth/forgot-password" className="underline underline-offset-4 hover:text-primary transition-colors font-medium">
+                Forgot?
+              </Link>
             </div>
           </form>
         </CardContent>
