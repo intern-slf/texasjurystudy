@@ -25,6 +25,7 @@ import Link from "next/link";
 import SelectAllParticipants from "@/components/SelectAllParticipants";
 import ShowMoreButton from "@/components/ShowMoreButton";
 import CheckboxRestorer from "@/components/CheckboxRestorer";
+import ParticipantSearch from "@/components/ParticipantSearch";
 
 /* =========================
    PAGE
@@ -406,12 +407,15 @@ export default async function NewSessionPage({
             <SelectAllParticipants total={participants.length} isOldData={isOldData} />
           </div>
 
-          <div className="border rounded divide-y max-h-[500px] overflow-y-auto">
+          <ParticipantSearch />
+
+          <div className="border rounded divide-y max-h-[500px] overflow-y-auto" data-participant-list>
             {participants?.map((p) => {
               const pId = p.user_id || p.id;
               return (
                 <div
                   key={pId}
+                  data-participant-name={`${p.first_name} ${p.last_name}`}
                   className="flex items-center justify-between p-3 hover:bg-slate-50"
                 >
                   <div className="flex-1 min-w-0">
