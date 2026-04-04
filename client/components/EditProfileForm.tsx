@@ -98,6 +98,7 @@ export default function EditProfileForm({ participant, adminMode, onUpdate, onUp
   const countyRef = useRef<HTMLDivElement>(null);
   const [state, setState] = useState(participant.state || "");
   const [zipCode, setZipCode] = useState(participant.zip_code || "");
+  const [zipLoading, setZipLoading] = useState(false);
 
   // ID
   const [driverLicenseNumber, setDriverLicenseNumber] = useState(participant.driver_license_number || "");
@@ -106,6 +107,26 @@ export default function EditProfileForm({ participant, adminMode, onUpdate, onUp
   const [existingIdUrl, setExistingIdUrl] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Auto-fill state & county from zip code
+  async function lookupZip(zip: string) {
+    if (!/^\d{5}$/.test(zip)) return;
+    setZipLoading(true);
+    try {
+      const res = await fetch(`/api/zip-lookup?zip=${zip}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.state) setState(data.state);
+      if (data.county) {
+        setCounty(data.county);
+        setCountyQuery(data.county);
+      }
+    } catch {
+      // Lookup is best-effort
+    } finally {
+      setZipLoading(false);
+    }
+  }
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -530,7 +551,16 @@ export default function EditProfileForm({ participant, adminMode, onUpdate, onUp
           </div>
           <div className="space-y-2">
             <Label>ZIP Code</Label>
-            <Input value={zipCode} onChange={(e) => setZipCode(e.target.value)} required />
+            <Input
+              value={zipCode}
+              onChange={(e) => {
+                const val = e.target.value.replace(/\D/g, "").slice(0, 5);
+                setZipCode(val);
+                if (val.length === 5) lookupZip(val);
+              }}
+              required
+            />
+            {zipLoading && <p className="text-xs text-slate-400">Looking up location...</p>}
           </div>
         </div>
       </div>

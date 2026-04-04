@@ -20,7 +20,7 @@ export default function ParticipantSearch({ testTable, isOldData }: { testTable:
   const [searching, setSearching] = useState(false);
   const [showResults, setShowResults] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(null);
 
   useEffect(() => {
     const fn = (e: MouseEvent) => {

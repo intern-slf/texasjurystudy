@@ -52,6 +52,10 @@ export default function ParticipantForm({ userId, email }: Props) {
   const [familyIncome, setFamilyIncome] = useState("");
   const [referralSource, setReferralSource] = useState("");
 
+  // Zip code lookup
+  const [zipCode, setZipCode] = useState("");
+  const [zipLoading, setZipLoading] = useState(false);
+
   // County autocomplete
   const [county, setCounty] = useState("");
   const [countyQuery, setCountyQuery] = useState("");
@@ -70,6 +74,26 @@ export default function ParticipantForm({ userId, email }: Props) {
   const [lastName, setLastName] = useState<string | null>(null);
   const [dob, setDob] = useState<string | null>(null);
   const [dobLoading, setDobLoading] = useState(true);
+
+  // Auto-fill state & county from zip code
+  async function lookupZip(zip: string) {
+    if (!/^\d{5}$/.test(zip)) return;
+    setZipLoading(true);
+    try {
+      const res = await fetch(`/api/zip-lookup?zip=${zip}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.state) setState(data.state);
+      if (data.county) {
+        setCounty(data.county);
+        setCountyQuery(data.county);
+      }
+    } catch {
+      // Lookup is best-effort
+    } finally {
+      setZipLoading(false);
+    }
+  }
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -269,7 +293,7 @@ export default function ParticipantForm({ userId, email }: Props) {
       address_line_2: form.get("address_line_2"),
       city: form.get("city"),
       state,
-      zip_code: form.get("zip_code"),
+      zip_code: zipCode,
       country: "USA",
       served_on_jury: servedOnJury,
       convicted_felon: convictedFelon,
@@ -441,7 +465,17 @@ export default function ParticipantForm({ userId, email }: Props) {
           </div>
           <div className="space-y-2">
             <Label>ZIP Code</Label>
-            <Input name="zip_code" required />
+            <Input
+              name="zip_code"
+              value={zipCode}
+              onChange={(e) => {
+                const val = e.target.value.replace(/\D/g, "").slice(0, 5);
+                setZipCode(val);
+                if (val.length === 5) lookupZip(val);
+              }}
+              required
+            />
+            {zipLoading && <p className="text-xs text-slate-400">Looking up location...</p>}
           </div>
         </div>
       </div>
