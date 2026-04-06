@@ -637,56 +637,130 @@ export default function NewCasePage() {
             </button>
           </div>
         ) : (
-          <div className="max-w-2xl mx-auto space-y-6 text-center animate-in zoom-in-95 duration-500">
-            <div className="p-10 bg-green-500/5 border border-green-500/20 rounded-[32px]">
-              <div className="w-20 h-20 bg-green-500 text-white rounded-full flex items-center justify-center mx-auto mb-6 text-3xl font-bold">✓</div>
-              <h2 className="text-3xl font-bold text-green-700">Case Ranking Profile Saved</h2>
-              <p className="text-green-600 mt-2 text-lg">Your attributes are matched. Please upload the required documents to start finding participants.</p>
-            </div>
-            <CaseDocumentUploader caseId={caseId} />
+          <div className="flex gap-8 items-start animate-in zoom-in-95 duration-500">
+            {/* Left — Success + Uploads */}
+            <div className="flex-1 min-w-0 space-y-6 text-center">
+              <div className="p-10 bg-green-500/5 border border-green-500/20 rounded-[32px]">
+                <div className="w-20 h-20 bg-green-500 text-white rounded-full flex items-center justify-center mx-auto mb-6 text-3xl font-bold">✓</div>
+                <h2 className="text-3xl font-bold text-green-700">Case Ranking Profile Saved</h2>
+                <p className="text-green-600 mt-2 text-lg">Your attributes are matched. Please upload the required documents to start finding participants.</p>
+              </div>
+              <CaseDocumentUploader caseId={caseId} />
 
-            {/* Google Drive Link */}
-            <div className="text-left border border-slate-200 rounded-2xl bg-white p-5 shadow-sm space-y-3">
-              <div className="flex items-center gap-2">
-                <svg className="w-4 h-4 text-slate-500 shrink-0" viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg">
-                  <path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/>
-                  <path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0 -1.2 4.5h27.5z" fill="#00ac47"/>
-                  <path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.502l5.852 11.5z" fill="#ea4335"/>
-                  <path d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d"/>
-                  <path d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc"/>
-                  <path d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 27h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00"/>
-                </svg>
-                <span className="text-sm font-semibold text-slate-800">Add Google Drive Link</span>
-                <span className="text-xs text-slate-400 font-normal">(optional)</span>
+              {/* Google Drive Link */}
+              <div className="text-left border border-slate-200 rounded-2xl bg-white p-5 shadow-sm space-y-3">
+                <div className="flex items-center gap-2">
+                  <svg className="w-4 h-4 text-slate-500 shrink-0" viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg">
+                    <path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/>
+                    <path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0 -1.2 4.5h27.5z" fill="#00ac47"/>
+                    <path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.502l5.852 11.5z" fill="#ea4335"/>
+                    <path d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d"/>
+                    <path d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc"/>
+                    <path d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 27h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00"/>
+                  </svg>
+                  <span className="text-sm font-semibold text-slate-800">Add Google Drive Link</span>
+                  <span className="text-xs text-slate-400 font-normal">(optional)</span>
+                </div>
+
+                <div className="flex gap-2">
+                  <input
+                    className="input flex-1 text-sm"
+                    placeholder="https://drive.google.com/..."
+                    value={driveLink}
+                    onChange={(e) => { setDriveLink(e.target.value); setDriveLinkSaved(false); }}
+                    disabled={driveLinkSaved}
+                  />
+                  <button
+                    type="button"
+                    onClick={saveDriveLink}
+                    disabled={!driveLink.trim() || driveLinkSaving || driveLinkSaved}
+                    className="px-4 py-2 rounded-xl text-sm font-semibold bg-slate-800 text-white hover:bg-slate-700 disabled:opacity-40 transition-colors shrink-0"
+                  >
+                    {driveLinkSaved ? "Saved ✓" : driveLinkSaving ? "Saving…" : "Save"}
+                  </button>
+                </div>
+
+                <p className="flex items-start gap-1.5 text-xs text-slate-500 leading-relaxed">
+                  <span className="mt-0.5 shrink-0 w-3.5 h-3.5 rounded-full border border-slate-400 text-slate-400 flex items-center justify-center font-bold text-[9px]">i</span>
+                  Make sure sharing is set to <strong className="text-slate-700">&ldquo;Anyone with the link can view&rdquo;</strong> in Google Drive so all participants can access it.
+                </p>
               </div>
 
-              <div className="flex gap-2">
-                <input
-                  className="input flex-1 text-sm"
-                  placeholder="https://drive.google.com/..."
-                  value={driveLink}
-                  onChange={(e) => { setDriveLink(e.target.value); setDriveLinkSaved(false); }}
-                  disabled={driveLinkSaved}
-                />
-                <button
-                  type="button"
-                  onClick={saveDriveLink}
-                  disabled={!driveLink.trim() || driveLinkSaving || driveLinkSaved}
-                  className="px-4 py-2 rounded-xl text-sm font-semibold bg-slate-800 text-white hover:bg-slate-700 disabled:opacity-40 transition-colors shrink-0"
-                >
-                  {driveLinkSaved ? "Saved ✓" : driveLinkSaving ? "Saving…" : "Save"}
-                </button>
-              </div>
-
-              <p className="flex items-start gap-1.5 text-xs text-slate-500 leading-relaxed">
-                <span className="mt-0.5 shrink-0 w-3.5 h-3.5 rounded-full border border-slate-400 text-slate-400 flex items-center justify-center font-bold text-[9px]">i</span>
-                Make sure sharing is set to <strong className="text-slate-700">&ldquo;Anyone with the link can view&rdquo;</strong> in Google Drive so all participants can access it.
-              </p>
+              <button onClick={() => window.location.href = "/dashboard/presenter"} className="text-sm font-semibold text-muted-foreground hover:text-primary transition-colors underline decoration-2 underline-offset-8">
+                Back to Presenter Dashboard
+              </button>
             </div>
 
-            <button onClick={() => window.location.href = "/dashboard/presenter"} className="text-sm font-semibold text-muted-foreground hover:text-primary transition-colors underline decoration-2 underline-offset-8">
-              Back to Presenter Dashboard
-            </button>
+            {/* Right — Focus Group Instructions (photo/video from admin) */}
+            {form.focus_group_type && (
+              <div className="w-96 shrink-0 sticky top-12">
+                <div className="bg-card border rounded-2xl shadow-sm overflow-hidden">
+                  <div className="bg-primary/10 border-b px-5 py-4">
+                    <h3 className="text-base font-bold text-primary">
+                      {form.focus_group_type} — Instructions
+                    </h3>
+                    <p className="text-xs text-muted-foreground mt-1">Review the instructions for your selected focus group type</p>
+                  </div>
+
+                  {form.focus_group_type === "Narrative Type" && (
+                    <div className="p-5 space-y-4">
+                      <div className="aspect-video bg-slate-50 border-2 border-dashed border-slate-300 rounded-xl flex flex-col items-center justify-center text-slate-400">
+                        {/* <svg className="w-12 h-12 mb-2" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0022.5 18.75V5.25A2.25 2.25 0 0020.25 3H3.75A2.25 2.25 0 001.5 5.25v13.5A2.25 2.25 0 003.75 21z" />
+                        </svg> */}
+                        {/* <span className="text-sm font-medium">Narrative Instruction Photo / Video</span> */}
+                        <span className="text-xs mt-1"><img src="/narrative_type.png" alt="Narrative Type Instructions" className="w-full rounded-xl" />
+</span>
+                      </div>
+                      <div className="space-y-2">
+                        <h4 className="text-sm font-semibold text-foreground">How Narrative Focus Groups Work</h4>
+                        <p className="text-sm text-muted-foreground leading-relaxed">
+                          Present your case as a story. Walk participants through the facts chronologically and let them respond to the narrative as it unfolds.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {form.focus_group_type === "Opening Statement" && (
+                    <div className="p-5 space-y-4">
+                      <div className="aspect-video bg-slate-50 border-2 border-dashed border-slate-300 rounded-xl flex flex-col items-center justify-center text-slate-400">
+                        {/* <svg className="w-12 h-12 mb-2" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
+                        </svg> */}
+                        {/* <span className="text-sm font-medium">Opening Statement Instruction Photo / Video</span> */}
+                        <span className="text-xs mt-1"><img src="/opening_statement.png" alt="Opening Statement Instructions" className="w-full rounded-xl" />
+</span>
+                      </div>
+                      <div className="space-y-2">
+                        <h4 className="text-sm font-semibold text-foreground">How Opening Statement Focus Groups Work</h4>
+                        <p className="text-sm text-muted-foreground leading-relaxed">
+                          Deliver your opening statement to the participants as if they were jurors. Gather their feedback on persuasiveness and clarity.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {form.focus_group_type === "Other" && (
+                    <div className="p-5 space-y-4">
+                      <div className="aspect-video bg-slate-50 border-2 border-dashed border-slate-300 rounded-xl flex flex-col items-center justify-center text-slate-400">
+                        {/* <svg className="w-12 h-12 mb-2" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                        </svg> */}
+                        {/* <span className="text-sm font-medium">Other Type Instruction Photo / Video</span> */}
+                        <span className="text-xs mt-1"><img src="/others.png" alt="Others Instructions" className="w-full rounded-xl" />
+</span>
+                      </div>
+                      <div className="space-y-2">
+                        <h4 className="text-sm font-semibold text-foreground">How This Focus Group Works</h4>
+                        <p className="text-sm text-muted-foreground leading-relaxed">
+                          Customize your session format as needed. Follow the admin-provided instructions for this focus group type.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </section>
