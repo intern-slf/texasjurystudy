@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { CaseFilters } from "@/lib/filter-utils";
+import ReceiptPricingPreview from "@/components/ReceiptPricingPreview";
 
 /* =========================
    DB ROW TYPES
@@ -64,6 +65,7 @@ export default async function AdminCaseDetailPage({
       description,
       drive_link,
       filters,
+      hours_requested,
       admin_scheduled_at,
       presenter_id,
       user_id,
@@ -235,6 +237,15 @@ export default async function AdminCaseDetailPage({
             ) : null
           )}
         </div>
+      </section>
+
+      {/* RECEIPT */}
+      <section>
+        <h3 className="text-xl font-bold mb-4">Receipt</h3>
+        <ReceiptPricingPreview
+          filters={caseInfo.filters}
+          hoursRequested={(rawCase as any).hours_requested}
+        />
       </section>
 
       {/* PARTICIPANT FILTERS */}

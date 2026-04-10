@@ -1,11 +1,13 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import PresenterSidebar from "@/components/PresenterSidebar";
 import CaseDocumentUploader from "@/components/CaseDocumentUploader";
+import ReceiptPricingPreview from "@/components/ReceiptPricingPreview";
 import { TEXAS_COUNTIES } from "@/lib/constants/texas-counties";
+import { CaseFilters } from "@/lib/filter-utils";
 
 const EDUCATION_LEVELS = [
   "Less than High School",
@@ -630,6 +632,32 @@ export default function NewCasePage() {
 
               </div>
             )}
+
+            {/* TRANSCRIPT PRICING PREVIEW */}
+            <ReceiptPricingPreview
+              hoursRequested={form.hours_requested ? Number(form.hours_requested) : 1}
+              filters={{
+                gender: filters.gender,
+                race: filters.race,
+                age: filters.age.min || filters.age.max
+                  ? { min: Number(filters.age.min) || 18, max: Number(filters.age.max) || 99 }
+                  : undefined,
+                location: { state: filters.location.state, county: filters.location.county },
+                political_affiliation: filters.political_affiliation,
+                eligibility: {
+                  served_on_jury: filters.eligibility.served_on_jury || "Any",
+                  has_children: filters.eligibility.has_children || "Any",
+                  served_armed_forces: filters.eligibility.served_armed_forces || "Any",
+                  currently_employed: filters.eligibility.currently_employed || "Any",
+                },
+                socioeconomic: {
+                  marital_status: filters.socioeconomic.marital_status,
+                  education_level: filters.socioeconomic.education_level,
+                  family_income: filters.socioeconomic.family_income,
+                  availability: filters.socioeconomic.availability,
+                },
+              } as CaseFilters}
+            />
 
             {/* SAVE BUTTON */}
             <button onClick={createCaseAndUpload} disabled={loading} className="w-full py-5 bg-primary text-primary-foreground rounded-2xl font-bold text-lg shadow-xl hover:brightness-110 active:scale-[0.98] transition-all disabled:opacity-50">

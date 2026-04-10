@@ -238,7 +238,7 @@ export async function sendSessionCompletedEmail(
       <tr>
         <td style="padding:14px 20px;">
           <p style="margin:0;font-size:14px;color:#475569;">
-            Your <strong>transcripts and video of the session will be sent to you within a week.</strong>
+            Your <strong>transcripts and video of the session</strong> can be requested from your <a href="${process.env.NEXT_PUBLIC_APP_URL}/dashboard/presenter" style="color:#2563eb;text-decoration:underline;">Presenter Dashboard</a>. You'll be notified when they're ready for download.
           </p>
         </td>
       </tr>
@@ -636,3 +636,4 @@ export async function sendZoomLinkEmail(
     html,
   });
 }
+

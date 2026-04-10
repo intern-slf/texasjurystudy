@@ -121,6 +121,7 @@ export default async function PresenterDashboard({
 
   const { data: cases } = await caseQuery;
 
+
   /* ===========================
       SERVER ACTIONS
       =========================== */
@@ -352,7 +353,8 @@ export default async function PresenterDashboard({
                 
                 <CardContent className="pt-6">
                   {/* APPROVED AREA */}
-                  {tab === "approved" && (
+                  {tab === "approved" && (() => {
+                    return (
                     <div className="space-y-6">
                       {/* Participant History — current case */}
                       <div className="bg-slate-50/50 rounded-lg p-4 border">
@@ -452,7 +454,8 @@ export default async function PresenterDashboard({
 
                     </div>
                     </div>
-                  )}
+                    );
+                  })()}
 
                   {/* CURRENT */}
                   {tab === "current" && (

@@ -8,6 +8,7 @@ import CaseFilterEditor from "@/components/CaseFilterEditor";
 import LocalDateTime from "@/components/LocalDateTime";
 import PresenterParticipantHistory from "@/components/PresenterParticipantHistory";
 import AddParticipantPresenter from "@/components/AddParticipantPresenter";
+import ReceiptPricingPreview from "@/components/ReceiptPricingPreview";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CaseFilters } from "@/lib/filter-utils";
@@ -42,7 +43,7 @@ export default async function PresenterCaseDetailPage({
     .select(`
       id, title, description, status, admin_status, schedule_status,
       scheduled_at, admin_scheduled_at, session_completion_timeframe, preferred_day,
-      documentation_type, filters, created_at, parent_case_id
+      documentation_type, filters, created_at, parent_case_id, hours_requested
     `)
     .eq("id", caseId)
     .eq("user_id", user.id)
@@ -226,6 +227,14 @@ export default async function PresenterCaseDetailPage({
               locked={!!c.admin_scheduled_at}
             />
           </section>
+
+          {/* TRANSCRIPT PRICING PREVIEW (non-previous cases) */}
+          {status !== "previous" && (
+            <section className="space-y-2">
+              <ReceiptPricingPreview filters={filters} hoursRequested={c.hours_requested} />
+            </section>
+          )}
+
 
         </div>
       </main>

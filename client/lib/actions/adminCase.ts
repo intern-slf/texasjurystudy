@@ -12,7 +12,7 @@ export async function approveCaseAction(caseId: string) {
     .from("cases")
     .update({ admin_status: "approved" })
     .eq("id", caseId)
-    .select("title, user_id")
+    .select("title, user_id, filters, hours_requested")
     .single();
 
   if (error) {
