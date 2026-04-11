@@ -8,6 +8,63 @@ import CaseDocumentUploader from "@/components/CaseDocumentUploader";
 import ReceiptPricingPreview from "@/components/ReceiptPricingPreview";
 import { TEXAS_COUNTIES } from "@/lib/constants/texas-counties";
 import { CaseFilters } from "@/lib/filter-utils";
+import { ChevronDown, ChevronUp, Play } from "lucide-react";
+
+const FOCUS_GROUP_VIDEOS = {
+  general: {
+    title: "What Texas Jury Study Will Provide After Concluding the Focus Group",
+    url: `https://ddjfkgxwqtwmuhuecldq.supabase.co/storage/v1/object/sign/videos/Narrative%204%20(1).mp4?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV81N2JhNDRiMi1mZjg2LTQyYmItYTk1YS1jODVkYTVlMTljZTYiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJ2aWRlb3MvTmFycmF0aXZlIDQgKDEpLm1wNCIsImlhdCI6MTc3NTkzMTQxNiwiZXhwIjoxODA3NDY3NDE2fQ.V5TX3a81LCFPujYirxP_-lOkxo-fT-hVg7uX41L8C6w`,
+  },
+  narrative: [
+    {
+      question: "What is the purpose of a narrative focus group?",
+      url: `https://ddjfkgxwqtwmuhuecldq.supabase.co/storage/v1/object/sign/videos/Narrative%201%20(1).mp4?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV81N2JhNDRiMi1mZjg2LTQyYmItYTk1YS1jODVkYTVlMTljZTYiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJ2aWRlb3MvTmFycmF0aXZlIDEgKDEpLm1wNCIsImlhdCI6MTc3NTkyODk2MywiZXhwIjoxODA3NDY0OTYzfQ.38oar91Ne4_daFGROJqyrUNxC7uVitz7_Po7Cnpf2Ac`,
+    },
+    {
+      question: "At what phase of the case could one conduct a narrative focus group?",
+      url: `https://ddjfkgxwqtwmuhuecldq.supabase.co/storage/v1/object/sign/videos/Narrative%202%20(1).mp4?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV81N2JhNDRiMi1mZjg2LTQyYmItYTk1YS1jODVkYTVlMTljZTYiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJ2aWRlb3MvTmFycmF0aXZlIDIgKDEpLm1wNCIsImlhdCI6MTc3NTkzMjUzNSwiZXhwIjoxODA3NDY4NTM1fQ.aiB_AWhxXDoIf-FimutPO3m62t_Byhmk02WPu96xos8`,
+    },
+    {
+      question: "What materials are required to submit a case for a narrative focus group?",
+      url: `https://ddjfkgxwqtwmuhuecldq.supabase.co/storage/v1/object/sign/videos/Narrative%203%20(1).mp4?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV81N2JhNDRiMi1mZjg2LTQyYmItYTk1YS1jODVkYTVlMTljZTYiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJ2aWRlb3MvTmFycmF0aXZlIDMgKDEpLm1wNCIsImlhdCI6MTc3NTkzMTUzNiwiZXhwIjoxODA3NDY3NTM2fQ.gVgjbYsoFsdZ1AEcxHzg1zsJf4rEZfvVx478AylSHaI`,
+    },
+  ],
+  openingStatement: [
+    {
+      question: "How is an opening statement focus group conducted and what is the ideal timeframe for holding one?",
+      url: `https://ddjfkgxwqtwmuhuecldq.supabase.co/storage/v1/object/sign/videos/Opening%20statement%201_1%20(1).mp4?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV81N2JhNDRiMi1mZjg2LTQyYmItYTk1YS1jODVkYTVlMTljZTYiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJ2aWRlb3MvT3BlbmluZyBzdGF0ZW1lbnQgMV8xICgxKS5tcDQiLCJpYXQiOjE3NzU5MzE5NDIsImV4cCI6MTgwNzQ2Nzk0Mn0.0fD5QaLaWZM-5hkTgyFkpcURK7J88j_vqrtnfbZZl4w`,
+    },
+    {
+      question: "How does the opening statement focus group work?",
+      url: `https://ddjfkgxwqtwmuhuecldq.supabase.co/storage/v1/object/sign/videos/Opening%20Statement%202%20(1).mp4?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV81N2JhNDRiMi1mZjg2LTQyYmItYTk1YS1jODVkYTVlMTljZTYiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJ2aWRlb3MvT3BlbmluZyBTdGF0ZW1lbnQgMiAoMSkubXA0IiwiaWF0IjoxNzc1OTMyMTg2LCJleHAiOjE4MDc0NjgxODZ9.m-ZniHq6pzC4iegyskPrAWfBcWCMgjXCjzw056PSaqI`,
+    },
+    {
+      question: "What is the best way to organize opening statement focus groups, and who presents which side?",
+      url: `https://ddjfkgxwqtwmuhuecldq.supabase.co/storage/v1/object/sign/videos/Opening%20Statement%203%20(1).mp4?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV81N2JhNDRiMi1mZjg2LTQyYmItYTk1YS1jODVkYTVlMTljZTYiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJ2aWRlb3MvT3BlbmluZyBTdGF0ZW1lbnQgMyAoMSkubXA0IiwiaWF0IjoxNzc1OTMyMzY0LCJleHAiOjE4MDc0NjgzNjR9.wDP0imxW3fCFgN44BhUfHcNkBiFNaR_Jfc52MYI96wg`,
+    },
+  ],
+};
+
+function VideoPlayer({ url, className = "" }: { url: string; className?: string }) {
+  if (!url) {
+    return (
+      <div className={`aspect-video bg-slate-900 rounded-xl flex flex-col items-center justify-center ${className}`}>
+        <div className="w-14 h-14 rounded-full bg-white/10 flex items-center justify-center mb-3">
+          <Play className="w-6 h-6 text-white/60 ml-0.5" />
+        </div>
+        <span className="text-xs text-white/40 font-medium">Video Pending</span>
+      </div>
+    );
+  }
+  return (
+    <video
+      src={url}
+      controls
+      controlsList="nodownload"
+      className={`aspect-video bg-slate-900 rounded-xl w-full object-cover ${className}`}
+    />
+  );
+}
 
 const EDUCATION_LEVELS = [
   "Less than High School",
@@ -140,6 +197,7 @@ export default function NewCasePage() {
   const [driveLinkSaved, setDriveLinkSaved] = useState(false);
   const [driveLinkSaving, setDriveLinkSaving] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
+  const [openVideoFaq, setOpenVideoFaq] = useState<number | null>(null);
   const [countyQuery, setCountyQuery] = useState("");
   const [showCountySuggestions, setShowCountySuggestions] = useState(false);
   const countyRef = useRef<HTMLDivElement>(null);
@@ -719,76 +777,91 @@ export default function NewCasePage() {
               </button>
             </div>
 
-            {/* Right — Focus Group Instructions (photo/video from admin) */}
-            {form.focus_group_type && (
-              <div className="w-96 shrink-0 sticky top-12">
-                <div className="bg-card border rounded-2xl shadow-sm overflow-hidden">
-                  <div className="bg-primary/10 border-b px-5 py-4">
-                    <h3 className="text-base font-bold text-primary">
-                      {form.focus_group_type} — Instructions
-                    </h3>
-                    <p className="text-xs text-muted-foreground mt-1">Review the instructions for your selected focus group type</p>
+            {/* Right — Focus Group Video Instructions */}
+            {form.focus_group_type && (() => {
+              const faqVideos =
+                form.focus_group_type === "Narrative Type"
+                  ? FOCUS_GROUP_VIDEOS.narrative
+                  : form.focus_group_type === "Opening Statement"
+                    ? FOCUS_GROUP_VIDEOS.openingStatement
+                    : [];
+
+              return (
+                <div className="w-[420px] shrink-0 sticky top-12 self-start">
+                  <div className="bg-card border rounded-2xl shadow-sm overflow-hidden">
+                    {/* Header */}
+                    <div className="bg-slate-900 px-5 py-4">
+                      <h3 className="text-base font-semibold text-white">
+                        {form.focus_group_type} — Video Guide
+                      </h3>
+                      <p className="text-xs text-slate-400 mt-1">
+                        Watch the overview{faqVideos.length > 0 ? " and explore common questions below" : ""}
+                      </p>
+                    </div>
+
+                    {/* General / Overview Video — always shown */}
+                    <div className="p-5 space-y-3">
+                      <VideoPlayer url={FOCUS_GROUP_VIDEOS.general.url} />
+                      <h4 className="text-sm font-semibold text-foreground leading-snug">
+                        {FOCUS_GROUP_VIDEOS.general.title}
+                      </h4>
+                      <p className="text-xs text-muted-foreground leading-relaxed">
+                        {form.focus_group_type === "Narrative Type"
+                          ? "Present your case as a story. Walk participants through the facts chronologically and let them respond to the narrative as it unfolds."
+                          : form.focus_group_type === "Opening Statement"
+                            ? "Deliver your opening statement to the participants as if they were jurors. Gather their feedback on persuasiveness and clarity."
+                            : "Customize your session format as needed. Follow the admin-provided instructions for this focus group type."}
+                      </p>
+                    </div>
+
+                    {/* FAQ-style Video Accordion — Narrative & Opening Statement only */}
+                    {faqVideos.length > 0 && (
+                      <div className="border-t border-slate-200">
+                        <div className="px-5 pt-4 pb-2">
+                          <h4 className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
+                            Frequently Asked Questions
+                          </h4>
+                        </div>
+                        <div className="px-5 pb-5 space-y-2">
+                          {faqVideos.map((faq, idx) => {
+                            const isOpen = openVideoFaq === idx;
+                            return (
+                              <div
+                                key={idx}
+                                className="border border-slate-200 rounded-xl bg-white overflow-hidden shadow-sm"
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() => setOpenVideoFaq(isOpen ? null : idx)}
+                                  className="w-full flex items-start gap-3 px-4 py-3 text-left hover:bg-slate-50 transition-colors"
+                                >
+                                  <span className="shrink-0 mt-0.5 w-5 h-5 rounded-full bg-slate-800 text-white text-[10px] font-bold flex items-center justify-center">
+                                    {idx + 1}
+                                  </span>
+                                  <span className="flex-1 text-sm font-medium text-slate-800 leading-snug">
+                                    {faq.question}
+                                  </span>
+                                  {isOpen ? (
+                                    <ChevronUp className="h-4 w-4 text-slate-400 shrink-0 mt-0.5" />
+                                  ) : (
+                                    <ChevronDown className="h-4 w-4 text-slate-400 shrink-0 mt-0.5" />
+                                  )}
+                                </button>
+                                {isOpen && (
+                                  <div className="px-4 pb-4 pt-1 border-t border-slate-100">
+                                    <VideoPlayer url={faq.url} />
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </div>
-
-                  {form.focus_group_type === "Narrative Type" && (
-                    <div className="p-5 space-y-4">
-                      <div className="aspect-video bg-slate-50 border-2 border-dashed border-slate-300 rounded-xl flex flex-col items-center justify-center text-slate-400">
-                        {/* <svg className="w-12 h-12 mb-2" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0022.5 18.75V5.25A2.25 2.25 0 0020.25 3H3.75A2.25 2.25 0 001.5 5.25v13.5A2.25 2.25 0 003.75 21z" />
-                        </svg> */}
-                        {/* <span className="text-sm font-medium">Narrative Instruction Photo / Video</span> */}
-                        <span className="text-xs mt-1"><img src="/narrative_type.png" alt="Narrative Type Instructions" className="w-full rounded-xl" />
-</span>
-                      </div>
-                      <div className="space-y-2">
-                        <h4 className="text-sm font-semibold text-foreground">How Narrative Focus Groups Work</h4>
-                        <p className="text-sm text-muted-foreground leading-relaxed">
-                          Present your case as a story. Walk participants through the facts chronologically and let them respond to the narrative as it unfolds.
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  {form.focus_group_type === "Opening Statement" && (
-                    <div className="p-5 space-y-4">
-                      <div className="aspect-video bg-slate-50 border-2 border-dashed border-slate-300 rounded-xl flex flex-col items-center justify-center text-slate-400">
-                        {/* <svg className="w-12 h-12 mb-2" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
-                        </svg> */}
-                        {/* <span className="text-sm font-medium">Opening Statement Instruction Photo / Video</span> */}
-                        <span className="text-xs mt-1"><img src="/opening_statement.png" alt="Opening Statement Instructions" className="w-full rounded-xl" />
-</span>
-                      </div>
-                      <div className="space-y-2">
-                        <h4 className="text-sm font-semibold text-foreground">How Opening Statement Focus Groups Work</h4>
-                        <p className="text-sm text-muted-foreground leading-relaxed">
-                          Deliver your opening statement to the participants as if they were jurors. Gather their feedback on persuasiveness and clarity.
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  {form.focus_group_type === "Other" && (
-                    <div className="p-5 space-y-4">
-                      <div className="aspect-video bg-slate-50 border-2 border-dashed border-slate-300 rounded-xl flex flex-col items-center justify-center text-slate-400">
-                        {/* <svg className="w-12 h-12 mb-2" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-                        </svg> */}
-                        {/* <span className="text-sm font-medium">Other Type Instruction Photo / Video</span> */}
-                        <span className="text-xs mt-1"><img src="/others.png" alt="Others Instructions" className="w-full rounded-xl" />
-</span>
-                      </div>
-                      <div className="space-y-2">
-                        <h4 className="text-sm font-semibold text-foreground">How This Focus Group Works</h4>
-                        <p className="text-sm text-muted-foreground leading-relaxed">
-                          Customize your session format as needed. Follow the admin-provided instructions for this focus group type.
-                        </p>
-                      </div>
-                    </div>
-                  )}
                 </div>
-              </div>
-            )}
+              );
+            })()}
           </div>
         )}
       </section>

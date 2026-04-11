@@ -3,13 +3,51 @@
 import { useState } from "react";
 import Link from "next/link";
 import PresenterSidebar from "@/components/PresenterSidebar";
-import { ChevronDown, ChevronUp, AlertCircle, ArrowRight } from "lucide-react";
+import { ChevronDown, ChevronUp, AlertCircle, ArrowRight, Play } from "lucide-react";
 
 type FAQ = {
   question: string;
   answer: React.ReactNode;
   tag?: string;
 };
+
+const VIDEO_GUIDES = {
+  general: {
+    title: "What Texas Jury Study Will Provide After Concluding the Focus Group",
+    url: `https://ddjfkgxwqtwmuhuecldq.supabase.co/storage/v1/object/sign/videos/Narrative%204%20(1).mp4?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV81N2JhNDRiMi1mZjg2LTQyYmItYTk1YS1jODVkYTVlMTljZTYiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJ2aWRlb3MvTmFycmF0aXZlIDQgKDEpLm1wNCIsImlhdCI6MTc3NTkzMTQxNiwiZXhwIjoxODA3NDY3NDE2fQ.V5TX3a81LCFPujYirxP_-lOkxo-fT-hVg7uX41L8C6w`,
+  },
+  narrative: [
+    { question: "What is the purpose of a narrative focus group?", url: `https://ddjfkgxwqtwmuhuecldq.supabase.co/storage/v1/object/sign/videos/Narrative%201%20(1).mp4?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV81N2JhNDRiMi1mZjg2LTQyYmItYTk1YS1jODVkYTVlMTljZTYiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJ2aWRlb3MvTmFycmF0aXZlIDEgKDEpLm1wNCIsImlhdCI6MTc3NTkyODk2MywiZXhwIjoxODA3NDY0OTYzfQ.38oar91Ne4_daFGROJqyrUNxC7uVitz7_Po7Cnpf2Ac` },
+    { question: "At what phase of the case could one conduct a narrative focus group?", url: `https://ddjfkgxwqtwmuhuecldq.supabase.co/storage/v1/object/sign/videos/Narrative%202%20(1).mp4?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV81N2JhNDRiMi1mZjg2LTQyYmItYTk1YS1jODVkYTVlMTljZTYiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJ2aWRlb3MvTmFycmF0aXZlIDIgKDEpLm1wNCIsImlhdCI6MTc3NTkzMjUzNSwiZXhwIjoxODA3NDY4NTM1fQ.aiB_AWhxXDoIf-FimutPO3m62t_Byhmk02WPu96xos8` },
+    { question: "What materials are required to submit a case for a narrative focus group?", url: `https://ddjfkgxwqtwmuhuecldq.supabase.co/storage/v1/object/sign/videos/Narrative%203%20(1).mp4?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV81N2JhNDRiMi1mZjg2LTQyYmItYTk1YS1jODVkYTVlMTljZTYiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJ2aWRlb3MvTmFycmF0aXZlIDMgKDEpLm1wNCIsImlhdCI6MTc3NTkzMTUzNiwiZXhwIjoxODA3NDY3NTM2fQ.gVgjbYsoFsdZ1AEcxHzg1zsJf4rEZfvVx478AylSHaI` },
+  ],
+  openingStatement: [
+    { question: "How is an opening statement focus group conducted and what is the ideal timeframe for holding one?", url: `https://ddjfkgxwqtwmuhuecldq.supabase.co/storage/v1/object/sign/videos/Opening%20statement%201_1%20(1).mp4?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV81N2JhNDRiMi1mZjg2LTQyYmItYTk1YS1jODVkYTVlMTljZTYiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJ2aWRlb3MvT3BlbmluZyBzdGF0ZW1lbnQgMV8xICgxKS5tcDQiLCJpYXQiOjE3NzU5MzE5NDIsImV4cCI6MTgwNzQ2Nzk0Mn0.0fD5QaLaWZM-5hkTgyFkpcURK7J88j_vqrtnfbZZl4w` },
+    { question: "How does the opening statement focus group work?", url: `https://ddjfkgxwqtwmuhuecldq.supabase.co/storage/v1/object/sign/videos/Opening%20Statement%202%20(1).mp4?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV81N2JhNDRiMi1mZjg2LTQyYmItYTk1YS1jODVkYTVlMTljZTYiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJ2aWRlb3MvT3BlbmluZyBTdGF0ZW1lbnQgMiAoMSkubXA0IiwiaWF0IjoxNzc1OTMyMTg2LCJleHAiOjE4MDc0NjgxODZ9.m-ZniHq6pzC4iegyskPrAWfBcWCMgjXCjzw056PSaqI` },
+    { question: "What is the best way to organize opening statement focus groups, and who presents which side?", url: `https://ddjfkgxwqtwmuhuecldq.supabase.co/storage/v1/object/sign/videos/Opening%20Statement%203%20(1).mp4?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV81N2JhNDRiMi1mZjg2LTQyYmItYTk1YS1jODVkYTVlMTljZTYiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJ2aWRlb3MvT3BlbmluZyBTdGF0ZW1lbnQgMyAoMSkubXA0IiwiaWF0IjoxNzc1OTMyMzY0LCJleHAiOjE4MDc0NjgzNjR9.wDP0imxW3fCFgN44BhUfHcNkBiFNaR_Jfc52MYI96wg` },
+  ],
+};
+
+function VideoPlayer({ url }: { url: string }) {
+  if (!url) {
+    return (
+      <div className="aspect-video bg-slate-900 rounded-xl flex flex-col items-center justify-center">
+        <div className="w-14 h-14 rounded-full bg-white/10 flex items-center justify-center mb-3">
+          <Play className="w-6 h-6 text-white/60 ml-0.5" />
+        </div>
+        <span className="text-xs text-white/40 font-medium">Video Pending</span>
+      </div>
+    );
+  }
+  return (
+    <video
+      src={url}
+      controls
+      controlsList="nodownload"
+      className="aspect-video bg-slate-900 rounded-xl w-full object-cover"
+    />
+  );
+}
 
 const sections: { title: string; faqs: FAQ[] }[] = [
   {
@@ -206,9 +244,14 @@ const sections: { title: string; faqs: FAQ[] }[] = [
 
 export default function FAQsPage() {
   const [openKey, setOpenKey] = useState<string | null>(null);
+  const [openVideoKey, setOpenVideoKey] = useState<string | null>(null);
 
   const toggle = (key: string) => {
     setOpenKey(openKey === key ? null : key);
+  };
+
+  const toggleVideo = (key: string) => {
+    setOpenVideoKey(openVideoKey === key ? null : key);
   };
 
   return (
@@ -248,6 +291,98 @@ export default function FAQsPage() {
                   See step-by-step guide <ArrowRight className="h-3 w-3" />
                 </button>
               </p>
+            </div>
+          </div>
+
+          {/* ── Focus Group Video Guides ─────────────────────────── */}
+          <div className="mb-10">
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-4">
+              Focus Group Video Guides
+            </h2>
+
+            {/* General / Overview Video */}
+            <div className="border border-slate-200 rounded-2xl bg-white shadow-sm overflow-hidden mb-6">
+              <div className="bg-slate-900 px-5 py-4">
+                <h3 className="text-sm font-semibold text-white">Overview</h3>
+                <p className="text-xs text-slate-400 mt-0.5">{VIDEO_GUIDES.general.title}</p>
+              </div>
+              <div className="p-5">
+                <VideoPlayer url={VIDEO_GUIDES.general.url} />
+              </div>
+            </div>
+
+            {/* Narrative Focus Group Videos */}
+            <h3 className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground mb-2 mt-6">
+              Narrative Focus Group
+            </h3>
+            <div className="space-y-2 mb-6">
+              {VIDEO_GUIDES.narrative.map((v, idx) => {
+                const key = `nfg-${idx}`;
+                const isOpen = openVideoKey === key;
+                return (
+                  <div key={key} className="border border-slate-200 rounded-xl bg-white shadow-sm overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => toggleVideo(key)}
+                      className="w-full flex items-start gap-3 px-5 py-4 text-left hover:bg-slate-50 transition-colors"
+                    >
+                      <span className="shrink-0 mt-0.5 w-5 h-5 rounded-full bg-slate-800 text-white text-[10px] font-bold flex items-center justify-center">
+                        {idx + 1}
+                      </span>
+                      <span className="flex-1 text-sm font-medium text-slate-800 leading-snug">
+                        {v.question}
+                      </span>
+                      {isOpen ? (
+                        <ChevronUp className="h-4 w-4 text-slate-400 shrink-0 mt-0.5" />
+                      ) : (
+                        <ChevronDown className="h-4 w-4 text-slate-400 shrink-0 mt-0.5" />
+                      )}
+                    </button>
+                    {isOpen && (
+                      <div className="px-5 pb-5 border-t border-slate-100 pt-4">
+                        <VideoPlayer url={v.url} />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Opening Statement Videos */}
+            <h3 className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground mb-2 mt-6">
+              Opening Statement
+            </h3>
+            <div className="space-y-2">
+              {VIDEO_GUIDES.openingStatement.map((v, idx) => {
+                const key = `os-${idx}`;
+                const isOpen = openVideoKey === key;
+                return (
+                  <div key={key} className="border border-slate-200 rounded-xl bg-white shadow-sm overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => toggleVideo(key)}
+                      className="w-full flex items-start gap-3 px-5 py-4 text-left hover:bg-slate-50 transition-colors"
+                    >
+                      <span className="shrink-0 mt-0.5 w-5 h-5 rounded-full bg-slate-800 text-white text-[10px] font-bold flex items-center justify-center">
+                        {idx + 1}
+                      </span>
+                      <span className="flex-1 text-sm font-medium text-slate-800 leading-snug">
+                        {v.question}
+                      </span>
+                      {isOpen ? (
+                        <ChevronUp className="h-4 w-4 text-slate-400 shrink-0 mt-0.5" />
+                      ) : (
+                        <ChevronDown className="h-4 w-4 text-slate-400 shrink-0 mt-0.5" />
+                      )}
+                    </button>
+                    {isOpen && (
+                      <div className="px-5 pb-5 border-t border-slate-100 pt-4">
+                        <VideoPlayer url={v.url} />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
 
