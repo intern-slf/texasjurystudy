@@ -548,9 +548,8 @@ export async function updateSessionParticipantCap(
   sessionId: string,
   cap: number
 ) {
-  const supabase = await createClient();
-
-  const { error } = await supabase
+  // Use admin client to bypass RLS for these new columns
+  const { error } = await supabaseAdmin
     .from("sessions")
     .update({ participant_cap: cap, session_full_notified: false })
     .eq("id", sessionId);

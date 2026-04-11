@@ -170,12 +170,15 @@ export async function checkAndNotifySessionFull(sessionId: string) {
 
   if ((acceptedCount ?? 0) < cap) return; // not full yet
 
-  // 3. Get pending participants (haven't responded — status is "pending" or null)
-  const { data: pendingRows } = await supabaseAdmin
+  // 3. Get all participants for this session, then filter out accepted/declined/rejected
+  const { data: allRows } = await supabaseAdmin
     .from("session_participants")
-    .select("participant_id")
-    .eq("session_id", sessionId)
-    .not("invite_status", "in", '("accepted","declined","rejected")');
+    .select("participant_id, invite_status")
+    .eq("session_id", sessionId);
+
+  const pendingRows = (allRows ?? []).filter(
+    (r) => !["accepted", "declined", "rejected"].includes(r.invite_status ?? "")
+  );
 
   if (!pendingRows?.length) {
     // No pending participants, just mark as notified
