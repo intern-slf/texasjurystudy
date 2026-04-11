@@ -20,6 +20,7 @@ import LocalTimeRange from "@/components/LocalTimeRange";
 import ParticipantActionsMenu from "@/components/ParticipantActionsMenu";
 import { sendCompletionNow } from "@/lib/actions/session";
 import ZoomLinkSender from "@/components/ZoomLinkSender";
+import SessionCapEditor from "@/components/SessionCapEditor";
 
 
 async function submitSession(formData: FormData) {
@@ -216,7 +217,7 @@ export default async function SessionsPage({
 
   const { data: sessions } = await supabase
     .from("sessions")
-    .select("id, session_date, created_by, completion_notification_enabled, completion_email_sent, zoom_link")
+    .select("id, session_date, created_by, completion_notification_enabled, completion_email_sent, zoom_link, participant_cap, session_full_notified")
     .order("session_date", { ascending: false });
 
   /* =========================
@@ -249,10 +250,12 @@ export default async function SessionsPage({
         .select("participant_id, invite_status")
         .eq("session_id", s.id);
 
-      // Deduplicate by participant_id (keep the latest status)
+      // Deduplicate by participant_id (keep the latest status — last row wins)
       const participantMap = new Map<string, typeof rawSParticipants extends (infer T)[] | null ? T : never>();
       for (const p of rawSParticipants ?? []) {
-        if (!participantMap.has(p.participant_id)) {
+        const existing = participantMap.get(p.participant_id);
+        // Prefer accepted/declined over pending/null
+        if (!existing || p.invite_status === "accepted" || p.invite_status === "declined") {
           participantMap.set(p.participant_id, p);
         }
       }
@@ -385,6 +388,17 @@ export default async function SessionsPage({
                     </div>
                     <div className="text-xs text-slate-500">
                       Session ID: {s.id}
+                    </div>
+                    <div className="flex items-center gap-3 mt-1">
+                      <span className="text-xs text-slate-500">
+                        Accepted: {sParticipants.filter((p) => p.invite_status === "accepted").length}/{s.participant_cap ?? 10}
+                      </span>
+                      <SessionCapEditor sessionId={s.id} currentCap={s.participant_cap ?? 10} />
+                      {s.session_full_notified && (
+                        <span className="text-xs font-semibold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
+                          Session Full
+                        </span>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center gap-2">

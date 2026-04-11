@@ -584,6 +584,55 @@ export async function sendRejectionEmail(to: string, caseTitle: string, reason: 
   });
 }
 
+export async function sendSessionFullEmail(
+  to: string,
+  firstName: string,
+  sessionDate: string,
+) {
+  const html = emailWrapper(`
+    <h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#1e3a8a;">Session Update</h2>
+    <p style="margin:0 0 20px;font-size:15px;color:#475569;">
+      Hi ${firstName}, thank you for your interest in the Texas Jury Study. We wanted to let you know that the session scheduled for <strong>${sessionDate}</strong> has reached its participant capacity and is now full.
+    </p>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#eff6ff;border-left:4px solid #2563eb;border-radius:6px;margin:0 0 24px;">
+      <tr>
+        <td style="padding:16px 20px;">
+          <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#1e40af;text-transform:uppercase;letter-spacing:0.08em;">Session Date</p>
+          <p style="margin:0;font-size:20px;font-weight:700;color:#1e3a8a;">${sessionDate}</p>
+        </td>
+      </tr>
+    </table>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f0fdf4;border-left:4px solid #16a34a;border-radius:6px;margin:0 0 28px;">
+      <tr>
+        <td style="padding:14px 20px;">
+          <p style="margin:0;font-size:14px;color:#15803d;">
+            Please don't worry — you will be considered for the next available session that matches your profile. We appreciate your willingness to participate and will reach out again soon.
+          </p>
+        </td>
+      </tr>
+    </table>
+
+    <table role="presentation" cellpadding="0" cellspacing="0">
+      <tr>
+        <td style="border-radius:6px;background-color:#2563eb;">
+          <a href="${process.env.NEXT_PUBLIC_APP_URL}/dashboard/participant"
+             style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:6px;">
+            View My Dashboard
+          </a>
+        </td>
+      </tr>
+    </table>
+  `);
+
+  await sendEmail({
+    to,
+    subject: `Session Full – You'll Be Considered for the Next Session | Texas Jury Study`,
+    html,
+  });
+}
+
 export async function sendZoomLinkEmail(
   to: string,
   firstName: string,

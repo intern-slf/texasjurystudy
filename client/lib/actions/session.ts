@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { sendEmail, sendRescheduleEmail, sendSessionCreatedEmail, sendSessionCompletedEmail, sendPresenceConfirmedEmail, sendPresenceDeclinedEmail, sendZoomLinkEmail, emailWrapper } from "@/lib/mail";
+import { checkAndNotifySessionFull } from "@/lib/participant/updateInviteStatus";
 import { generateEmailActionToken } from "@/lib/emailActionToken";
 import { revalidatePath } from "next/cache";
 import { localToUTC, localToUTCTime } from "@/lib/timezone";
@@ -526,6 +527,42 @@ export async function adminRespondOnBehalf(
     } else {
       await sendPresenceDeclinedEmail(email, firstName, session.session_date);
     }
+  }
+
+  // Check if session is now full after admin acceptance
+  if (action === "accepted") {
+    try {
+      await checkAndNotifySessionFull(sessionId);
+    } catch (err) {
+      console.error("[adminRespondOnBehalf] Session full check error:", err);
+    }
+  }
+
+  revalidatePath("/dashboard/Admin/sessions");
+}
+
+/* =========================
+   UPDATE SESSION PARTICIPANT CAP
+========================= */
+export async function updateSessionParticipantCap(
+  sessionId: string,
+  cap: number
+) {
+  const supabase = await createClient();
+
+  const { error } = await supabase
+    .from("sessions")
+    .update({ participant_cap: cap, session_full_notified: false })
+    .eq("id", sessionId);
+
+  if (error) throw error;
+
+  // Re-run the session full check — if cap was lowered below current accepted count,
+  // this will decline pending participants and send them emails
+  try {
+    await checkAndNotifySessionFull(sessionId);
+  } catch (err) {
+    console.error("[updateSessionParticipantCap] Session full check error:", err);
   }
 
   revalidatePath("/dashboard/Admin/sessions");

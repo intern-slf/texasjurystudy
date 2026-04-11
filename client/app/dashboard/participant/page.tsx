@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import ParticipantForm from "@/components/ParticipantForm";
 import Link from "next/link";
 import { getPendingInvites } from "@/lib/participant/getPendingInvites";
-import { updateInviteStatus } from "@/lib/participant/updateInviteStatus";
+import { updateInviteStatus, isSessionFull } from "@/lib/participant/updateInviteStatus";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { unstable_noStore as noStore } from "next/cache";
@@ -10,10 +10,10 @@ import { unstable_noStore as noStore } from "next/cache";
 export default async function ParticipantDashboard({
   searchParams,
 }: {
-  searchParams: Promise<{ inviteId?: string; status?: string }>;
+  searchParams: Promise<{ inviteId?: string; status?: string; sessionFull?: string }>;
 }) {
   noStore();
-  const { inviteId, status } = await searchParams;
+  const { inviteId, status, sessionFull } = await searchParams;
   const supabase = await createClient();
 
   /* =========================
@@ -32,14 +32,19 @@ export default async function ParticipantDashboard({
       redirect(`/auth/login?next=/dashboard/participant?inviteId=${inviteId}&status=${status}`);
     }
     console.log(`[ParticipantDashboard] Handling URL invite response: ID=${inviteId}, status=${status}`);
+    let wasBlocked = false;
     try {
-      await updateInviteStatus(inviteId, status as "accepted" | "declined");
-      console.log(`[ParticipantDashboard] Update success, preparing to redirect...`);
+      const result = await updateInviteStatus(inviteId, status as "accepted" | "declined");
+      if (result && "blocked" in result && result.blocked) {
+        wasBlocked = true;
+      } else {
+        console.log(`[ParticipantDashboard] Update success, preparing to redirect...`);
+      }
     } catch (err: any) {
       console.error(`[ParticipantDashboard] Failed to handle URL invite response:`, err.message);
     }
     // Redirect must be OUTSIDE try/catch because it triggers an internal Next.js error
-    redirect("/dashboard/participant");
+    redirect(wasBlocked ? "/dashboard/participant?sessionFull=1" : "/dashboard/participant");
   }
 
   if (!user) {
@@ -76,6 +81,17 @@ export default async function ParticipantDashboard({
      ========================= */
   return (
     <div className="max-w-5xl mx-auto p-8 space-y-8">
+      {/* SESSION FULL BANNER */}
+      {sessionFull === "1" && (
+        <div className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 text-amber-800 shadow-sm">
+          <span className="text-xl">📋</span>
+          <div>
+            <p className="font-semibold text-sm">This session is already full.</p>
+            <p className="text-xs text-amber-600 mt-0.5">Don&apos;t worry — you will be considered for the next available session.</p>
+          </div>
+        </div>
+      )}
+
       {/* HEADER */}
       <div className="bg-white border rounded-xl p-6">
         <h1 className="text-2xl font-bold">
@@ -132,8 +148,11 @@ export default async function ParticipantDashboard({
                   <button
                     formAction={async () => {
                       "use server";
-                      await updateInviteStatus(invite.id, "accepted");
+                      const result = await updateInviteStatus(invite.id, "accepted");
                       revalidatePath("/dashboard/participant");
+                      if (result && "blocked" in result && result.blocked) {
+                        redirect("/dashboard/participant?sessionFull=1");
+                      }
                     }}
                     className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700"
                   >
