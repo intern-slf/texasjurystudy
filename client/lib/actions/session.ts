@@ -506,7 +506,7 @@ export async function adminRespondOnBehalf(
 
   const { data: session } = await supabase
     .from("sessions")
-    .select("session_date")
+    .select("session_date, zoom_link")
     .eq("id", sessionId)
     .single();
 
@@ -524,6 +524,33 @@ export async function adminRespondOnBehalf(
         : "See your dashboard for details";
 
       await sendPresenceConfirmedEmail(email, firstName, session.session_date, timeStr);
+
+      // If zoom link is already saved, send it immediately to the accepted participant
+      if (session.zoom_link) {
+        const formatCentralTime = (t: string) => {
+          const [h, m] = t.split(":");
+          const d = new Date();
+          d.setUTCHours(parseInt(h), parseInt(m), 0, 0);
+          return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Chicago" });
+        };
+
+        const { data: sessionCaseRows } = await supabase
+          .from("session_cases")
+          .select("start_time, end_time")
+          .eq("session_id", sessionId);
+
+        let zoomTimeStr: string | undefined;
+        if (sessionCaseRows && sessionCaseRows.length > 0) {
+          const starts = sessionCaseRows.map((r) => r.start_time).filter(Boolean).sort();
+          const ends = sessionCaseRows.map((r) => r.end_time).filter(Boolean).sort();
+          if (starts.length && ends.length) {
+            zoomTimeStr = `${formatCentralTime(starts[0])} – ${formatCentralTime(ends[ends.length - 1])} CT`;
+          }
+        }
+
+        await sendZoomLinkEmail(email, firstName, session.session_date, session.zoom_link, zoomTimeStr);
+        console.log(`[adminRespondOnBehalf] Sent zoom link email to ${email} (link already saved)`);
+      }
     } else {
       await sendPresenceDeclinedEmail(email, firstName, session.session_date);
     }

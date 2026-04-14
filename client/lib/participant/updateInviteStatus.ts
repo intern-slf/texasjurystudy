@@ -1,7 +1,7 @@
 "use server";
 
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { sendInviteAcceptedConfirmationEmail, sendInviteDeclinedConfirmationEmail, sendSessionFullEmail } from "@/lib/mail";
+import { sendInviteAcceptedConfirmationEmail, sendInviteDeclinedConfirmationEmail, sendSessionFullEmail, sendZoomLinkEmail } from "@/lib/mail";
 
 /* =========================
    CHECK IF SESSION HAS REACHED ITS PARTICIPANT CAP
@@ -71,7 +71,7 @@ export async function updateInviteStatus(
     try {
       const { data: session } = await supabaseAdmin
         .from("sessions")
-        .select("session_date")
+        .select("session_date, zoom_link")
         .eq("id", session_id)
         .single();
 
@@ -115,6 +115,33 @@ export async function updateInviteStatus(
           const firstCase = sessionCases[0];
           const timeStr = firstCase ? `${firstCase.start_time} – ${firstCase.end_time}` : "See your dashboard for details";
           await sendInviteAcceptedConfirmationEmail(email, session.session_date as string, timeStr);
+
+          // If zoom link is already saved, send it immediately to the new participant
+          if (session.zoom_link) {
+            const formatCentralTime = (t: string) => {
+              const [h, m] = t.split(":");
+              const d = new Date();
+              d.setUTCHours(parseInt(h), parseInt(m), 0, 0);
+              return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Chicago" });
+            };
+
+            let zoomTimeStr: string | undefined;
+            if (sessionCases.length > 0) {
+              const starts = sessionCases.map((r) => r.start_time as string).filter(Boolean).sort();
+              const ends = sessionCases.map((r) => r.end_time as string).filter(Boolean).sort();
+              if (starts.length && ends.length) {
+                zoomTimeStr = `${formatCentralTime(starts[0])} – ${formatCentralTime(ends[ends.length - 1])} CT`;
+              }
+            }
+
+            const firstName =
+              userData?.user?.user_metadata?.first_name ||
+              userData?.user?.user_metadata?.full_name?.split(" ")[0] ||
+              "Participant";
+
+            await sendZoomLinkEmail(email, firstName, session.session_date as string, session.zoom_link, zoomTimeStr);
+            console.log(`[updateInviteStatus] Sent zoom link email to ${email} (link already saved)`);
+          }
         }
       } catch (emailErr) {
         console.error("[updateInviteStatus] Failed to send acceptance email:", emailErr);
