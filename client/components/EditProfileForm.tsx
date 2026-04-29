@@ -281,6 +281,24 @@ export default function EditProfileForm({ participant, adminMode, onUpdate, onUp
       return;
     }
 
+    if (!driverLicenseNumber?.trim()) {
+      setError("Driver's license / State ID number is required.");
+      setLoading(false);
+      return;
+    }
+
+    if (!idFile && !participant.driver_license_image_url) {
+      setError("Please upload a photo of your driver's license / State ID.");
+      setLoading(false);
+      return;
+    }
+
+    if (!paypalUsername?.trim()) {
+      setError("PayPal username is required.");
+      setLoading(false);
+      return;
+    }
+
     // Upload new ID image if provided
     let idImagePath: string | null = participant.driver_license_image_url || null;
     if (idFile) {
@@ -573,16 +591,17 @@ export default function EditProfileForm({ participant, adminMode, onUpdate, onUp
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-2">
-            <Label>Driver&apos;s License / State ID Number</Label>
+            <Label>Driver&apos;s License / State ID Number <span className="text-red-500">*</span></Label>
             <Input
               value={driverLicenseNumber}
               onChange={(e) => setDriverLicenseNumber(e.target.value)}
               placeholder="e.g. 12345678 (TX format)"
+              required
             />
             <p className="text-xs text-slate-400">Enter your U.S. state-issued driver&apos;s license or ID card number</p>
           </div>
           <div className="space-y-2">
-            <Label>Upload Driver&apos;s License / State ID Photo</Label>
+            <Label>Upload Driver&apos;s License / State ID Photo <span className="text-red-500">*</span></Label>
             <div
               className={`relative border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-all duration-200 ${
                 idPreview || existingIdUrl
@@ -640,7 +659,7 @@ export default function EditProfileForm({ participant, adminMode, onUpdate, onUp
       <div className="space-y-4 border-t pt-4">
         <h3 className="font-semibold text-lg">Payment Information</h3>
         <div className="space-y-2">
-          <Label>PayPal Username <span className="text-slate-400 font-normal">(Optional)</span></Label>
+          <Label>PayPal Username <span className="text-red-500">*</span></Label>
           <div className="flex items-center">
             <span className="inline-flex h-10 items-center rounded-l-md border border-r-0 bg-slate-50 px-3 text-sm text-slate-500">@</span>
             <Input
