@@ -2,7 +2,8 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { sendEmail, sendRescheduleEmail, sendSessionCreatedEmail, sendSessionCompletedEmail, sendPresenceConfirmedEmail, sendPresenceDeclinedEmail, sendZoomLinkEmail, emailWrapper } from "@/lib/mail";
+import { sendEmail, sendRescheduleEmail, sendSessionCreatedEmail, sendSessionCompletedEmail, sendPresenceConfirmedEmail, sendPresenceDeclinedEmail, sendZoomLinkEmail, sendPresenterInfoEmail, emailWrapper } from "@/lib/mail";
+import type { PresenterParticipantInfo } from "@/lib/mail";
 import { checkAndNotifySessionFull } from "@/lib/participant/updateInviteStatus";
 import { generateEmailActionToken } from "@/lib/emailActionToken";
 import { revalidatePath } from "next/cache";
@@ -887,4 +888,184 @@ export async function searchEligibleParticipants(
     date_of_birth: p.date_of_birth,
     political_affiliation: p.political_affiliation,
   }));
+}
+
+/* =========================
+   NOTIFY PRESENTER BY EMAIL
+   Sends zoom link, drive links, and accepted participant demographics
+========================= */
+export async function notifyPresenterByEmail(
+  sessionId: string,
+  presenterEmail: string,
+) {
+  const supabase = await createClient();
+
+  // 1. Fetch session (zoom link, date)
+  const { data: session } = await supabase
+    .from("sessions")
+    .select("session_date, zoom_link")
+    .eq("id", sessionId)
+    .single();
+
+  if (!session) throw new Error("Session not found");
+
+  const sessionDateStr = new Date(session.session_date).toLocaleDateString("en-US", {
+    weekday: "long", year: "numeric", month: "long", day: "numeric",
+  });
+
+  // 2. Fetch case IDs for session
+  const { data: sessionCases } = await supabase
+    .from("session_cases")
+    .select("case_id")
+    .eq("session_id", sessionId);
+
+  const caseIds = (sessionCases ?? []).map((sc) => sc.case_id);
+
+  // 3. Fetch case titles and legacy drive_link field
+  let caseTitleMap = new Map<string, string>();
+  let legacyDriveLinkMap = new Map<string, string>();
+  if (caseIds.length) {
+    const { data: caseRows } = await supabase
+      .from("cases")
+      .select("id, title, drive_link")
+      .in("id", caseIds);
+    for (const c of caseRows ?? []) {
+      caseTitleMap.set(c.id, c.title);
+      if (c.drive_link) legacyDriveLinkMap.set(c.id, c.drive_link);
+    }
+  }
+
+  // 4. Fetch Google Drive links for each case (case_drive_links table + legacy drive_link field)
+  const driveLinks: { caseTitle: string; urls: string[] }[] = [];
+  for (const caseId of caseIds) {
+    const { data: links } = await supabase
+      .from("case_drive_links")
+      .select("url")
+      .eq("case_id", caseId);
+
+    const urls = (links ?? []).map((l) => l.url);
+
+    // Include legacy drive_link from cases table if not already in case_drive_links
+    const legacyLink = legacyDriveLinkMap.get(caseId);
+    if (legacyLink && !urls.includes(legacyLink)) {
+      urls.unshift(legacyLink);
+    }
+
+    if (urls.length > 0) {
+      driveLinks.push({
+        caseTitle: caseTitleMap.get(caseId) ?? "Unknown Case",
+        urls,
+      });
+    }
+  }
+
+  // 5. Fetch accepted participants with demographics
+  const { data: acceptedRows } = await supabase
+    .from("session_participants")
+    .select("participant_id")
+    .eq("session_id", sessionId)
+    .eq("invite_status", "accepted");
+
+  const acceptedIds = (acceptedRows ?? []).map((r) => r.participant_id);
+
+  const participants: PresenterParticipantInfo[] = [];
+  if (acceptedIds.length) {
+    const { data: juryData } = await supabase
+      .from("jury_participants")
+      .select("user_id, first_name, last_name, email, date_of_birth, city, county, state, gender, race, marital_status, political_affiliation, education_level, currently_employed, family_income, served_on_jury, has_children")
+      .in("user_id", acceptedIds);
+
+    for (const p of juryData ?? []) {
+      let age: number | null = null;
+      if (p.date_of_birth) {
+        const dob = new Date(p.date_of_birth);
+        const now = new Date();
+        age = now.getFullYear() - dob.getFullYear();
+        const monthDiff = now.getMonth() - dob.getMonth();
+        if (monthDiff < 0 || (monthDiff === 0 && now.getDate() < dob.getDate())) {
+          age--;
+        }
+      }
+      participants.push({
+        first_name: p.first_name ?? "",
+        last_name: p.last_name ?? "",
+        email: p.email ?? "",
+        city: p.city,
+        county: p.county,
+        state: p.state,
+        gender: p.gender,
+        race: p.race,
+        age,
+        marital_status: p.marital_status,
+        political_affiliation: p.political_affiliation,
+        education_level: p.education_level,
+        currently_employed: p.currently_employed,
+        family_income: p.family_income,
+        served_on_jury: p.served_on_jury,
+        has_children: p.has_children,
+      });
+    }
+
+    // Check oldData for any participants not found in jury_participants
+    const foundIds = new Set((juryData ?? []).map((p) => p.user_id));
+    const missingIds = acceptedIds.filter((id) => !foundIds.has(id));
+
+    if (missingIds.length > 0) {
+      const { data: oldData } = await supabase
+        .from("oldData")
+        .select("id, first_name, last_name, email, date_of_birth, city, county, state, gender, race, marital_status, political_affiliation, education_level, currently_employed, family_income, served_on_jury, has_children")
+        .in("id", missingIds);
+
+      for (const p of oldData ?? []) {
+        let age: number | null = null;
+        if (p.date_of_birth) {
+          const dob = new Date(p.date_of_birth);
+          const now = new Date();
+          age = now.getFullYear() - dob.getFullYear();
+          const monthDiff = now.getMonth() - dob.getMonth();
+          if (monthDiff < 0 || (monthDiff === 0 && now.getDate() < dob.getDate())) {
+            age--;
+          }
+        }
+        participants.push({
+          first_name: p.first_name ?? "",
+          last_name: p.last_name ?? "",
+          email: p.email ?? "",
+          city: p.city,
+          county: p.county,
+          state: p.state,
+          gender: p.gender,
+          race: p.race,
+          age,
+          marital_status: p.marital_status,
+          political_affiliation: p.political_affiliation,
+          education_level: p.education_level,
+          currently_employed: p.currently_employed,
+          family_income: p.family_income,
+          served_on_jury: p.served_on_jury,
+          has_children: p.has_children,
+        });
+      }
+    }
+  }
+
+  // 6. Send email
+  await sendPresenterInfoEmail(
+    presenterEmail,
+    sessionDateStr,
+    session.zoom_link ?? null,
+    driveLinks,
+    participants,
+  );
+
+  // 7. Mark cases as submitted (preserve original "Notify Presenter" behavior)
+  if (caseIds.length) {
+    await supabase
+      .from("cases")
+      .update({ admin_status: "submitted" })
+      .in("id", caseIds);
+  }
+
+  revalidatePath("/dashboard/Admin");
+  revalidatePath("/dashboard/Admin/sessions");
 }

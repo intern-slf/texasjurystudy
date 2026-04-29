@@ -1,5 +1,4 @@
 import { createClient } from "@/lib/supabase/server";
-import { revalidatePath } from "next/cache";
 import Link from "next/link";
 import {
   combineCaseFilters,
@@ -21,32 +20,8 @@ import ParticipantActionsMenu from "@/components/ParticipantActionsMenu";
 import { sendCompletionNow } from "@/lib/actions/session";
 import ZoomLinkSender from "@/components/ZoomLinkSender";
 import SessionCapEditor from "@/components/SessionCapEditor";
+import NotifyPresenterModal from "@/components/NotifyPresenterModal";
 
-
-async function submitSession(formData: FormData) {
-  "use server";
-
-  const sessionId = formData.get("sessionId") as string;
-  const supabase = await createClient();
-
-  // get all case ids in session
-  const { data: sessionCases } = await supabase
-    .from("session_cases")
-    .select("case_id")
-    .eq("session_id", sessionId);
-
-  const ids = sessionCases?.map((c) => c.case_id) ?? [];
-
-  if (ids.length) {
-    await supabase
-      .from("cases")
-      .update({ admin_status: "submitted" })
-      .in("id", ids);
-  }
-
-  revalidatePath("/dashboard/Admin");
-  revalidatePath("/dashboard/Admin/sessions");
-}
 
 /* =========================
    HELPER: fetch recommended candidates for a session
@@ -548,18 +523,10 @@ export default async function SessionsPage({
                     />
                   )}
 
-                  <form action={submitSession}>
-                    <input type="hidden" name="sessionId" value={s.id} />
-                    <button
-                      disabled={alreadySubmitted}
-                      className={`px-4 py-2 rounded text-sm text-white ${alreadySubmitted
-                        ? "bg-gray-400 cursor-not-allowed"
-                        : "bg-green-600 hover:bg-green-700"
-                        }`}
-                    >
-                      {alreadySubmitted ? "Already Notified" : "Notify Presenter"}
-                    </button>
-                  </form>
+                  <NotifyPresenterModal
+                    sessionId={s.id}
+                    alreadyNotified={alreadySubmitted}
+                  />
                 </div>
 
               </div>

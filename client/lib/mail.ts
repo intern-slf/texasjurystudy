@@ -686,3 +686,148 @@ export async function sendZoomLinkEmail(
   });
 }
 
+export interface PresenterParticipantInfo {
+  first_name: string;
+  last_name: string;
+  email: string;
+  city?: string;
+  county?: string;
+  state?: string;
+  gender?: string;
+  race?: string;
+  age?: number | null;
+  marital_status?: string;
+  political_affiliation?: string;
+  education_level?: string;
+  currently_employed?: string;
+  family_income?: string;
+  served_on_jury?: string;
+  has_children?: string;
+}
+
+export async function sendPresenterInfoEmail(
+  to: string,
+  sessionDate: string,
+  zoomLink: string | null,
+  driveLinks: { caseTitle: string; urls: string[] }[],
+  participants: PresenterParticipantInfo[],
+) {
+  // Zoom section
+  const zoomHtml = zoomLink
+    ? `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#eff6ff;border-left:4px solid #2563eb;border-radius:6px;margin:0 0 24px;">
+      <tr>
+        <td style="padding:16px 20px;">
+          <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#1e40af;text-transform:uppercase;letter-spacing:0.08em;">Zoom Meeting Link</p>
+          <a href="${zoomLink}" style="margin:0;font-size:15px;font-weight:600;color:#2563eb;word-break:break-all;">${zoomLink}</a>
+        </td>
+      </tr>
+    </table>`
+    : `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#fef9c3;border-left:4px solid #ca8a04;border-radius:6px;margin:0 0 24px;">
+      <tr>
+        <td style="padding:16px 20px;">
+          <p style="margin:0;font-size:14px;color:#854d0e;">Zoom link has not been set for this session yet.</p>
+        </td>
+      </tr>
+    </table>`;
+
+  // Drive links section
+  let driveHtml = "";
+  const allDriveLinks = driveLinks.filter((d) => d.urls.length > 0);
+  if (allDriveLinks.length > 0) {
+    const linksListHtml = allDriveLinks
+      .map((d) => {
+        const urlItems = d.urls
+          .map((u) => `<li style="margin:4px 0;"><a href="${u}" style="font-size:14px;color:#2563eb;word-break:break-all;">${u}</a></li>`)
+          .join("");
+        return `<p style="margin:8px 0 4px;font-size:13px;font-weight:700;color:#1e293b;">${d.caseTitle}</p><ul style="margin:0;padding-left:18px;">${urlItems}</ul>`;
+      })
+      .join("");
+
+    driveHtml = `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f0fdf4;border-left:4px solid #16a34a;border-radius:6px;margin:0 0 24px;">
+      <tr>
+        <td style="padding:16px 20px;">
+          <p style="margin:0 0 8px;font-size:11px;font-weight:700;color:#166534;text-transform:uppercase;letter-spacing:0.08em;">Google Drive Links</p>
+          ${linksListHtml}
+        </td>
+      </tr>
+    </table>`;
+  }
+
+  // Participants table
+  let participantsHtml = "";
+  if (participants.length > 0) {
+    const rows = participants
+      .map(
+        (p, i) => `
+      <tr style="background-color:${i % 2 === 0 ? "#ffffff" : "#f8fafc"};">
+        <td style="padding:8px 12px;font-size:13px;color:#1e293b;border-bottom:1px solid #e2e8f0;">${p.first_name} ${p.last_name}</td>
+        <td style="padding:8px 12px;font-size:13px;color:#475569;border-bottom:1px solid #e2e8f0;">${p.email}</td>
+        <td style="padding:8px 12px;font-size:13px;color:#475569;border-bottom:1px solid #e2e8f0;">${p.age ?? "N/A"}</td>
+        <td style="padding:8px 12px;font-size:13px;color:#475569;border-bottom:1px solid #e2e8f0;">${p.gender || "N/A"}</td>
+        <td style="padding:8px 12px;font-size:13px;color:#475569;border-bottom:1px solid #e2e8f0;">${p.race || "N/A"}</td>
+        <td style="padding:8px 12px;font-size:13px;color:#475569;border-bottom:1px solid #e2e8f0;">${p.city || "N/A"}, ${p.county || ""}</td>
+        <td style="padding:8px 12px;font-size:13px;color:#475569;border-bottom:1px solid #e2e8f0;">${p.political_affiliation || "N/A"}</td>
+        <td style="padding:8px 12px;font-size:13px;color:#475569;border-bottom:1px solid #e2e8f0;">${p.education_level || "N/A"}</td>
+        <td style="padding:8px 12px;font-size:13px;color:#475569;border-bottom:1px solid #e2e8f0;">${p.marital_status || "N/A"}</td>
+        <td style="padding:8px 12px;font-size:13px;color:#475569;border-bottom:1px solid #e2e8f0;">${p.currently_employed || "N/A"}</td>
+        <td style="padding:8px 12px;font-size:13px;color:#475569;border-bottom:1px solid #e2e8f0;">${p.family_income || "N/A"}</td>
+        <td style="padding:8px 12px;font-size:13px;color:#475569;border-bottom:1px solid #e2e8f0;">${p.served_on_jury || "N/A"}</td>
+        <td style="padding:8px 12px;font-size:13px;color:#475569;border-bottom:1px solid #e2e8f0;">${p.has_children || "N/A"}</td>
+      </tr>`
+      )
+      .join("");
+
+    participantsHtml = `
+    <p style="margin:0 0 8px;font-size:11px;font-weight:700;color:#1e40af;text-transform:uppercase;letter-spacing:0.08em;">Accepted Participants (${participants.length})</p>
+    <div style="overflow-x:auto;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e2e8f0;border-radius:6px;border-collapse:collapse;margin:0 0 24px;">
+        <tr style="background-color:#1e3a8a;">
+          <th style="padding:10px 12px;font-size:11px;font-weight:700;color:#ffffff;text-align:left;text-transform:uppercase;letter-spacing:0.05em;">Name</th>
+          <th style="padding:10px 12px;font-size:11px;font-weight:700;color:#ffffff;text-align:left;text-transform:uppercase;letter-spacing:0.05em;">Email</th>
+          <th style="padding:10px 12px;font-size:11px;font-weight:700;color:#ffffff;text-align:left;text-transform:uppercase;letter-spacing:0.05em;">Age</th>
+          <th style="padding:10px 12px;font-size:11px;font-weight:700;color:#ffffff;text-align:left;text-transform:uppercase;letter-spacing:0.05em;">Gender</th>
+          <th style="padding:10px 12px;font-size:11px;font-weight:700;color:#ffffff;text-align:left;text-transform:uppercase;letter-spacing:0.05em;">Race</th>
+          <th style="padding:10px 12px;font-size:11px;font-weight:700;color:#ffffff;text-align:left;text-transform:uppercase;letter-spacing:0.05em;">Location</th>
+          <th style="padding:10px 12px;font-size:11px;font-weight:700;color:#ffffff;text-align:left;text-transform:uppercase;letter-spacing:0.05em;">Political</th>
+          <th style="padding:10px 12px;font-size:11px;font-weight:700;color:#ffffff;text-align:left;text-transform:uppercase;letter-spacing:0.05em;">Education</th>
+          <th style="padding:10px 12px;font-size:11px;font-weight:700;color:#ffffff;text-align:left;text-transform:uppercase;letter-spacing:0.05em;">Marital</th>
+          <th style="padding:10px 12px;font-size:11px;font-weight:700;color:#ffffff;text-align:left;text-transform:uppercase;letter-spacing:0.05em;">Employed</th>
+          <th style="padding:10px 12px;font-size:11px;font-weight:700;color:#ffffff;text-align:left;text-transform:uppercase;letter-spacing:0.05em;">Income</th>
+          <th style="padding:10px 12px;font-size:11px;font-weight:700;color:#ffffff;text-align:left;text-transform:uppercase;letter-spacing:0.05em;">Jury</th>
+          <th style="padding:10px 12px;font-size:11px;font-weight:700;color:#ffffff;text-align:left;text-transform:uppercase;letter-spacing:0.05em;">Children</th>
+        </tr>
+        ${rows}
+      </table>
+    </div>`;
+  } else {
+    participantsHtml = `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#fef9c3;border-left:4px solid #ca8a04;border-radius:6px;margin:0 0 24px;">
+      <tr>
+        <td style="padding:16px 20px;">
+          <p style="margin:0;font-size:14px;color:#854d0e;">No participants have accepted this session yet.</p>
+        </td>
+      </tr>
+    </table>`;
+  }
+
+  const html = emailWrapper(`
+    <h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#1e3a8a;">Session Information for Presenter</h2>
+    <p style="margin:0 0 20px;font-size:15px;color:#475569;">
+      You have been notified about the Texas Jury Study session on <strong>${sessionDate}</strong>. Below you will find all the details you need.
+    </p>
+
+    ${zoomHtml}
+    ${driveHtml}
+    ${participantsHtml}
+  `);
+
+  await sendEmail({
+    to,
+    subject: `Session Details: ${sessionDate} | Texas Jury Study`,
+    html,
+  });
+}
+
