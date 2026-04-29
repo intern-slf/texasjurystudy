@@ -473,7 +473,7 @@ export default async function SessionsPage({
                 <div>
                   <h2 className="font-medium mb-2">Participants</h2>
                   <input type="checkbox" id={`expand-${s.id}`} className="peer sr-only" />
-                  <div className="max-h-[210px] peer-checked:!max-h-none overflow-y-auto space-y-2 pr-1 transition-all">
+                  <div className={`space-y-2 pr-1 transition-all ${(sParticipants?.length ?? 0) >= 5 ? "max-h-[210px] peer-checked:!max-h-none overflow-y-auto" : ""}`}>
                     {sParticipants?.length ? (
                       sParticipants.map((p, i) => {
                         const detail = participantDetails?.find(
