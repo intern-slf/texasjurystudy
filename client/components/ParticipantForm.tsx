@@ -258,6 +258,20 @@ export default function ParticipantForm({ userId, email }: Props) {
       setLoading(false);
       return;
     }
+
+    const dlNumber = (form.get("driver_license_number") as string)?.trim();
+    if (!dlNumber) {
+      setError("Driver's license / State ID number is required.");
+      setLoading(false);
+      return;
+    }
+
+    if (!idFile) {
+      setError("Please upload a photo of your driver's license / State ID.");
+      setLoading(false);
+      return;
+    }
+
     const isEmployed = currentlyEmployed === "Yes" || currentlyEmployed === "Self-employed";
 
     // Upload ID image to Supabase Storage if provided
@@ -497,18 +511,19 @@ export default function ParticipantForm({ userId, email }: Props) {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Driver's License / ID Number */}
           <div className="space-y-2">
-            <Label htmlFor="driver_license_number">Driver&apos;s License / State ID Number</Label>
+            <Label htmlFor="driver_license_number">Driver&apos;s License / State ID Number <span className="text-red-500">*</span></Label>
             <Input
               id="driver_license_number"
               name="driver_license_number"
               placeholder="e.g. 12345678 (TX format)"
+              required
             />
             <p className="text-xs text-slate-400">Enter your U.S. state-issued driver&apos;s license or ID card number</p>
           </div>
 
           {/* ID Image Upload */}
           <div className="space-y-2">
-            <Label>Upload Driver&apos;s License / State ID Photo</Label>
+            <Label>Upload Driver&apos;s License / State ID Photo <span className="text-red-500">*</span></Label>
             <div
               className={`relative border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-all duration-200 ${
                 idPreview
