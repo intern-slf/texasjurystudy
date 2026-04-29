@@ -497,8 +497,8 @@ export default async function SessionsPage({
                 {/* PARTICIPANTS */}
                 <div>
                   <h2 className="font-medium mb-2">Participants</h2>
-
-                  <div className="space-y-2">
+                  <input type="checkbox" id={`expand-${s.id}`} className="peer sr-only" />
+                  <div className="max-h-[210px] peer-checked:!max-h-none overflow-y-auto space-y-2 pr-1 transition-all">
                     {sParticipants?.length ? (
                       sParticipants.map((p, i) => {
                         const detail = participantDetails?.find(
@@ -533,6 +533,16 @@ export default async function SessionsPage({
                       </div>
                     )}
                   </div>
+                  {(sParticipants?.length ?? 0) > 5 && (
+                    <>
+                      <label htmlFor={`expand-${s.id}`} className="mt-2 text-xs text-blue-600 hover:text-blue-800 font-medium cursor-pointer block peer-checked:!hidden">
+                        Show all
+                      </label>
+                      <label htmlFor={`expand-${s.id}`} className="mt-2 text-xs text-blue-600 hover:text-blue-800 font-medium cursor-pointer hidden peer-checked:!block">
+                        Show less
+                      </label>
+                    </>
+                  )}
                 </div>
 
                 {/* ZOOM LINK SENDER */}
