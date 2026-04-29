@@ -10,10 +10,10 @@ import { unstable_noStore as noStore } from "next/cache";
 export default async function ParticipantDashboard({
   searchParams,
 }: {
-  searchParams: Promise<{ inviteId?: string; status?: string; sessionFull?: string }>;
+  searchParams: Promise<{ inviteId?: string; status?: string; sessionFull?: string; missingProfile?: string }>;
 }) {
   noStore();
-  const { inviteId, status, sessionFull } = await searchParams;
+  const { inviteId, status, sessionFull, missingProfile } = await searchParams;
   const supabase = await createClient();
 
   /* =========================
@@ -32,19 +32,23 @@ export default async function ParticipantDashboard({
       redirect(`/auth/login?next=/dashboard/participant?inviteId=${inviteId}&status=${status}`);
     }
     console.log(`[ParticipantDashboard] Handling URL invite response: ID=${inviteId}, status=${status}`);
-    let wasBlocked = false;
+    let redirectTo = "/dashboard/participant";
     try {
       const result = await updateInviteStatus(inviteId, status as "accepted" | "declined");
       if (result && "blocked" in result && result.blocked) {
-        wasBlocked = true;
+        if (result.reason === "missing_profile") {
+          const missing = (result as any).missing as string[];
+          redirectTo = `/dashboard/participant?missingProfile=${missing.join(",")}`;
+        } else {
+          redirectTo = "/dashboard/participant?sessionFull=1";
+        }
       } else {
         console.log(`[ParticipantDashboard] Update success, preparing to redirect...`);
       }
     } catch (err: any) {
       console.error(`[ParticipantDashboard] Failed to handle URL invite response:`, err.message);
     }
-    // Redirect must be OUTSIDE try/catch because it triggers an internal Next.js error
-    redirect(wasBlocked ? "/dashboard/participant?sessionFull=1" : "/dashboard/participant");
+    redirect(redirectTo);
   }
 
   if (!user) {
@@ -88,6 +92,28 @@ export default async function ParticipantDashboard({
           <div>
             <p className="font-semibold text-sm">This session is already full.</p>
             <p className="text-xs text-amber-600 mt-0.5">Don&apos;t worry — you will be considered for the next available session.</p>
+          </div>
+        </div>
+      )}
+
+      {missingProfile && (
+        <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-5 py-4 text-red-800 shadow-sm">
+          <span className="text-xl">⚠️</span>
+          <div>
+            <p className="font-semibold text-sm">You cannot accept this invitation until your profile is complete.</p>
+            <p className="text-xs text-red-600 mt-0.5">
+              Please update your{" "}
+              {missingProfile.split(",").map((f, i, arr) => (
+                <span key={f}>
+                  {f === "dl" ? "Driver's License (number & photo)" : "PayPal username"}
+                  {i < arr.length - 1 ? " and " : ""}
+                </span>
+              ))}
+              {" "}in your profile, then try again.
+            </p>
+            <Link href="/dashboard/participant/edit" className="text-xs font-semibold underline mt-1 inline-block">
+              Update Profile →
+            </Link>
           </div>
         </div>
       )}
@@ -149,10 +175,14 @@ export default async function ParticipantDashboard({
                     formAction={async () => {
                       "use server";
                       const result = await updateInviteStatus(invite.id, "accepted");
-                      revalidatePath("/dashboard/participant");
                       if (result && "blocked" in result && result.blocked) {
+                        if (result.reason === "missing_profile") {
+                          const missing = (result as any).missing as string[];
+                          redirect(`/dashboard/participant?missingProfile=${missing.join(",")}`);
+                        }
                         redirect("/dashboard/participant?sessionFull=1");
                       }
+                      revalidatePath("/dashboard/participant");
                     }}
                     className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700"
                   >

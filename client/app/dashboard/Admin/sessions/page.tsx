@@ -525,13 +525,11 @@ export default async function SessionsPage({
 
                 {/* ACTIONS */}
                 <div className="flex justify-end gap-3">
-                  {!alreadySubmitted && (
-                    <InviteMoreModal
-                      sessionId={s.id}
-                      sessionDate={s.session_date}
-                      candidates={candidates}
-                    />
-                  )}
+                  <InviteMoreModal
+                    sessionId={s.id}
+                    sessionDate={s.session_date}
+                    candidates={candidates}
+                  />
 
                   <NotifyPresenterModal
                     sessionId={s.id}

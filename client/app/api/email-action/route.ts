@@ -51,6 +51,9 @@ export async function GET(req: NextRequest) {
 
     const result = await updateInviteStatus(inviteId, action);
     if (result && "blocked" in result && result.blocked) {
+      if (result.reason === "missing_profile") {
+        return html(missingProfilePage((result as any).missing ?? [], magicLink));
+      }
       return html(sessionFullPage(magicLink));
     }
     return html(successPage(action, magicLink));
@@ -160,6 +163,23 @@ function sessionFullPage(dashboardUrl: string): string {
     <p style="margin:0 0 8px;font-size:16px;color:#475569;line-height:1.6;">Thank you for your interest, but this session has already reached its participant capacity.</p>
     <p style="margin:0 0 28px;font-size:14px;color:#64748b;">Don't worry — you will be considered for the next available session that matches your profile.</p>
     <a href="${dashboardUrl}" style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;background-color:#2563eb;text-decoration:none;border-radius:6px;">Go to Dashboard</a>
+  `);
+}
+
+function missingProfilePage(missing: string[], dashboardUrl: string): string {
+  const hasDl = missing.includes("dl");
+  const hasPaypal = missing.includes("paypal");
+  const items = [
+    hasDl && "Driver&rsquo;s License number and photo",
+    hasPaypal && "PayPal username",
+  ].filter(Boolean).join(" and ");
+
+  return page("Profile Incomplete", `
+    <div style="width:64px;height:64px;border-radius:50%;background-color:#fff7ed;border:2px solid #f97316;margin:0 auto 20px;font-size:28px;line-height:64px;">⚠</div>
+    <h1 style="margin:0 0 12px;font-size:24px;font-weight:700;color:#c2410c;">Profile Incomplete</h1>
+    <p style="margin:0 0 8px;font-size:16px;color:#475569;line-height:1.6;">You cannot accept this invitation until you update your profile with the following missing information:</p>
+    <p style="margin:0 0 28px;font-size:15px;font-weight:600;color:#c2410c;">${items}</p>
+    <a href="${dashboardUrl}" style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;background-color:#2563eb;text-decoration:none;border-radius:6px;">Update Profile</a>
   `);
 }
 

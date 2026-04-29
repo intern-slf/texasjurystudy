@@ -30,11 +30,11 @@ export async function updateInviteStatus(
 ) {
   console.log(`[updateInviteStatus] Updating ${sessionParticipantId} to ${status}`);
 
-  // 0. If accepting, check if session is already full
+  // 0. If accepting, check session capacity and required profile fields
   if (status === "accepted") {
     const { data: inviteRow } = await supabaseAdmin
       .from("session_participants")
-      .select("session_id")
+      .select("session_id, participant_id")
       .eq("id", sessionParticipantId)
       .single();
 
@@ -42,6 +42,20 @@ export async function updateInviteStatus(
       const isFull = await isSessionFull(inviteRow.session_id);
       if (isFull) {
         return { blocked: true, reason: "session_full" } as const;
+      }
+
+      const { data: profile } = await supabaseAdmin
+        .from("jury_participants")
+        .select("paypal_username, driver_license_number, driver_license_image_url")
+        .eq("user_id", inviteRow.participant_id)
+        .single();
+
+      const missing: string[] = [];
+      if (!profile?.driver_license_number || !profile?.driver_license_image_url) missing.push("dl");
+      if (!profile?.paypal_username) missing.push("paypal");
+
+      if (missing.length > 0) {
+        return { blocked: true, reason: "missing_profile", missing } as const;
       }
     }
   }
