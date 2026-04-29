@@ -241,7 +241,7 @@ export default function ParticipantForm({ userId, email }: Props) {
 
     // Comprehensive validation
     if (
-      !gender || !race || !state || !maritalStatus || !politicalAffiliation || 
+      !gender || !race || !state || !maritalStatus || !politicalAffiliation ||
       !educationLevel || !currentlyEmployed || !familyIncome || !referralSource ||
       !servedOnJury || !convictedFelon || !usCitizen || !hasChildren || !servedArmedForces
     ) {
@@ -251,6 +251,13 @@ export default function ParticipantForm({ userId, email }: Props) {
     }
 
     const form = new FormData(e.currentTarget);
+
+    const paypalValue = (form.get("paypal_username") as string)?.trim();
+    if (!paypalValue) {
+      setError("PayPal username is required.");
+      setLoading(false);
+      return;
+    }
     const isEmployed = currentlyEmployed === "Yes" || currentlyEmployed === "Self-employed";
 
     // Upload ID image to Supabase Storage if provided
@@ -566,7 +573,7 @@ export default function ParticipantForm({ userId, email }: Props) {
       <div className="space-y-4 border-t pt-4">
         <h3 className="font-semibold text-lg">Payment Information</h3>
         <div className="space-y-2">
-          <Label htmlFor="paypal_username">PayPal Username <span className="text-slate-400 font-normal">(Optional)</span></Label>
+          <Label htmlFor="paypal_username">PayPal Username <span className="text-red-500">*</span></Label>
           <div className="flex items-center">
             <span className="inline-flex h-10 items-center rounded-l-md border border-r-0 bg-slate-50 px-3 text-sm text-slate-500">@</span>
             <Input
@@ -574,6 +581,7 @@ export default function ParticipantForm({ userId, email }: Props) {
               name="paypal_username"
               placeholder="your-paypal-username"
               className="rounded-l-none"
+              required
             />
           </div>
           <p className="text-xs text-slate-400">Enter your PayPal @username for payment purposes</p>
