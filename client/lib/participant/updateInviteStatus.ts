@@ -126,18 +126,21 @@ export async function updateInviteStatus(
         const { data: userData } = await supabaseAdmin.auth.admin.getUserById(participant_id);
         const email = userData?.user?.email;
         if (email) {
+          const formatCentralTime = (t: string) => {
+            const [h, m] = t.split(":");
+            const d = new Date();
+            d.setUTCHours(parseInt(h), parseInt(m), 0, 0);
+            return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Chicago" });
+          };
+
           const firstCase = sessionCases[0];
-          const timeStr = firstCase ? `${firstCase.start_time} – ${firstCase.end_time}` : "See your dashboard for details";
+          const timeStr = firstCase
+            ? `${formatCentralTime(firstCase.start_time)} – ${formatCentralTime(firstCase.end_time)} CT`
+            : "See your dashboard for details";
           await sendInviteAcceptedConfirmationEmail(email, session.session_date as string, timeStr);
 
           // If zoom link is already saved, send it immediately to the new participant
           if (session.zoom_link) {
-            const formatCentralTime = (t: string) => {
-              const [h, m] = t.split(":");
-              const d = new Date();
-              d.setUTCHours(parseInt(h), parseInt(m), 0, 0);
-              return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Chicago" });
-            };
 
             let zoomTimeStr: string | undefined;
             if (sessionCases.length > 0) {
