@@ -43,11 +43,11 @@ export default async function ParticipantSessionsPage({
     .eq("participant_id", participant.user_id)
     .eq("invite_status", "accepted");
 
-  const fmtUtc = (t: string) => {
+  const fmtCt = (t: string) => {
     const [h, m] = t.split(":");
     const d = new Date();
     d.setUTCHours(parseInt(h), parseInt(m), 0, 0);
-    return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "UTC" });
+    return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Chicago" });
   };
 
   const today = new Date();
@@ -63,7 +63,7 @@ export default async function ParticipantSessionsPage({
       const starts = sessionCases.map((c: any) => c.start_time).filter(Boolean).sort();
       const ends   = sessionCases.map((c: any) => c.end_time).filter(Boolean).sort();
       const timeRange = starts.length && ends.length
-        ? `${fmtUtc(starts[0])} – ${fmtUtc(ends[ends.length - 1])} (UTC)`
+        ? `${fmtCt(starts[0])} – ${fmtCt(ends[ends.length - 1])} (CT)`
         : "TBD";
 
       const caseTitles = sessionCases
@@ -151,7 +151,7 @@ export default async function ParticipantSessionsPage({
             const starts = sessionCases.map((c: any) => c.start_time).filter(Boolean).sort();
             const ends = sessionCases.map((c: any) => c.end_time).filter(Boolean).sort();
             const timeRange = starts.length && ends.length
-              ? `${fmtUtc(starts[0])} – ${fmtUtc(ends[ends.length - 1])} (UTC)`
+              ? `${fmtCt(starts[0])} – ${fmtCt(ends[ends.length - 1])} (CT)`
               : "TBD";
             const displayDate = date
               ? new Date(date).toLocaleDateString("en-US", {

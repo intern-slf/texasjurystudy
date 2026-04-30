@@ -158,14 +158,14 @@ export default async function ParticipantDashboard({
 
                       if (startTimes.length === 0 || endTimes.length === 0) return "TBD";
 
-                      const fmtUtc = (t: string) => {
+                      const fmtCt = (t: string) => {
                         const [h, m] = t.split(":");
                         const d = new Date();
                         d.setUTCHours(parseInt(h), parseInt(m), 0, 0);
-                        return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "UTC" });
+                        return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Chicago" });
                       };
 
-                      return `${fmtUtc(startTimes[0])} – ${fmtUtc(endTimes[endTimes.length - 1])} (UTC)`;
+                      return `${fmtCt(startTimes[0])} – ${fmtCt(endTimes[endTimes.length - 1])} (CT)`;
                     })()}
                   </p>
                 </div>
