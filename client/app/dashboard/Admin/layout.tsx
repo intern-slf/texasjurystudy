@@ -36,10 +36,11 @@ export default async function AdminLayout({
   /* =========================
       FETCH COUNTS FOR SIDEBAR
      ========================= */
-  // Fetch only admin_status to minimize payload
+  // Include linked session dates so we can filter approved cases the same way
+  // the Approved Cases page does (hide cases whose sessions have all passed).
   const { data: allCases } = await supabase
     .from("cases")
-    .select("admin_status");
+    .select("admin_status, session_cases(sessions(session_date))");
 
   // Count total sessions (from real schema)
   const { count: sessionsCount } = await supabase
@@ -66,11 +67,22 @@ export default async function AdminLayout({
     .select("*", { count: "exact", head: true })
     .not("blacklisted_at", "is", null);
 
+  // Match the Approved Cases page filter: include "approved" + "submitted",
+  // and hide cases whose linked sessions are all in the past.
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const approvedCount = (allCases ?? []).filter((c: any) => {
+    if (!["approved", "submitted"].includes(c.admin_status)) return false;
+    const sessionCases = c.session_cases ?? [];
+    if (sessionCases.length === 0) return true;
+    return sessionCases.some(
+      (sc: any) => sc.sessions?.session_date >= todayStr
+    );
+  }).length;
+
   // Sidebar badge counts
   const counts = {
     requested: allCases?.filter((c) => c.admin_status === "all").length || 0,
-    approved:
-      allCases?.filter((c) => c.admin_status === "approved").length || 0,
+    approved: approvedCount,
     sessions: sessionsCount || 0,
     approvedParticipants: approvedParticipantsCount || 0,
     newParticipants: newParticipantsCount || 0,

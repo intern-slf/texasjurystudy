@@ -111,6 +111,7 @@ export async function inviteParticipants(
   const rows = participantIds.map((id) => ({
     session_id: sessionId,
     participant_id: id,
+    invite_status: "pending",
   }));
 
   const { data: insertedRows, error } = await supabase

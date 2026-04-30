@@ -2,10 +2,17 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { unstable_noStore as noStore } from "next/cache";
+import { unstable_noStore as noStore, revalidatePath } from "next/cache";
+import { getPendingInvites } from "@/lib/participant/getPendingInvites";
+import { updateInviteStatus } from "@/lib/participant/updateInviteStatus";
 
-export default async function ParticipantSessionsPage() {
+export default async function ParticipantSessionsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ sessionFull?: string; missingProfile?: string }>;
+}) {
   noStore();
+  const { sessionFull, missingProfile } = await searchParams;
   const supabase = await createClient();
 
   const {
@@ -21,6 +28,11 @@ export default async function ParticipantSessionsPage() {
     .single();
 
   if (!participant) redirect("/dashboard/participant");
+
+  /* =========================
+     FETCH PENDING INVITES
+  ========================= */
+  const pendingInvites = await getPendingInvites(participant.user_id);
 
   /* =========================
      FETCH ACCEPTED SESSIONS
@@ -93,7 +105,112 @@ export default async function ParticipantSessionsPage() {
         </Link>
       </div>
 
-      {sessions.length === 0 && (
+      {/* SESSION FULL BANNER */}
+      {sessionFull === "1" && (
+        <div className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 text-amber-800 shadow-sm">
+          <span className="text-xl">📋</span>
+          <div>
+            <p className="font-semibold text-sm">This session is already full.</p>
+            <p className="text-xs text-amber-600 mt-0.5">Don&apos;t worry — you will be considered for the next available session.</p>
+          </div>
+        </div>
+      )}
+
+      {missingProfile && (
+        <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-5 py-4 text-red-800 shadow-sm">
+          <span className="text-xl">⚠️</span>
+          <div>
+            <p className="font-semibold text-sm">You cannot accept this invitation until your profile is complete.</p>
+            <p className="text-xs text-red-600 mt-0.5">
+              Please update your{" "}
+              {missingProfile.split(",").map((f, i, arr) => (
+                <span key={f}>
+                  {f === "dl" ? "Driver's License (number & photo)" : "PayPal username"}
+                  {i < arr.length - 1 ? " and " : ""}
+                </span>
+              ))}
+              {" "}in your profile, then try again.
+            </p>
+            <Link href="/dashboard/participant/edit" className="text-xs font-semibold underline mt-1 inline-block">
+              Update Profile →
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {/* REQUESTED (PENDING INVITES) */}
+      {pendingInvites.length > 0 && (
+        <section className="space-y-4">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+            Requested
+          </h2>
+          {pendingInvites.map((invite) => {
+            const session = Array.isArray(invite.sessions) ? invite.sessions[0] : invite.sessions;
+            const date: string = (session as any)?.session_date ?? "";
+            const sessionCases: any[] = (session as any)?.session_cases ?? [];
+            const starts = sessionCases.map((c: any) => c.start_time).filter(Boolean).sort();
+            const ends = sessionCases.map((c: any) => c.end_time).filter(Boolean).sort();
+            const timeRange = starts.length && ends.length
+              ? `${fmtUtc(starts[0])} – ${fmtUtc(ends[ends.length - 1])} (UTC)`
+              : "TBD";
+            const displayDate = date
+              ? new Date(date).toLocaleDateString("en-US", {
+                  weekday: "long", year: "numeric", month: "long", day: "numeric",
+                })
+              : "Date TBD";
+
+            return (
+              <form
+                key={invite.id}
+                className="border rounded-xl p-5 space-y-3 border-amber-200 bg-amber-50"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-semibold text-base text-amber-900">{displayDate}</p>
+                    <p className="text-sm mt-0.5 text-amber-700">{timeRange}</p>
+                  </div>
+                  <span className="shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-600 text-white">
+                    Pending
+                  </span>
+                </div>
+
+                <div className="flex gap-2 pt-1">
+                  <button
+                    formAction={async () => {
+                      "use server";
+                      const result = await updateInviteStatus(invite.id, "accepted");
+                      if (result && "blocked" in result && result.blocked) {
+                        if (result.reason === "missing_profile") {
+                          const missing = (result as any).missing as string[];
+                          redirect(`/dashboard/participant/sessions?missingProfile=${missing.join(",")}`);
+                        }
+                        redirect("/dashboard/participant/sessions?sessionFull=1");
+                      }
+                      revalidatePath("/dashboard/participant/sessions");
+                    }}
+                    className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 text-sm font-semibold"
+                  >
+                    Accept
+                  </button>
+
+                  <button
+                    formAction={async () => {
+                      "use server";
+                      await updateInviteStatus(invite.id, "declined");
+                      revalidatePath("/dashboard/participant/sessions");
+                    }}
+                    className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 text-sm font-semibold"
+                  >
+                    Decline
+                  </button>
+                </div>
+              </form>
+            );
+          })}
+        </section>
+      )}
+
+      {sessions.length === 0 && pendingInvites.length === 0 && (
         <div className="bg-white border rounded-xl p-10 text-center text-slate-400 italic">
           You have no confirmed sessions yet.
         </div>
