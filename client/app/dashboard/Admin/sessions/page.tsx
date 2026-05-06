@@ -98,7 +98,7 @@ async function fetchCandidates(
   const nowIso = new Date().toISOString();
   const seenIds = new Set<string>(alreadyInvitedIds);
   let rawParticipants: any[] = [];
-  const minRequired = 50;
+  const minRequired = 350;
 
   for (let level = 0; level <= FILTER_PRIORITY.length; level++) {
     if (rawParticipants.length >= minRequired) break;
