@@ -260,6 +260,7 @@ export default async function PresenterDashboard({
       .eq("user_id", activeUser.id);
 
     revalidatePath("/dashboard/presenter");
+    revalidatePath(`/dashboard/presenter/${caseId}`);
   }
 
   async function respondToSchedule(formData: FormData) {

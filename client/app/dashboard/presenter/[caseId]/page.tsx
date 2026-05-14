@@ -21,6 +21,10 @@ import {
   Upload,
   LinkIcon,
   AlertCircle,
+  Briefcase,
+  Hourglass,
+  MapPin,
+  UserCheck,
 } from "lucide-react";
 
 export default async function PresenterCaseDetailPage({
@@ -43,7 +47,8 @@ export default async function PresenterCaseDetailPage({
     .select(`
       id, title, description, status, admin_status, schedule_status,
       scheduled_at, admin_scheduled_at, session_completion_timeframe, preferred_day,
-      documentation_type, filters, created_at, parent_case_id, hours_requested
+      documentation_type, filters, created_at, parent_case_id, hours_requested,
+      case_type, focus_group_type, county, participants_from_county
     `)
     .eq("id", caseId)
     .eq("user_id", user.id)
@@ -151,6 +156,46 @@ export default async function PresenterCaseDetailPage({
                 {c.session_completion_timeframe || "—"}
               </p>
             </div>
+            {c.case_type && (
+              <div className="bg-white border rounded-xl p-4 space-y-1">
+                <p className="text-xs text-muted-foreground font-medium flex items-center gap-1">
+                  <Briefcase className="h-3.5 w-3.5" /> Type of Case
+                </p>
+                <p className="text-sm font-semibold">{c.case_type as string}</p>
+              </div>
+            )}
+            {c.hours_requested != null && (
+              <div className="bg-white border rounded-xl p-4 space-y-1">
+                <p className="text-xs text-muted-foreground font-medium flex items-center gap-1">
+                  <Hourglass className="h-3.5 w-3.5" /> Hours Requested
+                </p>
+                <p className="text-sm font-semibold">{c.hours_requested as number}</p>
+              </div>
+            )}
+            {c.focus_group_type && (
+              <div className="bg-white border rounded-xl p-4 space-y-1">
+                <p className="text-xs text-muted-foreground font-medium flex items-center gap-1">
+                  <Users className="h-3.5 w-3.5" /> Focus Group Type
+                </p>
+                <p className="text-sm font-semibold">{c.focus_group_type as string}</p>
+              </div>
+            )}
+            {c.county && (
+              <div className="bg-white border rounded-xl p-4 space-y-1">
+                <p className="text-xs text-muted-foreground font-medium flex items-center gap-1">
+                  <MapPin className="h-3.5 w-3.5" /> County
+                </p>
+                <p className="text-sm font-semibold">{c.county as string}</p>
+              </div>
+            )}
+            {c.participants_from_county && (
+              <div className="bg-white border rounded-xl p-4 space-y-1">
+                <p className="text-xs text-muted-foreground font-medium flex items-center gap-1">
+                  <UserCheck className="h-3.5 w-3.5" /> Participants from County
+                </p>
+                <p className="text-sm font-semibold">{c.participants_from_county as string}</p>
+              </div>
+            )}
           </div>
 
           {/* ADMIN SCHEDULED DATE */}
