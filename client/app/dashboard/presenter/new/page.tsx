@@ -13,34 +13,34 @@ import { ChevronDown, ChevronUp, Play } from "lucide-react";
 const FOCUS_GROUP_VIDEOS = {
   general: {
     title: "What Texas Jury Study Will Provide After Concluding the Focus Group",
-    url: `https://ddjfkgxwqtwmuhuecldq.supabase.co/storage/v1/object/sign/videos/Narrative%204%20(1).mp4?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV81N2JhNDRiMi1mZjg2LTQyYmItYTk1YS1jODVkYTVlMTljZTYiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJ2aWRlb3MvTmFycmF0aXZlIDQgKDEpLm1wNCIsImlhdCI6MTc3NTkzMTQxNiwiZXhwIjoxODA3NDY3NDE2fQ.V5TX3a81LCFPujYirxP_-lOkxo-fT-hVg7uX41L8C6w`,
+    url: `https://www.loom.com/share/ee0c157c632c4f56b40a80f2dc54aa9c`,
   },
   narrative: [
     {
       question: "What is the purpose of a narrative focus group?",
-      url: `https://ddjfkgxwqtwmuhuecldq.supabase.co/storage/v1/object/sign/videos/Narrative%201%20(1).mp4?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV81N2JhNDRiMi1mZjg2LTQyYmItYTk1YS1jODVkYTVlMTljZTYiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJ2aWRlb3MvTmFycmF0aXZlIDEgKDEpLm1wNCIsImlhdCI6MTc3NTkyODk2MywiZXhwIjoxODA3NDY0OTYzfQ.38oar91Ne4_daFGROJqyrUNxC7uVitz7_Po7Cnpf2Ac`,
+      url: `https://www.loom.com/share/4710ec50a536499e91608b5621ed3c85`,
     },
     {
       question: "At what phase of the case could one conduct a narrative focus group?",
-      url: `https://ddjfkgxwqtwmuhuecldq.supabase.co/storage/v1/object/sign/videos/Narrative%202%20(1).mp4?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV81N2JhNDRiMi1mZjg2LTQyYmItYTk1YS1jODVkYTVlMTljZTYiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJ2aWRlb3MvTmFycmF0aXZlIDIgKDEpLm1wNCIsImlhdCI6MTc3NTkzMjUzNSwiZXhwIjoxODA3NDY4NTM1fQ.aiB_AWhxXDoIf-FimutPO3m62t_Byhmk02WPu96xos8`,
+      url: `https://www.loom.com/share/5dc1e2a35b3649a5946973d609b0681f`,
     },
     {
       question: "What materials are required to submit a case for a narrative focus group?",
-      url: `https://ddjfkgxwqtwmuhuecldq.supabase.co/storage/v1/object/sign/videos/Narrative%203%20(1).mp4?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV81N2JhNDRiMi1mZjg2LTQyYmItYTk1YS1jODVkYTVlMTljZTYiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJ2aWRlb3MvTmFycmF0aXZlIDMgKDEpLm1wNCIsImlhdCI6MTc3NTkzMTUzNiwiZXhwIjoxODA3NDY3NTM2fQ.gVgjbYsoFsdZ1AEcxHzg1zsJf4rEZfvVx478AylSHaI`,
+      url: `https://www.loom.com/share/b978997021d244d2ba5ef9fa9e20e055`,
     },
   ],
   openingStatement: [
     {
       question: "How is an opening statement focus group conducted and what is the ideal timeframe for holding one?",
-      url: `https://ddjfkgxwqtwmuhuecldq.supabase.co/storage/v1/object/sign/videos/Opening%20statement%201_1%20(1).mp4?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV81N2JhNDRiMi1mZjg2LTQyYmItYTk1YS1jODVkYTVlMTljZTYiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJ2aWRlb3MvT3BlbmluZyBzdGF0ZW1lbnQgMV8xICgxKS5tcDQiLCJpYXQiOjE3NzU5MzE5NDIsImV4cCI6MTgwNzQ2Nzk0Mn0.0fD5QaLaWZM-5hkTgyFkpcURK7J88j_vqrtnfbZZl4w`,
+      url: `https://www.loom.com/share/189f994579bd48b8b11f205b6c415628`,
     },
     {
       question: "How does the opening statement focus group work?",
-      url: `https://ddjfkgxwqtwmuhuecldq.supabase.co/storage/v1/object/sign/videos/Opening%20Statement%202%20(1).mp4?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV81N2JhNDRiMi1mZjg2LTQyYmItYTk1YS1jODVkYTVlMTljZTYiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJ2aWRlb3MvT3BlbmluZyBTdGF0ZW1lbnQgMiAoMSkubXA0IiwiaWF0IjoxNzc1OTMyMTg2LCJleHAiOjE4MDc0NjgxODZ9.m-ZniHq6pzC4iegyskPrAWfBcWCMgjXCjzw056PSaqI`,
+      url: `https://www.loom.com/share/39ca74247ec44a3588848c0b8157e4e8`,
     },
     {
       question: "What is the best way to organize opening statement focus groups, and who presents which side?",
-      url: `https://ddjfkgxwqtwmuhuecldq.supabase.co/storage/v1/object/sign/videos/Opening%20Statement%203%20(1).mp4?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV81N2JhNDRiMi1mZjg2LTQyYmItYTk1YS1jODVkYTVlMTljZTYiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJ2aWRlb3MvT3BlbmluZyBTdGF0ZW1lbnQgMyAoMSkubXA0IiwiaWF0IjoxNzc1OTMyMzY0LCJleHAiOjE4MDc0NjgzNjR9.wDP0imxW3fCFgN44BhUfHcNkBiFNaR_Jfc52MYI96wg`,
+      url: `https://www.loom.com/share/bec0110497054d03916233aa1518d7e6`,
     },
   ],
 };
@@ -53,6 +53,19 @@ function VideoPlayer({ url, className = "" }: { url: string; className?: string 
           <Play className="w-6 h-6 text-white/60 ml-0.5" />
         </div>
         <span className="text-xs text-white/40 font-medium">Video Pending</span>
+      </div>
+    );
+  }
+  const loomMatch = url.match(/loom\.com\/(?:share|embed)\/([a-zA-Z0-9]+)/);
+  if (loomMatch) {
+    return (
+      <div className={`aspect-video bg-slate-900 rounded-xl w-full overflow-hidden ${className}`}>
+        <iframe
+          src={`https://www.loom.com/embed/${loomMatch[1]}`}
+          allow="fullscreen"
+          allowFullScreen
+          className="w-full h-full"
+        />
       </div>
     );
   }
