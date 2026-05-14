@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { Play, X, ChevronDown, ChevronUp } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import {
   FOCUS_GROUP_VIDEOS,
   videosForFocusGroupType,
@@ -71,16 +70,17 @@ export default function CaseVideoGuide({
 
   return (
     <>
-      <Button
+      <button
         type="button"
-        size="sm"
-        variant="outline"
         onClick={() => setOpen(true)}
-        className="flex items-center gap-1.5 border-slate-300 hover:bg-slate-50"
+        className="group inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white pl-1 pr-3.5 py-1 text-xs font-semibold text-slate-800 shadow-sm hover:border-slate-300 hover:bg-slate-50 hover:shadow-md transition-all duration-200"
       >
-        <Play className="h-3.5 w-3.5 text-primary" />
-        Video Guide
-      </Button>
+        <span className="relative flex items-center justify-center w-6 h-6 rounded-full bg-gradient-to-br from-slate-800 to-slate-900 text-white shadow-inner group-hover:scale-105 transition-transform">
+          <Play className="h-3 w-3 fill-white ml-0.5" />
+          <span className="absolute inset-0 rounded-full ring-2 ring-slate-900/0 group-hover:ring-slate-900/10 transition-all" />
+        </span>
+        <span className="tracking-wide">Video Guide</span>
+      </button>
 
       {open && (
         <div
