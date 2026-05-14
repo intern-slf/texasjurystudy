@@ -125,10 +125,12 @@ export default function DriveLinkEditor({ caseId }: Props) {
         </button>
       </div>
 
-      <p className="flex items-start gap-1.5 text-xs text-slate-500 leading-relaxed">
+      <div className="flex items-start gap-1.5 text-xs text-slate-500 leading-relaxed">
         <span className="mt-0.5 shrink-0 w-3.5 h-3.5 rounded-full border border-slate-400 text-slate-400 flex items-center justify-center font-bold text-[9px]">i</span>
-        Make sure sharing is set to <strong className="text-slate-700">&ldquo;Anyone with the link can view&rdquo;</strong> in Google Drive.
-      </p>
+        <p>
+          Make sure sharing is set to <strong className="text-slate-700">&ldquo;Anyone with the link can view&rdquo;</strong> in Google Drive so we can all access it.
+        </p>
+      </div>
     </div>
   );
 }

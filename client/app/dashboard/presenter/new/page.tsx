@@ -9,41 +9,7 @@ import ReceiptPricingPreview from "@/components/ReceiptPricingPreview";
 import { TEXAS_COUNTIES } from "@/lib/constants/texas-counties";
 import { CaseFilters } from "@/lib/filter-utils";
 import { ChevronDown, ChevronUp, Play } from "lucide-react";
-
-const FOCUS_GROUP_VIDEOS = {
-  general: {
-    title: "What Texas Jury Study Will Provide After Concluding the Focus Group",
-    url: `https://www.loom.com/share/ee0c157c632c4f56b40a80f2dc54aa9c`,
-  },
-  narrative: [
-    {
-      question: "What is the purpose of a narrative focus group?",
-      url: `https://www.loom.com/share/4710ec50a536499e91608b5621ed3c85`,
-    },
-    {
-      question: "At what phase of the case could one conduct a narrative focus group?",
-      url: `https://www.loom.com/share/5dc1e2a35b3649a5946973d609b0681f`,
-    },
-    {
-      question: "What materials are required to submit a case for a narrative focus group?",
-      url: `https://www.loom.com/share/b978997021d244d2ba5ef9fa9e20e055`,
-    },
-  ],
-  openingStatement: [
-    {
-      question: "How is an opening statement focus group conducted and what is the ideal timeframe for holding one?",
-      url: `https://www.loom.com/share/189f994579bd48b8b11f205b6c415628`,
-    },
-    {
-      question: "How does the opening statement focus group work?",
-      url: `https://www.loom.com/share/39ca74247ec44a3588848c0b8157e4e8`,
-    },
-    {
-      question: "What is the best way to organize opening statement focus groups, and who presents which side?",
-      url: `https://www.loom.com/share/bec0110497054d03916233aa1518d7e6`,
-    },
-  ],
-};
+import { FOCUS_GROUP_VIDEOS } from "@/lib/focus-group-videos";
 
 function VideoPlayer({ url, className = "" }: { url: string; className?: string }) {
   if (!url) {
@@ -779,10 +745,12 @@ export default function NewCasePage() {
                   </button>
                 </div>
 
-                <p className="flex items-start gap-1.5 text-xs text-slate-500 leading-relaxed">
+                <div className="flex items-start gap-1.5 text-xs text-slate-500 leading-relaxed">
                   <span className="mt-0.5 shrink-0 w-3.5 h-3.5 rounded-full border border-slate-400 text-slate-400 flex items-center justify-center font-bold text-[9px]">i</span>
-                  Make sure sharing is set to <strong className="text-slate-700">&ldquo;Anyone with the link can view&rdquo;</strong> in Google Drive so all participants can access it.
-                </p>
+                  <p>
+                    Make sure sharing is set to <strong className="text-slate-700">&ldquo;Anyone with the link can view&rdquo;</strong> in Google Drive so we can all access it.
+                  </p>
+                </div>
               </div>
 
               <button onClick={() => window.location.href = "/dashboard/presenter"} className="text-sm font-semibold text-muted-foreground hover:text-primary transition-colors underline decoration-2 underline-offset-8">

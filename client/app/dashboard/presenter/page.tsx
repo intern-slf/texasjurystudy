@@ -4,6 +4,7 @@ import CaseParticipantSummary from "@/components/CaseParticipantSummary";
 import PresenterParticipantHistory from "@/components/PresenterParticipantHistory";
 import { revalidatePath } from "next/cache";
 import CaseActions from "@/components/CaseActions";
+import CaseVideoGuide from "@/components/CaseVideoGuide";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
@@ -21,6 +22,14 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Calendar, Clock, AlertCircle, FileText, Upload, ArrowRight } from "lucide-react";
 import LocalDateTime from "@/components/LocalDateTime";
+import { TEXAS_COUNTIES } from "@/lib/constants/texas-counties";
+
+const TIMEFRAME_TO_DAYS: Record<string, number> = {
+  "Within a Week": 7,
+  "Within 2 Weeks": 14,
+  "Within a Month": 30,
+  "Within 3 Months": 90,
+};
 
 // Define a proper interface for your case object to replace 'any'
 interface Case {
@@ -209,20 +218,44 @@ export default async function PresenterDashboard({
     const title = formData.get("title") as string;
     const description = formData.get("description") as string;
     const scheduledAt = formData.get("scheduled_at") as string;
+    const focusGroupType = formData.get("focus_group_type") as string;
+    const caseType = formData.get("case_type") as string;
+    const hoursRequested = formData.get("hours_requested") as string;
+    const county = formData.get("county") as string;
+    const participantsFromCounty = formData.get("participants_from_county") as string;
+    const sessionCompletionTimeframe = formData.get("session_completion_timeframe") as string;
+    const preferredDay = formData.get("preferred_day") as string;
 
     const supabase = await createClient();
     const { data: { user: activeUser } } = await supabase.auth.getUser();
     if (!activeUser) return;
 
+    const updatePayload: Record<string, unknown> = {
+      title,
+      description,
+      scheduled_at: scheduledAt ? new Date(scheduledAt).toISOString() : null,
+      focus_group_type: focusGroupType || null,
+      case_type: caseType || null,
+      hours_requested: hoursRequested ? Number(hoursRequested) : null,
+      county: county || null,
+      participants_from_county: participantsFromCounty || null,
+      session_completion_timeframe: sessionCompletionTimeframe || null,
+      preferred_day: preferredDay || null,
+    };
+
+    const days = TIMEFRAME_TO_DAYS[sessionCompletionTimeframe];
+    if (days) {
+      const d = new Date();
+      d.setDate(d.getDate() + days);
+      d.setHours(23, 59, 0, 0);
+      updatePayload.deadline_date = d.toISOString();
+    } else if (sessionCompletionTimeframe === "") {
+      updatePayload.deadline_date = null;
+    }
+
     await supabase
       .from("cases")
-      .update({
-        title,
-        description,
-        scheduled_at: scheduledAt
-          ? new Date(scheduledAt).toISOString()
-          : null,
-      })
+      .update(updatePayload)
       .eq("id", caseId)
       .eq("user_id", activeUser.id);
 
@@ -338,16 +371,19 @@ export default async function PresenterDashboard({
                                 {c.description}
                             </CardDescription>
                         </div>
-                         {(c as any).admin_status === "rejected" ? (
+                        <div className="flex items-center gap-2 shrink-0">
+                          <CaseVideoGuide focusGroupType={c.focus_group_type as string | null | undefined} />
+                          {(c as any).admin_status === "rejected" ? (
                             <Badge variant="destructive" className="font-medium">
                               Rejected
                             </Badge>
-                         ) : (c.admin_scheduled_at || c.scheduled_at) ? (
+                          ) : (c.admin_scheduled_at || c.scheduled_at) ? (
                             <Badge variant="secondary" className="flex items-center gap-1.5 font-medium">
                                 <Calendar className="h-3 w-3" />
                                 <LocalDateTime iso={(c.admin_scheduled_at || c.scheduled_at) as string} mode="date" />
                             </Badge>
-                        ) : null}
+                          ) : null}
+                        </div>
                     </div>
                 </CardHeader>
                 
@@ -523,6 +559,110 @@ export default async function PresenterDashboard({
                                         defaultValue={c.description}
                                         className="min-h-[100px]"
                                     />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Type of Case</label>
+                                    <select
+                                        name="case_type"
+                                        defaultValue={(c.case_type as string | null) ?? ""}
+                                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                    >
+                                        <option value="">Select case type...</option>
+                                        <option value="Criminal Cases">Criminal Cases</option>
+                                        <option value="Personal Injury">Personal Injury</option>
+                                        <option value="Civil Cases">Civil Cases</option>
+                                        <option value="Administrative Cases">Administrative Cases</option>
+                                        <option value="Constitutional Cases">Constitutional Cases</option>
+                                        <option value="Family Law Cases">Family Law Cases</option>
+                                        <option value="Bankruptcy Cases">Bankruptcy Cases</option>
+                                    </select>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Number of Hours Requested</label>
+                                    <Input
+                                        type="number"
+                                        name="hours_requested"
+                                        min={1}
+                                        placeholder="1"
+                                        defaultValue={(c.hours_requested as number | null) ?? ""}
+                                    />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Type of Focus Group</label>
+                                    <select
+                                        name="focus_group_type"
+                                        defaultValue={(c.focus_group_type as string | null) ?? ""}
+                                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                    >
+                                        <option value="">Select focus group type...</option>
+                                        <option value="Narrative Type">Narrative Type</option>
+                                        <option value="Opening Statement">Opening Statement</option>
+                                        <option value="Other">Other</option>
+                                    </select>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">What county is your pending case in?</label>
+                                    <Input
+                                        name="county"
+                                        list={`counties-${c.id}`}
+                                        placeholder="Start typing county..."
+                                        defaultValue={(c.county as string | null) ?? ""}
+                                    />
+                                    <datalist id={`counties-${c.id}`}>
+                                        {TEXAS_COUNTIES.map((county: string) => (
+                                            <option key={county} value={county} />
+                                        ))}
+                                    </datalist>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Do you prefer participants from your county?</label>
+                                    <select
+                                        name="participants_from_county"
+                                        defaultValue={(c.participants_from_county as string | null) ?? ""}
+                                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                    >
+                                        <option value="">Select...</option>
+                                        <option value="Yes">Yes</option>
+                                        <option value="No">No</option>
+                                    </select>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Session Completion Timeframe</label>
+                                    <select
+                                        name="session_completion_timeframe"
+                                        defaultValue={(c.session_completion_timeframe as string | null) ?? ""}
+                                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                    >
+                                        <option value="">Select a timeframe...</option>
+                                        <option value="Within a Week">Within a Week</option>
+                                        <option value="Within 2 Weeks">Within 2 Weeks</option>
+                                        <option value="Within a Month">Within a Month</option>
+                                        <option value="Within 3 Months">Within 3 Months</option>
+                                    </select>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Preferred Day of the Week</label>
+                                    <select
+                                        name="preferred_day"
+                                        defaultValue={(c.preferred_day as string | null) ?? ""}
+                                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                    >
+                                        <option value="">No preference</option>
+                                        <option value="Monday">Monday</option>
+                                        <option value="Tuesday">Tuesday</option>
+                                        <option value="Wednesday">Wednesday</option>
+                                        <option value="Thursday">Thursday</option>
+                                        <option value="Friday">Friday</option>
+                                        <option value="Saturday">Saturday</option>
+                                        <option value="Sunday">Sunday</option>
+                                    </select>
                                 </div>
 
                                 <div className="space-y-2">
