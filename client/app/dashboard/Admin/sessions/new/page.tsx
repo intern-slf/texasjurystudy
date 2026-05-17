@@ -26,6 +26,7 @@ import SelectAllParticipants from "@/components/SelectAllParticipants";
 import ShowMoreButton from "@/components/ShowMoreButton";
 import CheckboxRestorer from "@/components/CheckboxRestorer";
 import ParticipantSearch from "@/components/ParticipantSearch";
+import ParticipantCounter from "@/components/ParticipantCounter";
 
 /* =========================
    PAGE
@@ -402,8 +403,11 @@ export default async function NewSessionPage({
         {/* RIGHT - PARTICIPANTS */}
         <div className="space-y-4">
           <CheckboxRestorer />
-          <div className="flex items-center justify-between">
-            <h2 className="font-semibold">Recommended Participants</h2>
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-3">
+              <h2 className="font-semibold">Recommended Participants</h2>
+              <ParticipantCounter total={participants.length} />
+            </div>
             <SelectAllParticipants total={participants.length} isOldData={isOldData} />
           </div>
 
