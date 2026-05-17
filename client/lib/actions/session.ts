@@ -597,23 +597,6 @@ export async function updateSessionParticipantCap(
 }
 
 /* =========================
-   SET COMPLETION NOTIFICATION FLAG (upcoming sessions — cron handles sending)
-========================= */
-export async function setCompletionFlag(formData: FormData) {
-  const supabase = await createClient();
-  const sessionId = formData.get("sessionId") as string;
-
-  const { error } = await supabase
-    .from("sessions")
-    .update({ completion_notification_enabled: true })
-    .eq("id", sessionId);
-
-  if (error) throw error;
-
-  revalidatePath("/dashboard/Admin/sessions");
-}
-
-/* =========================
    SEND COMPLETION EMAIL NOW (past sessions — immediate send)
 ========================= */
 export async function sendCompletionNow(formData: FormData) {
