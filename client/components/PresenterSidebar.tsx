@@ -56,7 +56,7 @@ export default function PresenterSidebar({ activeTab }: Props) {
   return (
     <aside className="w-64 border-r bg-slate-50 p-6 flex flex-col min-h-screen">
       <h2 className="text-xs font-semibold uppercase text-slate-500 mb-6 tracking-wider">
-        Presenter Panel
+        Requestee Panel
       </h2>
 
       <nav className="space-y-2 flex-1">
