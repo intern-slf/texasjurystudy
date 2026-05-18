@@ -25,6 +25,6 @@ export async function updateCaseFilters(caseId: string, filters: object) {
     .eq("id", caseId)
     .eq("user_id", user.id);
 
-  revalidatePath(`/dashboard/presenter/${caseId}`);
-  revalidatePath("/dashboard/presenter");
+  revalidatePath(`/dashboard/requestee/${caseId}`);
+  revalidatePath("/dashboard/requestee");
 }

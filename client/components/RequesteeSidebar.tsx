@@ -14,7 +14,7 @@ type Props = {
   activeTab?: "current" | "request" | "approved" | "previous" | "new" | "faqs";
 };
 
-export default function PresenterSidebar({ activeTab }: Props) {
+export default function RequesteeSidebar({ activeTab }: Props) {
   const searchParams = useSearchParams();
   const pathname = usePathname();
 
@@ -23,31 +23,31 @@ export default function PresenterSidebar({ activeTab }: Props) {
   const navItems = [
     {
       label: "Create New Case",
-      href: "/dashboard/presenter/new",
+      href: "/dashboard/requestee/new",
       id: "new",
       icon: PlusCircle,
     },
     {
       label: "Requested Cases",
-      href: "/dashboard/presenter?tab=current",
+      href: "/dashboard/requestee?tab=current",
       id: "current",
       icon: PlayCircle,
     },
     {
       label: "Approved Cases",
-      href: "/dashboard/presenter?tab=approved",
+      href: "/dashboard/requestee?tab=approved",
       id: "approved",
       icon: CheckCircle2,
     },
     {
       label: "Previous Cases",
-      href: "/dashboard/presenter?tab=previous",
+      href: "/dashboard/requestee?tab=previous",
       id: "previous",
       icon: History,
     },
     {
       label: "FAQs",
-      href: "/dashboard/presenter/faqs",
+      href: "/dashboard/requestee/faqs",
       id: "faqs",
       icon: HelpCircle,
     },
@@ -65,9 +65,9 @@ export default function PresenterSidebar({ activeTab }: Props) {
 
           const isActive =
             item.id === "new"
-              ? pathname === "/dashboard/presenter/new"
+              ? pathname === "/dashboard/requestee/new"
               : item.id === "faqs"
-              ? pathname === "/dashboard/presenter/faqs"
+              ? pathname === "/dashboard/requestee/faqs"
               : currentTab === item.id;
 
           return (
@@ -91,7 +91,7 @@ export default function PresenterSidebar({ activeTab }: Props) {
 
       <div className="mt-auto pt-4 border-t border-slate-200">
         <p className="text-[10px] text-center text-slate-400">
-          Presenter Access Only
+          Requestee Access Only
         </p>
       </div>
     </aside>

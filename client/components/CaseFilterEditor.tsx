@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { updateCaseFilters } from "@/app/dashboard/presenter/actions/updateCaseFilters";
+import { updateCaseFilters } from "@/app/dashboard/requestee/actions/updateCaseFilters";
 import { CaseFilters } from "@/lib/filter-utils";
 import { TEXAS_COUNTIES } from "@/lib/constants/texas-counties";
 

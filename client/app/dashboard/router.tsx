@@ -24,8 +24,8 @@ export default function DashboardRouter() {
 
       if (role?.role === "participant") {
         router.replace("/dashboard/participant");
-      } else if (role?.role === "presenter") {
-        router.replace("/dashboard/presenter");
+      } else if (role?.role === "requestee") {
+        router.replace("/dashboard/requestee");
       } else {
         router.replace("/");
       }

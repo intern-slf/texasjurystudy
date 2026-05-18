@@ -46,7 +46,7 @@ export interface CaseFilters {
   };
   /** Per-case original filters — populated by combineCaseFilters for UI display */
   _perCaseFilters?: { filters: CaseFilters; caseTitle: string; caseIndex: number }[];
-  // Add other loose fields if necessary, based on presenter form
+  // Add other loose fields if necessary, based on requestee form
   [key: string]: any;
 }
 

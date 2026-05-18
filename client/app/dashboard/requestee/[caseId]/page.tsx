@@ -1,13 +1,13 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import PresenterSidebar from "@/components/PresenterSidebar";
+import RequesteeSidebar from "@/components/RequesteeSidebar";
 import CaseDocumentUploader from "@/components/CaseDocumentUploader";
 import DriveLinkEditor from "@/components/DriveLinkEditor";
 import CaseFilterEditor from "@/components/CaseFilterEditor";
 import LocalDateTime from "@/components/LocalDateTime";
-import PresenterParticipantHistory from "@/components/PresenterParticipantHistory";
-import AddParticipantPresenter from "@/components/AddParticipantPresenter";
+import RequesteeParticipantHistory from "@/components/RequesteeParticipantHistory";
+import AddParticipantRequestee from "@/components/AddParticipantRequestee";
 import ReceiptPricingPreview from "@/components/ReceiptPricingPreview";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -27,7 +27,7 @@ import {
   UserCheck,
 } from "lucide-react";
 
-export default async function PresenterCaseDetailPage({
+export default async function RequesteeCaseDetailPage({
   params,
 }: {
   params: Promise<{ caseId: string }>;
@@ -40,7 +40,7 @@ export default async function PresenterCaseDetailPage({
   } = await supabase.auth.getUser();
 
   if (!user) redirect("/auth/login");
-  if (user.user_metadata?.role !== "presenter") redirect("/dashboard");
+  if (user.user_metadata?.role !== "requestee") redirect("/dashboard");
 
   const { data: c } = await supabase
     .from("cases")
@@ -70,7 +70,7 @@ export default async function PresenterCaseDetailPage({
   if (!c) {
     return (
       <div className="flex min-h-screen bg-muted/10">
-        <PresenterSidebar activeTab="current" />
+        <RequesteeSidebar activeTab="current" />
         <main className="flex-1 flex items-center justify-center">
           <p className="text-muted-foreground">Case not found.</p>
         </main>
@@ -106,14 +106,14 @@ export default async function PresenterCaseDetailPage({
 
   return (
     <div className="flex min-h-screen bg-muted/10 font-sans">
-      <PresenterSidebar activeTab={backTab} />
+      <RequesteeSidebar activeTab={backTab} />
 
       <main className="flex-1 overflow-y-auto">
         <div className="max-w-4xl mx-auto px-8 py-10 space-y-6">
 
           {/* BACK */}
           <Button asChild variant="ghost" size="sm" className="-ml-2 text-muted-foreground">
-            <Link href={`/dashboard/presenter?tab=${backTab}`}>
+            <Link href={`/dashboard/requestee?tab=${backTab}`}>
               <ChevronLeft className="h-4 w-4 mr-1" />
               Back to {backTab === "current" ? "Requested" : backTab === "approved" ? "Approved" : "Past"} Cases
             </Link>
@@ -244,14 +244,14 @@ export default async function PresenterCaseDetailPage({
               <h2 className="text-base font-semibold flex items-center gap-2">
                 <Users className="h-4 w-4 text-muted-foreground" /> Case Lineage & Participants
               </h2>
-              <AddParticipantPresenter caseId={c.id} hasSession={hasSession} />
+              <AddParticipantRequestee caseId={c.id} hasSession={hasSession} />
             </div>
             {!hasSession && (
               <p className="text-xs text-muted-foreground">
                 A session must be scheduled by the admin before you can add participants.
               </p>
             )}
-            <PresenterParticipantHistory caseId={c.id} currentCaseId={c.id} />
+            <RequesteeParticipantHistory caseId={c.id} currentCaseId={c.id} />
           </section>
 
           {/* PARTICIPANT FILTERS */}

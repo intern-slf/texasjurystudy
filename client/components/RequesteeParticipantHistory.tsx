@@ -27,7 +27,7 @@ interface Props {
   currentCaseId: string;
 }
 
-export default function PresenterParticipantHistory({ caseId, currentCaseId }: Props) {
+export default function RequesteeParticipantHistory({ caseId, currentCaseId }: Props) {
   const [chain, setChain] = useState<ChainNode[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());

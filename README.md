@@ -10,7 +10,7 @@ FocusGroup operates on selection rather than discovery.
 
 -> Participants do not browse or apply to focus groups
 -> Participants submit demographic information and wait to be shortlisted
--> Presenters define requirements and create cases
+-> Requestees define requirements and create cases
 -> Participants wait in a “Waiting for selection” state
 -> Access is granted only after explicit selection
 -> Unselected cases are never visible to participants
@@ -26,15 +26,15 @@ Participant
 -> Gains access only after being selected into a case
 -> Does not see unselected or rejected cases
 
-Presenter
+Requestee
 
 -> Completes a mandatory confidentiality acknowledgement
--> Is redirected to /dashboard/presenter after acknowledgement
+-> Is redirected to /dashboard/requestee after acknowledgement
 -> Manages focus group cases via a sidebar-based dashboard
 -> Defines participant requirements and uploads case documents
 -> Can manually archive cases
 
-Presenter Dashboard Sections
+Requestee Dashboard Sections
 
 Current
 
@@ -46,7 +46,7 @@ Previous
 
 -> Displays expired, completed, or archived cases
 -> Includes cases automatically moved after schedule expiry
--> Includes cases manually archived by presenter or admin
+-> Includes cases manually archived by requestee or admin
 
 New
 
@@ -57,10 +57,10 @@ Admin
 -> Not exposed in the UI
 -> Handles moderation, screening, and lifecycle overrides
 -> Selects participants into cases
--> Can select participants outside presenter-defined filters
--> Cannot edit presenter-defined filters
+-> Can select participants outside requestee-defined filters
+-> Cannot edit requestee-defined filters
 -> Can archive and restore cases
--> Cannot impersonate presenters
+-> Cannot impersonate requestees
 -> Cannot be selected during signup
 
 Authentication and Role Model
@@ -73,7 +73,7 @@ Authentication is handled using Supabase Auth.
 
 Role Selection (Before Signup)
 
--> User selects Participant or Presenter before signup
+-> User selects Participant or Requestee before signup
 -> Role is passed via signup URL (intent only)
 
 Role Assignment (After Signup)
@@ -100,9 +100,9 @@ Acknowledgement Gate
 -> Shown only once per user
 -> Cannot be reset by admin
 
-Case Creation (Presenter – New)
+Case Creation (Requestee – New)
 
-When a presenter selects New, a case creation form is displayed.
+When a requestee selects New, a case creation form is displayed.
 
 Collected fields:
 
@@ -115,13 +115,13 @@ Notes:
 
 -> Cases may exist without a schedule
 -> Unscheduled cases remain current indefinitely
--> Presenters may add scheduled_at later
+-> Requestees may add scheduled_at later
 -> Removing scheduled_at reverts the case to unscheduled
 -> Scheduled time represents intended session time
 
 Participant Filter Configuration
 
-Presenters define participant requirements.
+Requestees define participant requirements.
 
 -> All filters are stored as a single structured JSON object
 -> Stored in cases.filters (JSONB)
@@ -171,7 +171,7 @@ Lifecycle Rules
 -> Scheduled cases remain current until expiry
 -> Scheduled cases automatically move to previous 60 minutes after scheduled_at
 -> Expiry is calculated using UTC stored time only
--> Presenter can manually archive a case
+-> Requestee can manually archive a case
 -> Admin can archive or restore cases
 
 Important clarification:
@@ -184,7 +184,7 @@ Documents & Storage
 
 -> Case-specific documents are supported
 -> Stored under case-documents/{case_id}/{uuid}.{ext}
--> Presenters can upload, delete, and replace documents freely
+-> Requestees can upload, delete, and replace documents freely
 -> Download-only access
 -> Participant access is future-scoped
 
@@ -208,7 +208,7 @@ Database Design
 Roles Table (public.roles)
 
 -> user_id (UUID, PK, FK to auth.users)
--> role (participant | presenter | admin)
+-> role (participant | requestee | admin)
 -> created_at
 
 Purpose:
@@ -218,11 +218,11 @@ Purpose:
 
 Cases Table (public.cases)
 
-Stores presenter-created focus group cases.
+Stores requestee-created focus group cases.
 
 Includes:
 
--> user_id (presenter)
+-> user_id (requestee)
 -> title
 -> description
 -> number_of_attendees
@@ -273,7 +273,7 @@ Routing Logic
 Routing behavior:
 
 -> Participants routed to participant dashboard
--> Presenters routed to presenter dashboard
+-> Requestees routed to requestee dashboard
 
 Participants never see focus groups unless selected.
 
@@ -281,7 +281,7 @@ Security Principles
 
 -> Row Level Security enabled on all public tables
 -> Frontend never inserts or updates roles
--> Presenters have read-only access to participant demographics
+-> Requestees have read-only access to participant demographics
 -> Lifecycle transitions handled server-side
 -> No elevated keys exposed to browser
 -> Sensitive logic handled via triggers, server actions, and middleware
@@ -318,7 +318,7 @@ Future Features (Not Yet Implemented)
 -> Participant sees selected case details (name, description, schedule)
 -> Soft-preference ranking instead of hard filters
 -> Admin-driven screening and ranking pipeline
--> Presenter reordering and swapping participants
+-> Requestee reordering and swapping participants
 -> Waitlists and backup participants
 -> Participant profile editing (affects future cases only)
 -> Email + dashboard notifications

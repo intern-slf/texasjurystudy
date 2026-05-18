@@ -40,7 +40,7 @@ export function RejectCaseButton({ caseId }: Props) {
             </h3>
             <p className="text-sm text-gray-500 mb-4">
               Please provide a reason for rejecting this case. This will be sent
-              to the presenter via email.
+              to the requestee via email.
             </p>
 
             <textarea

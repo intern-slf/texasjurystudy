@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import PresenterSidebar from "@/components/PresenterSidebar";
+import RequesteeSidebar from "@/components/RequesteeSidebar";
 import CaseDocumentUploader from "@/components/CaseDocumentUploader";
 import ReceiptPricingPreview from "@/components/ReceiptPricingPreview";
 import { TEXAS_COUNTIES } from "@/lib/constants/texas-counties";
@@ -365,7 +365,7 @@ export default function NewCasePage() {
 
   return (
     <main className="flex min-h-screen bg-background text-foreground">
-      <PresenterSidebar />
+      <RequesteeSidebar />
       <section className="flex-1 max-w-6xl px-8 py-12 space-y-10 overflow-y-auto">
         <header className="flex items-center gap-3">
           <h1 className="text-4xl font-extrabold tracking-tight">New Case Setup</h1>
@@ -753,8 +753,8 @@ export default function NewCasePage() {
                 </div>
               </div>
 
-              <button onClick={() => window.location.href = "/dashboard/presenter"} className="text-sm font-semibold text-muted-foreground hover:text-primary transition-colors underline decoration-2 underline-offset-8">
-                Back to Presenter Dashboard
+              <button onClick={() => window.location.href = "/dashboard/requestee"} className="text-sm font-semibold text-muted-foreground hover:text-primary transition-colors underline decoration-2 underline-offset-8">
+                Back to Requestee Dashboard
               </button>
             </div>
 

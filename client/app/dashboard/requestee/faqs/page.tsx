@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import PresenterSidebar from "@/components/PresenterSidebar";
+import RequesteeSidebar from "@/components/RequesteeSidebar";
 import { ChevronDown, ChevronUp, AlertCircle, ArrowRight, Play } from "lucide-react";
 import { FOCUS_GROUP_VIDEOS } from "@/lib/focus-group-videos";
 
@@ -255,7 +255,7 @@ export default function FAQsPage() {
 
   return (
     <div className="flex min-h-screen bg-muted/10 font-sans">
-      <PresenterSidebar activeTab="faqs" />
+      <RequesteeSidebar activeTab="faqs" />
 
       <main className="flex-1 overflow-y-auto">
         <div className="max-w-3xl mx-auto px-8 py-12">
@@ -433,7 +433,7 @@ export default function FAQsPage() {
           <div className="mt-4 text-center text-xs text-slate-400">
             Still have questions?{" "}
             <Link
-              href="/dashboard/presenter/new"
+              href="/dashboard/requestee/new"
               className="text-blue-600 underline underline-offset-2 hover:text-blue-800"
             >
               Create a new case

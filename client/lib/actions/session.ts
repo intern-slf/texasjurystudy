@@ -75,13 +75,13 @@ export async function addCasesToSession(
 
     for (const c of cases) {
       const adminScheduledAt = localToUTC(sessionDate, c.end, tz);
-      const presenterScheduledAt = scheduledAtMap[c.caseId] ?? null;
+      const requesteeScheduledAt = scheduledAtMap[c.caseId] ?? null;
 
-      // If admin time differs from presenter's preferred time, reset status so
-      // presenter must re-confirm via the notification popup
+      // If admin time differs from requestee's preferred time, reset status so
+      // requestee must re-confirm via the notification popup
       const timesMatch =
-        presenterScheduledAt !== null &&
-        new Date(presenterScheduledAt).getTime() === new Date(adminScheduledAt).getTime();
+        requesteeScheduledAt !== null &&
+        new Date(requesteeScheduledAt).getTime() === new Date(adminScheduledAt).getTime();
 
       const updatePayload: Record<string, string | null> = {
         admin_scheduled_at: adminScheduledAt,
@@ -269,9 +269,9 @@ export async function inviteParticipants(
 }
 
 /* =========================
-   NOTIFY PRESENTERS SESSION CREATED
+   NOTIFY REQUESTEES SESSION CREATED
 ========================= */
-export async function notifyPresentersSessionCreated(
+export async function notifyRequesteesSessionCreated(
   sessionId: string,
   caseIds: string[],
   sessionDate: string,
@@ -281,7 +281,7 @@ export async function notifyPresentersSessionCreated(
 
   const supabase = await createClient();
 
-  // Fetch case titles and presenter user_ids
+  // Fetch case titles and requestee user_ids
   const { data: caseRows } = await supabase
     .from("cases")
     .select("id, title, user_id")
@@ -315,24 +315,24 @@ export async function notifyPresentersSessionCreated(
     weekday: "long", year: "numeric", month: "long", day: "numeric",
   });
 
-  // Group case titles by presenter (one email per presenter)
-  const presenterMap = new Map<string, string[]>();
+  // Group case titles by requestee (one email per requestee)
+  const requesteeMap = new Map<string, string[]>();
   for (const c of caseRows) {
     if (!c.user_id) continue;
-    if (!presenterMap.has(c.user_id)) presenterMap.set(c.user_id, []);
-    presenterMap.get(c.user_id)!.push(c.title);
+    if (!requesteeMap.has(c.user_id)) requesteeMap.set(c.user_id, []);
+    requesteeMap.get(c.user_id)!.push(c.title);
   }
 
-  for (const [presenterId, titles] of presenterMap) {
+  for (const [requesteeId, titles] of requesteeMap) {
     try {
-      const { data: userData } = await supabaseAdmin.auth.admin.getUserById(presenterId);
+      const { data: userData } = await supabaseAdmin.auth.admin.getUserById(requesteeId);
       const email = userData?.user?.email;
       if (email) {
         await sendSessionCreatedEmail(email, titles, dateStr, timeStr, participantCount);
-        console.log(`[notifyPresenters] Session created email sent to ${email}`);
+        console.log(`[notifyRequestees] Session created email sent to ${email}`);
       }
     } catch (e) {
-      console.error(`[notifyPresenters] Failed to email presenter ${presenterId}:`, e);
+      console.error(`[notifyRequestees] Failed to email requestee ${requesteeId}:`, e);
     }
   }
 }
@@ -377,7 +377,7 @@ export async function rescheduleSession(
     }
   }
 
-  // Reset schedule_status so presenter must re-confirm the new date
+  // Reset schedule_status so requestee must re-confirm the new date
   if (caseUpdates.length) {
     await supabase
       .from("cases")
@@ -413,7 +413,7 @@ export async function rescheduleSession(
     }
   }
 
-  // 4. Notify presenter(s) — deduplicated by user_id
+  // 4. Notify requestee(s) — deduplicated by user_id
   const caseIds = caseUpdates.map((cu) => cu.caseId);
   if (caseIds.length) {
     const { data: caseRows } = await supabase
@@ -421,18 +421,18 @@ export async function rescheduleSession(
       .select("user_id")
       .in("id", caseIds);
 
-    const uniquePresenterIds = Array.from(
+    const uniqueRequesteeIds = Array.from(
       new Set((caseRows ?? []).map((c) => c.user_id).filter(Boolean))
     );
 
-    for (const presenterId of uniquePresenterIds) {
+    for (const requesteeId of uniqueRequesteeIds) {
       try {
-        const { data: userData } = await supabaseAdmin.auth.admin.getUserById(presenterId);
+        const { data: userData } = await supabaseAdmin.auth.admin.getUserById(requesteeId);
         if (userData?.user?.email) {
-          await sendRescheduleEmail(userData.user.email, newDateStr, "presenter");
+          await sendRescheduleEmail(userData.user.email, newDateStr, "requestee");
         }
       } catch (e) {
-        console.error(`Reschedule email failed for presenter ${presenterId}:`, e);
+        console.error(`Reschedule email failed for requestee ${requesteeId}:`, e);
       }
     }
   }
@@ -628,25 +628,25 @@ export async function sendCompletionNow(formData: FormData) {
     weekday: "long", year: "numeric", month: "long", day: "numeric",
   });
 
-  // Group case titles by presenter
-  const presenterMap = new Map<string, string[]>();
+  // Group case titles by requestee
+  const requesteeMap = new Map<string, string[]>();
   for (const c of (caseRows ?? [])) {
     if (!c.user_id) continue;
-    if (!presenterMap.has(c.user_id)) presenterMap.set(c.user_id, []);
-    presenterMap.get(c.user_id)!.push(c.title);
+    if (!requesteeMap.has(c.user_id)) requesteeMap.set(c.user_id, []);
+    requesteeMap.get(c.user_id)!.push(c.title);
   }
 
-  // Send email immediately to each presenter
-  for (const [presenterId, titles] of presenterMap) {
+  // Send email immediately to each requestee
+  for (const [requesteeId, titles] of requesteeMap) {
     try {
-      const { data: userData } = await supabaseAdmin.auth.admin.getUserById(presenterId);
+      const { data: userData } = await supabaseAdmin.auth.admin.getUserById(requesteeId);
       const email = userData?.user?.email;
       if (email) {
         await sendSessionCompletedEmail(email, titles, sessionDateStr);
         console.log(`[sendCompletionNow] Sent to ${email} for session ${sessionId}`);
       }
     } catch (e) {
-      console.error(`[sendCompletionNow] Failed for presenter ${presenterId}:`, e);
+      console.error(`[sendCompletionNow] Failed for requestee ${requesteeId}:`, e);
     }
   }
 
@@ -773,7 +773,7 @@ export async function replaceCaseInSession(
     .update({ admin_scheduled_at: adminScheduledAt, schedule_status: null })
     .eq("id", newCaseId);
 
-  // 5. Notify new presenter — same as rescheduleSession
+  // 5. Notify new requestee — same as rescheduleSession
   const newDateStr = new Date(sessionDate).toLocaleDateString("en-US", {
     weekday: "long",
     year: "numeric",
@@ -791,10 +791,10 @@ export async function replaceCaseInSession(
     try {
       const { data: userData } = await supabaseAdmin.auth.admin.getUserById(caseRow.user_id);
       if (userData?.user?.email) {
-        await sendRescheduleEmail(userData.user.email, newDateStr, "presenter");
+        await sendRescheduleEmail(userData.user.email, newDateStr, "requestee");
       }
     } catch (e) {
-      console.error(`Notification email failed for new presenter ${caseRow.user_id}:`, e);
+      console.error(`Notification email failed for new requestee ${caseRow.user_id}:`, e);
     }
   }
 

@@ -17,7 +17,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Loader2 } from "lucide-react";
 
-type Role = "presenter" | "participant";
+type Role = "requestee" | "participant";
 
 export default function DashboardPage() {
   const supabase = createClient();
@@ -41,7 +41,7 @@ export default function DashboardPage() {
     form.firstName.trim() !== "" &&
     form.lastName.trim() !== "" &&
     signature !== "" &&
-    (role === "presenter" || form.dob !== "");
+    (role === "requestee" || form.dob !== "");
 
   // 🔒 Check agreement + role on mount
   useEffect(() => {
@@ -60,7 +60,7 @@ export default function DashboardPage() {
       const userRole = user.user_metadata?.role;
 
       // ✅ HARD ROLE GUARD
-      if (userRole !== "presenter" && userRole !== "participant") {
+      if (userRole !== "requestee" && userRole !== "participant") {
         console.error("Invalid role:", userRole);
         setLoading(false);
         return;
@@ -69,8 +69,8 @@ export default function DashboardPage() {
       setRole(userRole);
 
       const table =
-        userRole === "presenter"
-          ? "confidentiality_agreements_presenter"
+        userRole === "requestee"
+          ? "confidentiality_agreements_requestee"
           : "confidentiality_agreements";
 
       const { data, error } = await supabase
@@ -87,8 +87,8 @@ export default function DashboardPage() {
 
       if (data?.agreed) {
         router.replace(
-          userRole === "presenter"
-            ? "/dashboard/presenter"
+          userRole === "requestee"
+            ? "/dashboard/requestee"
             : "/dashboard/participant"
         );
         return;
@@ -119,9 +119,9 @@ export default function DashboardPage() {
     }
 
     const insertResult =
-      role === "presenter"
+      role === "requestee"
         ? await supabase
-            .from("confidentiality_agreements_presenter")
+            .from("confidentiality_agreements_requestee")
             .upsert(
               {
                 user_id: user.id,
@@ -170,8 +170,8 @@ export default function DashboardPage() {
     }
 
     router.replace(
-      role === "presenter"
-        ? "/dashboard/presenter"
+      role === "requestee"
+        ? "/dashboard/requestee"
         : "/dashboard/participant"
     );
   }
@@ -190,8 +190,8 @@ export default function DashboardPage() {
       <Card className="w-full max-w-3xl border-muted shadow-xl">
         <CardHeader className="text-center space-y-2">
           <CardTitle className="text-2xl md:text-3xl font-bold">
-            {role === "presenter"
-              ? "Presenter Confidentiality Agreement"
+            {role === "requestee"
+              ? "Requestee Confidentiality Agreement"
               : "Participant Confidentiality Agreement"}
           </CardTitle>
           <CardDescription className="text-base md:text-lg">
@@ -201,12 +201,12 @@ export default function DashboardPage() {
         
         <CardContent className="space-y-8">
           <div className="rounded-lg bg-muted/50 p-4 text-sm md:text-base leading-relaxed text-muted-foreground border">
-            {role === "presenter" ? (
+            {role === "requestee" ? (
               <>
-                By signing this agreement, the presenter acknowledges that all
+                By signing this agreement, the requestee acknowledges that all
                 materials, discussions, participant responses, and research outcomes
                 associated with this focus group are strictly confidential. The
-                presenter agrees not to record, distribute, disclose, or reuse any
+                requestee agrees not to record, distribute, disclose, or reuse any
                 information obtained during the session outside the scope of this
                 study.
               </>

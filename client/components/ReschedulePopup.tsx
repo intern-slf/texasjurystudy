@@ -15,7 +15,7 @@ export interface RescheduleItem {
 
 interface Props {
   items: RescheduleItem[];
-  role: "participant" | "presenter";
+  role: "participant" | "requestee";
   onAccept: (actionId: string) => Promise<void>;
   onDecline: (actionId: string) => Promise<void>;
 }
@@ -70,10 +70,10 @@ export default function ReschedulePopup({ items, role, onAccept, onDecline }: Pr
             </div>
             <div>
               <h2 className="text-base font-bold text-slate-800">
-                {role === "presenter" ? "Session Schedule Updated" : "Session Rescheduled"}
+                {role === "requestee" ? "Session Schedule Updated" : "Session Rescheduled"}
               </h2>
               <p className="text-xs text-slate-500">
-                {role === "presenter"
+                {role === "requestee"
                   ? "Please confirm your availability for the new date."
                   : "A session you joined has been moved. Confirm or decline below."}
               </p>

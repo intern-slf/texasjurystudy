@@ -1,4 +1,4 @@
-// client/app/dashboard/presenter/actions/caseDocuments.ts
+// client/app/dashboard/requestee/actions/caseDocuments.ts
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
@@ -50,7 +50,7 @@ export async function uploadCaseDocument(
     throw insertError;
   }
 
-  revalidatePath(`/dashboard/presenter`);
+  revalidatePath(`/dashboard/requestee`);
 }
 
 export async function deleteCaseDocument(documentId: string, storagePath: string) {
@@ -75,7 +75,7 @@ export async function deleteCaseDocument(documentId: string, storagePath: string
 
   if (dbError) throw dbError;
 
-  revalidatePath("/dashboard/presenter");
+  revalidatePath("/dashboard/requestee");
 }
 
 /* =========================

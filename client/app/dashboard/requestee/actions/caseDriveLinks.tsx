@@ -15,7 +15,7 @@ export async function addDriveLink(caseId: string, url: string) {
   });
 
   if (error) throw error;
-  revalidatePath("/dashboard/presenter");
+  revalidatePath("/dashboard/requestee");
 }
 
 export async function deleteDriveLink(linkId: string) {
@@ -30,5 +30,5 @@ export async function deleteDriveLink(linkId: string) {
     .eq("uploaded_by", user.id);
 
   if (error) throw error;
-  revalidatePath("/dashboard/presenter");
+  revalidatePath("/dashboard/requestee");
 }

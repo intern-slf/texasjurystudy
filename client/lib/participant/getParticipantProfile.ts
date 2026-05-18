@@ -53,21 +53,21 @@ export async function getParticipantProfile(
   }
 
   /* =========================
-     PRESENTER / REVIEWER LIMIT
+     REQUESTEE / REVIEWER LIMIT
      ========================= */
-  if (role === "presenter" || role === "reviewer") {
+  if (role === "requestee" || role === "reviewer") {
     if (!context?.caseId) {
       throw new Error("Case context required");
     }
 
     const { data: caseRow } = await supabase
       .from("cases")
-      .select("user_id, presenter_id")
+      .select("user_id, requestee_id")
       .eq("id", context.caseId)
       .single();
 
     const isOwner =
-      caseRow?.user_id === user.id || caseRow?.presenter_id === user.id;
+      caseRow?.user_id === user.id || caseRow?.requestee_id === user.id;
 
     if (!caseRow || !isOwner) {
       throw new Error("Access denied");

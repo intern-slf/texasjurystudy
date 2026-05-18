@@ -3,7 +3,7 @@ import {
   createSession,
   addCasesToSession,
   inviteParticipants,
-  notifyPresentersSessionCreated,
+  notifyRequesteesSessionCreated,
 } from "@/lib/actions/session";
 import { redirect } from "next/navigation";
 import CreateSessionButton from "@/components/CreateSessionButton";
@@ -265,9 +265,9 @@ export default async function NewSessionPage({
       await inviteParticipants(sessionId, selectedParticipants, date);
     }
 
-    // Notify presenter(s) that their session has been created
+    // Notify requestee(s) that their session has been created
     if (selectedCases.length) {
-      await notifyPresentersSessionCreated(
+      await notifyRequesteesSessionCreated(
         sessionId,
         selectedCases.map((c) => c.caseId),
         date,
@@ -364,7 +364,7 @@ export default async function NewSessionPage({
                     )}
                     {c.scheduled_at ? (
                       <div>
-                        <span className="text-slate-400 text-[10px]">Presenter preferred: </span>
+                        <span className="text-slate-400 text-[10px]">Requestee preferred: </span>
                         <span className="text-slate-600">
                           {new Date(c.scheduled_at).toLocaleString()}
                         </span>
@@ -387,7 +387,7 @@ export default async function NewSessionPage({
                         </div>
                       </div>
                     ) : (
-                      <div className="text-slate-400 italic">No presenter preference</div>
+                      <div className="text-slate-400 italic">No requestee preference</div>
                     )}
                   </div>
                 </div>

@@ -1,10 +1,10 @@
 "use client";
 
-import { getCaseDocumentUrl } from "@/app/dashboard/presenter/actions/caseDocuments";
+import { getCaseDocumentUrl } from "@/app/dashboard/requestee/actions/caseDocuments";
 import { useEffect, useState, useTransition } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { uploadCaseDocument } from "@/app/dashboard/presenter/actions/caseDocuments";
-import { deleteCaseDocument } from "@/app/dashboard/presenter/actions/caseDocuments";
+import { uploadCaseDocument } from "@/app/dashboard/requestee/actions/caseDocuments";
+import { deleteCaseDocument } from "@/app/dashboard/requestee/actions/caseDocuments";
 
 type Props = {
   caseId: string;

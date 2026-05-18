@@ -21,8 +21,8 @@ export async function approveCaseAction(caseId: string) {
   }
 
   if (updatedCase) {
-    // Get presenter email from auth.users (most reliable)
-    let presenterEmail: string | null = null;
+    // Get requestee email from auth.users (most reliable)
+    let requesteeEmail: string | null = null;
 
     try {
       const { data: userData, error: authError } =
@@ -30,25 +30,25 @@ export async function approveCaseAction(caseId: string) {
       if (authError) {
         console.error("[approveCaseAction] Auth lookup error:", authError);
       }
-      presenterEmail = userData?.user?.email ?? null;
+      requesteeEmail = userData?.user?.email ?? null;
     } catch (e) {
       console.error("[approveCaseAction] supabaseAdmin call failed:", e);
     }
 
     // Fallback to profiles table
-    if (!presenterEmail) {
+    if (!requesteeEmail) {
       const { data: profile } = await supabase
         .from("profiles")
         .select("email")
         .eq("id", updatedCase.user_id)
         .single();
-      presenterEmail = profile?.email ?? null;
+      requesteeEmail = profile?.email ?? null;
     }
 
-    if (presenterEmail) {
+    if (requesteeEmail) {
       try {
-        await sendApprovalEmail(presenterEmail, updatedCase.title);
-        console.log("[approveCaseAction] Approval email sent to:", presenterEmail);
+        await sendApprovalEmail(requesteeEmail, updatedCase.title);
+        console.log("[approveCaseAction] Approval email sent to:", requesteeEmail);
       } catch (emailErr) {
         console.error("[approveCaseAction] Failed to send approval email:", emailErr);
       }
@@ -76,7 +76,7 @@ export async function rejectCaseAction(caseId: string, reason: string) {
   }
 
   if (updatedCase) {
-    let presenterEmail: string | null = null;
+    let requesteeEmail: string | null = null;
 
     try {
       const { data: userData, error: authError } =
@@ -84,24 +84,24 @@ export async function rejectCaseAction(caseId: string, reason: string) {
       if (authError) {
         console.error("[rejectCaseAction] Auth lookup error:", authError);
       }
-      presenterEmail = userData?.user?.email ?? null;
+      requesteeEmail = userData?.user?.email ?? null;
     } catch (e) {
       console.error("[rejectCaseAction] supabaseAdmin call failed:", e);
     }
 
-    if (!presenterEmail) {
+    if (!requesteeEmail) {
       const { data: profile } = await supabase
         .from("profiles")
         .select("email")
         .eq("id", updatedCase.user_id)
         .single();
-      presenterEmail = profile?.email ?? null;
+      requesteeEmail = profile?.email ?? null;
     }
 
-    if (presenterEmail) {
+    if (requesteeEmail) {
       try {
-        await sendRejectionEmail(presenterEmail, updatedCase.title, reason);
-        console.log("[rejectCaseAction] Rejection email sent to:", presenterEmail);
+        await sendRejectionEmail(requesteeEmail, updatedCase.title, reason);
+        console.log("[rejectCaseAction] Rejection email sent to:", requesteeEmail);
       } catch (emailErr) {
         console.error("[rejectCaseAction] Failed to send rejection email:", emailErr);
       }

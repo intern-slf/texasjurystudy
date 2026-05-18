@@ -4,8 +4,8 @@ import { useState, useCallback, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   searchParticipantsForCase,
-  presenterAddParticipants,
-} from "@/lib/actions/presenterParticipant";
+  requesteeAddParticipants,
+} from "@/lib/actions/requesteeParticipant";
 
 interface Candidate {
   id: string;
@@ -32,7 +32,7 @@ interface Props {
 
 const INITIAL_VISIBLE = 20;
 
-export default function AddParticipantPresenter({ caseId, hasSession }: Props) {
+export default function AddParticipantRequestee({ caseId, hasSession }: Props) {
   const [isOpen, setIsOpen] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [isPending, startTransition] = useTransition();
@@ -93,7 +93,7 @@ export default function AddParticipantPresenter({ caseId, hasSession }: Props) {
     if (!selected.size) return;
     startTransition(async () => {
       try {
-        await presenterAddParticipants(caseId, Array.from(selected));
+        await requesteeAddParticipants(caseId, Array.from(selected));
         setIsOpen(false);
         setSelected(new Set());
         setSearchQuery("");

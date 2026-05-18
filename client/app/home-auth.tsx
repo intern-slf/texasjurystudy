@@ -18,7 +18,7 @@ export default async function HomeAuthSection() {
             Join as Participant
           </Link>
           <Link
-            href="/auth/signup?role=presenter"
+            href="/auth/signup?role=requestee"
             className="px-6 py-3 rounded-md border"
           >
             Request a Focus Group

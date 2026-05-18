@@ -36,8 +36,8 @@ export default async function ParticipantProfilePage({
         {fromCase && role !== "participant" && (
           <Link
             href={
-              role === "presenter"
-                ? `/dashboard/presenter/${schParams?.caseId}`
+              role === "requestee"
+                ? `/dashboard/requestee/${schParams?.caseId}`
                 : `/dashboard/Admin/${schParams?.caseId}${isOldData ? "?test_table=oldData" : ""}`
             }
             className="text-blue-600 underline"
@@ -119,7 +119,7 @@ export default async function ParticipantProfilePage({
         </section>
 
         {/* IDENTIFICATION */}
-        {role !== "presenter" && (participant.driver_license_number || participant.driver_license_image_url) && (
+        {role !== "requestee" && (participant.driver_license_number || participant.driver_license_image_url) && (
           <section className="bg-white border rounded-xl p-6">
             <h2 className="font-bold text-lg mb-4">Identification</h2>
             <div className="grid grid-cols-2 gap-3">
@@ -150,7 +150,7 @@ export default async function ParticipantProfilePage({
         )}
 
         {/* PAYMENT INFO */}
-        {role !== "presenter" && (
+        {role !== "requestee" && (
           <section className="bg-white border rounded-xl p-6">
             <h2 className="font-bold text-lg mb-4">Payment Information</h2>
             <p>PayPal: {participant.paypal_username ? `@${participant.paypal_username}` : "—"}</p>

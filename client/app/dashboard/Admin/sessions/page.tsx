@@ -41,7 +41,7 @@ async function fetchCandidates(
 
   const filtersList = (cases ?? []).map((c: any) => {
     const f = (c.filters ?? {}) as CaseFilters;
-    // Inject case-level county into filters when presenter wants participants from their county
+    // Inject case-level county into filters when requestee wants participants from their county
     if (c.participants_from_county === "Yes" && c.county) {
       if (!f.location) f.location = {};
       const existing = f.location.county ?? [];
@@ -438,7 +438,7 @@ export default async function SessionsPage({
                                     ? "bg-red-100 text-red-700"
                                     : "bg-slate-100 text-slate-500"
                                 }`}>
-                                  Presenter: {detail.schedule_status}
+                                  Requestee: {detail.schedule_status}
                                 </span>
                               )}
                               {detail && detail.schedule_status !== "accepted" && (

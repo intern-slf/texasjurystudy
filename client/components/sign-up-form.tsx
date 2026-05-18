@@ -29,7 +29,7 @@ function SignUpFormFields({ className, ...props }: React.ComponentPropsWithoutRe
   // Dynamic Hook
   const searchParams = useSearchParams();
 
-  const role = searchParams.get("role") === "presenter" ? "presenter" : "participant";
+  const role = searchParams.get("role") === "requestee" ? "requestee" : "participant";
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -69,7 +69,7 @@ function SignUpFormFields({ className, ...props }: React.ComponentPropsWithoutRe
       <Card className="border-muted shadow-2xl backdrop-blur-sm bg-card/80 sm:w-[400px]">
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl font-bold tracking-tight text-center">
-            Sign up as a {role === "presenter" ? "Requestee" : "Participant"}
+            Sign up as a {role === "requestee" ? "Requestee" : "Participant"}
           </CardTitle>
           <CardDescription className="text-center">Create a new account</CardDescription>
         </CardHeader>

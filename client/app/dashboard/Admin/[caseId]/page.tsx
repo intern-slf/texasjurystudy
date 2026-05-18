@@ -34,7 +34,7 @@ interface CaseInfo {
   drive_link: string | null;
   filters: CaseFilters;
   admin_scheduled_at: string | null;
-  presenter_id: string | null;
+  requestee_id: string | null;
   user_id: string;
   case_documents: CaseDocument[];
   case_drive_links: DriveLinkRow[];
@@ -67,7 +67,7 @@ export default async function AdminCaseDetailPage({
       filters,
       hours_requested,
       admin_scheduled_at,
-      presenter_id,
+      requestee_id,
       user_id,
       case_documents (
         id,
@@ -114,18 +114,18 @@ export default async function AdminCaseDetailPage({
   };
 
   /* =========================
-     FETCH PRESENTER PROFILE
+     FETCH REQUESTEE PROFILE
      ========================= */
 
-  // Use presenter_id if set, otherwise fall back to user_id (cases are created with only user_id)
-  const presenterUserId = caseInfo.presenter_id || caseInfo.user_id;
+  // Use requestee_id if set, otherwise fall back to user_id (cases are created with only user_id)
+  const requesteeUserId = caseInfo.requestee_id || caseInfo.user_id;
 
-  let presenterProfile: { id: string; email: string | null; full_name: string | null } | null = null;
-  if (presenterUserId) {
+  let requesteeProfile: { id: string; email: string | null; full_name: string | null } | null = null;
+  if (requesteeUserId) {
     const [{ data: authUser }, { data: profile }, { data: agreement }] = await Promise.all([
-      supabaseAdmin.auth.admin.getUserById(presenterUserId),
-      supabaseAdmin.from("profiles").select("id, email, full_name").eq("id", presenterUserId).single(),
-      supabaseAdmin.from("confidentiality_agreements_presenter").select("first_name, last_name").eq("user_id", presenterUserId).single(),
+      supabaseAdmin.auth.admin.getUserById(requesteeUserId),
+      supabaseAdmin.from("profiles").select("id, email, full_name").eq("id", requesteeUserId).single(),
+      supabaseAdmin.from("confidentiality_agreements_requestee").select("first_name, last_name").eq("user_id", requesteeUserId).single(),
     ]);
 
     const email = authUser?.user?.email || profile?.email || null;
@@ -134,7 +134,7 @@ export default async function AdminCaseDetailPage({
       || authUser?.user?.user_metadata?.full_name
       || null;
 
-    presenterProfile = { id: presenterUserId, email, full_name };
+    requesteeProfile = { id: requesteeUserId, email, full_name };
   }
 
   /* =========================
@@ -154,14 +154,14 @@ export default async function AdminCaseDetailPage({
           {caseInfo.description}
         </p>
 
-        {presenterProfile && (
+        {requesteeProfile && (
           <div className="mt-6 bg-slate-50 p-4 rounded border text-sm space-y-1">
-            <p className="font-semibold text-slate-700">Presenter</p>
+            <p className="font-semibold text-slate-700">Requestee</p>
             <p className="text-slate-600">
-              {presenterProfile?.full_name || <span className="italic text-slate-400">Name not available</span>}
+              {requesteeProfile?.full_name || <span className="italic text-slate-400">Name not available</span>}
             </p>
             <p className="text-slate-600">
-              {presenterProfile?.email || <span className="italic text-slate-400">Email not available</span>}
+              {requesteeProfile?.email || <span className="italic text-slate-400">Email not available</span>}
             </p>
           </div>
         )}
@@ -258,7 +258,7 @@ export default async function AdminCaseDetailPage({
             </span>
           ) : (
             <span className="text-xs bg-green-50 border border-green-200 text-green-700 px-2 py-0.5 rounded-full">
-              Editable by presenter
+              Editable by requestee
             </span>
           )}
         </div>
@@ -266,7 +266,7 @@ export default async function AdminCaseDetailPage({
         {(() => {
           const f = caseInfo.filters as CaseFilters | null;
           if (!f) {
-            return <p className="text-sm text-slate-400 italic">No filters set by presenter.</p>;
+            return <p className="text-sm text-slate-400 italic">No filters set by requestee.</p>;
           }
 
           const rows: { label: string; value: string }[] = [];

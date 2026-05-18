@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getBlockedParticipantIds } from "@/lib/case-lineage";
 
 /**
- * Search eligible participants for a case on the presenter side.
+ * Search eligible participants for a case on the requestee side.
  * Excludes: blacklisted, cooldown-active, already invited to the case's session,
  * and participants blocked by the follow-up chain (linked list lineage).
  */
@@ -108,10 +108,10 @@ export async function searchParticipantsForCase(
 }
 
 /**
- * Presenter adds participants to their case's session.
+ * Requestee adds participants to their case's session.
  * Only works if the case already has a session assigned.
  */
-export async function presenterAddParticipants(
+export async function requesteeAddParticipants(
   caseId: string,
   participantIds: string[]
 ) {

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useTransition } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { addDriveLink, deleteDriveLink } from "@/app/dashboard/presenter/actions/caseDriveLinks";
+import { addDriveLink, deleteDriveLink } from "@/app/dashboard/requestee/actions/caseDriveLinks";
 
 type Props = {
   caseId: string;

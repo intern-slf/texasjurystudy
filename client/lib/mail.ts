@@ -89,10 +89,10 @@ export async function sendEmail({ to, subject, html }: SendEmailOptions) {
 export async function sendRescheduleEmail(
   to: string,
   newDateStr: string,
-  role: "participant" | "presenter"
+  role: "participant" | "requestee"
 ) {
   const dashboardPath =
-    role === "presenter" ? "/dashboard/presenter" : "/dashboard/participant";
+    role === "requestee" ? "/dashboard/requestee" : "/dashboard/participant";
 
   const html = emailWrapper(`
     <h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#d97706;">Session Rescheduled</h2>
@@ -182,7 +182,7 @@ export async function sendSessionCreatedEmail(
     <table role="presentation" cellpadding="0" cellspacing="0">
       <tr>
         <td style="border-radius:6px;background-color:#2563eb;">
-          <a href="${process.env.NEXT_PUBLIC_APP_URL}/dashboard/presenter?tab=approved"
+          <a href="${process.env.NEXT_PUBLIC_APP_URL}/dashboard/requestee?tab=approved"
              style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:6px;">
             View Session Details
           </a>
@@ -235,7 +235,7 @@ export async function sendSessionCompletedEmail(
       <tr>
         <td style="padding:14px 20px;">
           <p style="margin:0;font-size:14px;color:#475569;">
-            Your <strong>transcripts and video of the session</strong> can be requested from your <a href="${process.env.NEXT_PUBLIC_APP_URL}/dashboard/presenter" style="color:#2563eb;text-decoration:underline;">Presenter Dashboard</a>. You'll be notified when they're ready for download.
+            Your <strong>transcripts and video of the session</strong> can be requested from your <a href="${process.env.NEXT_PUBLIC_APP_URL}/dashboard/requestee" style="color:#2563eb;text-decoration:underline;">Requestee Dashboard</a>. You'll be notified when they're ready for download.
           </p>
         </td>
       </tr>
@@ -423,7 +423,7 @@ export async function sendApprovalEmail(to: string, caseTitle: string) {
     <table role="presentation" cellpadding="0" cellspacing="0">
       <tr>
         <td style="border-radius:6px;background-color:#2563eb;">
-          <a href="${process.env.NEXT_PUBLIC_APP_URL}/dashboard/presenter?tab=approved"
+          <a href="${process.env.NEXT_PUBLIC_APP_URL}/dashboard/requestee?tab=approved"
              style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:6px;">
             View Approved Cases
           </a>
@@ -565,7 +565,7 @@ export async function sendRejectionEmail(to: string, caseTitle: string, reason: 
     <table role="presentation" cellpadding="0" cellspacing="0">
       <tr>
         <td style="border-radius:6px;background-color:#2563eb;">
-          <a href="${process.env.NEXT_PUBLIC_APP_URL}/dashboard/presenter"
+          <a href="${process.env.NEXT_PUBLIC_APP_URL}/dashboard/requestee"
              style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:6px;">
             View My Dashboard
           </a>

@@ -1,14 +1,14 @@
 import CaseDocumentUploader from "@/components/CaseDocumentUploader";
 import DriveLinkEditor from "@/components/DriveLinkEditor";
 import CaseParticipantSummary from "@/components/CaseParticipantSummary";
-import PresenterParticipantHistory from "@/components/PresenterParticipantHistory";
+import RequesteeParticipantHistory from "@/components/RequesteeParticipantHistory";
 import { revalidatePath } from "next/cache";
 import CaseActions from "@/components/CaseActions";
 import CaseVideoGuide from "@/components/CaseVideoGuide";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import PresenterSidebar from "@/components/PresenterSidebar";
+import RequesteeSidebar from "@/components/RequesteeSidebar";
 import {
   Card,
   CardContent,
@@ -43,15 +43,15 @@ interface Case {
   [key: string]: unknown; // Allow for dynamic fields from Supabase
 }
 
-type PresenterDashboardProps = {
+type RequesteeDashboardProps = {
   searchParams?: Promise<{
     tab?: string;
   }>;
 };
 
-export default async function PresenterDashboard({
+export default async function RequesteeDashboard({
   searchParams,
-}: PresenterDashboardProps) {
+}: RequesteeDashboardProps) {
   const supabase = await createClient();
 
   const {
@@ -59,7 +59,7 @@ export default async function PresenterDashboard({
   } = await supabase.auth.getUser();
 
   if (!user) redirect("/auth/login");
-  if (user.user_metadata?.role !== "presenter") redirect("/dashboard");
+  if (user.user_metadata?.role !== "requestee") redirect("/dashboard");
 
   /* ===========================
     AUTO-MOVE EXPIRED SCHEDULED CASES
@@ -93,7 +93,7 @@ export default async function PresenterDashboard({
   const resolvedSearchParams = await searchParams;
 
   if (!resolvedSearchParams?.tab) {
-    redirect("/dashboard/presenter/new");
+    redirect("/dashboard/requestee/new");
   }
 
   const tab: "current" | "approved" | "previous" =
@@ -158,7 +158,7 @@ export default async function PresenterDashboard({
       action: "soft_delete",
     });
 
-    revalidatePath("/dashboard/presenter");
+    revalidatePath("/dashboard/requestee");
   }
 
   async function restoreCase(formData: FormData) {
@@ -184,7 +184,7 @@ export default async function PresenterDashboard({
       action: "restore",
     });
 
-    revalidatePath("/dashboard/presenter");
+    revalidatePath("/dashboard/requestee");
   }
 
   async function permanentDeleteCase(formData: FormData) {
@@ -208,7 +208,7 @@ export default async function PresenterDashboard({
       action: "permanent_delete",
     });
 
-    revalidatePath("/dashboard/presenter");
+    revalidatePath("/dashboard/requestee");
   }
 
   async function updateCase(formData: FormData) {
@@ -259,8 +259,8 @@ export default async function PresenterDashboard({
       .eq("id", caseId)
       .eq("user_id", activeUser.id);
 
-    revalidatePath("/dashboard/presenter");
-    revalidatePath(`/dashboard/presenter/${caseId}`);
+    revalidatePath("/dashboard/requestee");
+    revalidatePath(`/dashboard/requestee/${caseId}`);
   }
 
   async function respondToSchedule(formData: FormData) {
@@ -290,7 +290,7 @@ export default async function PresenterDashboard({
       .eq("id", caseId)
       .eq("user_id", activeUser.id);
 
-    revalidatePath("/dashboard/presenter");
+    revalidatePath("/dashboard/requestee");
   }
 
   async function requestAgain(formData: FormData) {
@@ -307,7 +307,7 @@ export default async function PresenterDashboard({
       .eq("id", caseId)
       .eq("user_id", activeUser.id);
 
-    revalidatePath("/dashboard/presenter");
+    revalidatePath("/dashboard/requestee");
   }
 
   /* ===========================
@@ -316,7 +316,7 @@ export default async function PresenterDashboard({
 
   return (
     <div className="flex min-h-screen bg-muted/10 font-sans">
-      <PresenterSidebar activeTab={tab} />
+      <RequesteeSidebar activeTab={tab} />
 
       <main className="flex-1 overflow-y-auto">
         <div className="max-w-5xl mx-auto px-8 py-12">
@@ -365,7 +365,7 @@ export default async function PresenterDashboard({
                 <CardHeader className="bg-muted/10 pb-4">
                     <div className="flex justify-between items-start">
                         <div className="flex-1 min-w-0">
-                            <Link href={`/dashboard/presenter/${c.id}`} className="hover:underline underline-offset-4">
+                            <Link href={`/dashboard/requestee/${c.id}`} className="hover:underline underline-offset-4">
                               <CardTitle className="text-xl">{c.title}</CardTitle>
                             </Link>
                             <CardDescription className="line-clamp-2 mt-1">
@@ -409,7 +409,7 @@ export default async function PresenterDashboard({
 
                       {/* Case lineage tree with participants */}
                       <div className="bg-slate-50/50 rounded-lg p-4 border">
-                        <PresenterParticipantHistory caseId={c.id} currentCaseId={c.id} />
+                        <RequesteeParticipantHistory caseId={c.id} currentCaseId={c.id} />
                       </div>
 
                       <div>
@@ -712,7 +712,7 @@ export default async function PresenterDashboard({
 
                       {/* Case lineage tree with participants */}
                       <div className="bg-slate-50/50 rounded-lg p-4 border">
-                        <PresenterParticipantHistory caseId={c.id} currentCaseId={c.id} />
+                        <RequesteeParticipantHistory caseId={c.id} currentCaseId={c.id} />
                       </div>
 
                       <div>
@@ -756,7 +756,7 @@ export default async function PresenterDashboard({
                           variant="default"
                           className="bg-primary hover:bg-primary/90 flex items-center gap-2"
                         >
-                          <Link href={`/dashboard/presenter/new?parent_id=${c.id}`}>
+                          <Link href={`/dashboard/requestee/new?parent_id=${c.id}`}>
                             Request Follow-up
                             <ArrowRight className="h-4 w-4" />
                           </Link>
@@ -776,7 +776,7 @@ export default async function PresenterDashboard({
                         }
                     />
                       <Button asChild size="sm" variant="outline">
-                        <Link href={`/dashboard/presenter/${c.id}`}>View Details</Link>
+                        <Link href={`/dashboard/requestee/${c.id}`}>View Details</Link>
                       </Button>
                     </div>
 

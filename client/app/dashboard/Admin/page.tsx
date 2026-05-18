@@ -274,7 +274,7 @@ export default async function AdminDashboardPage({
                 <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   Preferred Schedule
                   <br />
-                  by Presenter
+                  by Requestee
                 </TableHead>
 
                 {tab === "approved" && (
