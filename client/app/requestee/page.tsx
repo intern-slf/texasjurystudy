@@ -53,12 +53,21 @@ export default function RequesteeLanding() {
               Texas Jury Study is a virtual jury study service built for Texas litigation. Get unfiltered reactions from a cross-section of real Texans — at a fraction of the cost of a traditional jury consultant.
             </p>
 
-            <div className="pt-2">
+            <div className="flex flex-col items-center justify-center gap-3 sm:flex-row pt-2">
               <a
                 href="#what-is-tjs"
+                className="group relative inline-flex h-14 items-center justify-center rounded-md bg-primary px-10 text-base font-semibold text-primary-foreground shadow-xl shadow-primary/30 transition-all hover:bg-primary/90 hover:shadow-2xl hover:shadow-primary/40 hover:-translate-y-0.5"
+              >
+                <span className="absolute inset-0 -z-10 rounded-md bg-primary/40 blur-xl opacity-60 transition-opacity group-hover:opacity-90" />
+                Learn how it works
+                <ArrowDown className="ml-2 h-5 w-5 animate-bounce" />
+              </a>
+
+              <a
+                href="#get-started"
                 className="inline-flex h-12 items-center justify-center rounded-md border border-input bg-background/80 backdrop-blur px-8 text-sm font-semibold shadow-sm transition-all hover:bg-accent hover:text-accent-foreground hover:-translate-y-0.5"
               >
-                Learn how it works
+                Get started
                 <ArrowDown className="ml-2 h-4 w-4" />
               </a>
             </div>
@@ -273,8 +282,11 @@ export default function RequesteeLanding() {
           </div>
 
           <div className="grid gap-6 md:grid-cols-2">
-            <div className="group relative overflow-hidden rounded-2xl border-2 border-primary/30 bg-background p-8 shadow-xl shadow-primary/5">
-              <div className="absolute -right-8 -top-8 h-32 w-32 rounded-full bg-primary/10" />
+            <a
+              href="#get-started"
+              className="group relative overflow-hidden rounded-2xl border-2 border-primary/30 bg-background p-8 shadow-xl shadow-primary/5 transition-all hover:border-primary/60 hover:shadow-2xl hover:shadow-primary/20 hover:-translate-y-1"
+            >
+              <div className="absolute -right-8 -top-8 h-32 w-32 rounded-full bg-primary/10 transition-transform group-hover:scale-125" />
               <div className="relative">
                 <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary uppercase tracking-wider">
                   <Sparkles className="h-3.5 w-3.5" />
@@ -299,8 +311,12 @@ export default function RequesteeLanding() {
                     </li>
                   ))}
                 </ul>
+                <div className="mt-6 inline-flex items-center text-sm font-semibold text-primary">
+                  Get started
+                  <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
+                </div>
               </div>
-            </div>
+            </a>
 
             <div className="relative overflow-hidden rounded-2xl border bg-background p-8 opacity-80">
               <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-muted px-3 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
@@ -335,7 +351,7 @@ export default function RequesteeLanding() {
       </section>
 
       {/* How do I sign up? — final CTA */}
-      <section className="container mx-auto px-6 py-24">
+      <section id="get-started" className="container mx-auto px-6 py-24 scroll-mt-20">
         <div className="max-w-5xl mx-auto">
           <div className="mb-12 text-center">
             <span className="inline-block text-sm font-semibold text-primary uppercase tracking-widest">
