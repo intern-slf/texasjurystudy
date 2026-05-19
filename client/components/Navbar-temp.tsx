@@ -3,15 +3,49 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
 
-const navItems = [
-  { label: "Home", href: "/" },
-  { label: "Login", href: "/auth/login" },
-  { label: "Sign Up", href: "/auth/signup" },
-];
+type Role = "requestee" | "participant" | null;
+
+function homeHrefForRole(role: Role): string {
+  if (role === "requestee") return "/requestee";
+  if (role === "participant") return "/participants";
+  return "/";
+}
 
 export default function Navbar() {
   const pathname = usePathname();
+  const [role, setRole] = useState<Role>(null);
+
+  useEffect(() => {
+    const supabase = createClient();
+
+    const readRole = (metadataRole: unknown): Role => {
+      if (metadataRole === "requestee" || metadataRole === "participant") {
+        return metadataRole;
+      }
+      return null;
+    };
+
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setRole(readRole(user?.user_metadata?.role));
+    });
+
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      setRole(readRole(session?.user?.user_metadata?.role));
+    });
+
+    return () => {
+      sub.subscription.unsubscribe();
+    };
+  }, []);
+
+  const navItems = [
+    { label: "Home", href: homeHrefForRole(role) },
+    { label: "Login", href: "/auth/login" },
+    { label: "Sign Up", href: "/auth/signup" },
+  ];
 
   return (
     <header className="sticky top-0 z-[999] w-full border-b bg-background/75 backdrop-blur-md supports-[backdrop-filter]:bg-background/60 shadow-sm">

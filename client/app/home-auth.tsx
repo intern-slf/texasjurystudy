@@ -15,7 +15,7 @@ export default async function HomeAuthSection() {
             href="/auth/signup?role=participant"
             className="px-6 py-3 rounded-md bg-primary text-primary-foreground"
           >
-            Join as Participant
+            Apply to Be a Participant
           </Link>
           <Link
             href="/auth/signup?role=requestee"
