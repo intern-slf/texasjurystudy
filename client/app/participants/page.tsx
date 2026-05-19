@@ -75,7 +75,7 @@ export default function ParticipantsLanding() {
               </span>
               <span className="text-muted-foreground/40">•</span>
               <span className="inline-flex items-center gap-1.5">
-                <DollarSign className="h-4 w-4 text-primary" /> Paid by direct deposit
+                <DollarSign className="h-4 w-4 text-primary" /> Paid via PayPal
               </span>
             </p>
           </div>
@@ -116,7 +116,7 @@ export default function ParticipantsLanding() {
             {
               icon: DollarSign,
               title: "Real compensation",
-              desc: "We pay competitively for your time and attention. Payment is sent shortly after each completed session.",
+              desc: "We pay competitively for your time and attention. Payment is sent via PayPal shortly after each completed session.",
             },
             {
               icon: Video,
@@ -175,7 +175,7 @@ export default function ParticipantsLanding() {
             <div className="hidden md:block absolute top-8 left-[12.5%] right-[12.5%] h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
 
             {[
-              { icon: BadgeCheck, title: "Sign up", desc: "Create a free account and answer a few quick demographic questions." },
+              { icon: BadgeCheck, title: "Sign up & verify", desc: "Create a free account, answer a few demographic questions, and upload a photo of your driver's license to verify your identity." },
               { icon: Clock, title: "Get invited", desc: "We'll email you when a case matches your profile and schedule." },
               { icon: MessageSquare, title: "Join the session", desc: "Hop on Zoom, listen to the case, and share your honest reaction." },
               { icon: DollarSign, title: "Get paid", desc: "Receive your payment after the session is completed." },
@@ -220,12 +220,20 @@ export default function ParticipantsLanding() {
               a: "Most sessions are 1–3 hours. You'll see the schedule in your invitation before you accept.",
             },
             {
+              q: "What do I need to sign up?",
+              a: "A PayPal account (we only pay through PayPal) and a clear photo of your driver's license for identity verification. Your ID is used only to confirm you're a real Texas resident — it's never shared with attorneys.",
+            },
+            {
               q: "Will my name be shared?",
               a: "No. Your identifying details stay private. Only your responses and general demographic profile are visible to the case team.",
             },
             {
               q: "How am I paid?",
-              a: "Payment is sent after each completed session. You'll set up your payment details in your participant dashboard.",
+              a: "We pay exclusively through PayPal. You'll need an active PayPal account on file in your participant dashboard — we don't offer checks, direct deposit, or any other payout method.",
+            },
+            {
+              q: "Why do you need my driver's license?",
+              a: "You'll upload a clear photo of your driver's license when you sign up, and we ask you to keep your current address up to date in your participant dashboard. This is how we confirm you're a real Texas resident — your ID and address are never shared with attorneys or other participants.",
             },
           ].map((item, i) => (
             <div
