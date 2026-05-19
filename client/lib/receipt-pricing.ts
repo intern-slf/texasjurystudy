@@ -13,7 +13,7 @@ export interface ReceiptPriceBreakdown {
   totalCostCents: number;
 }
 
-const BASE_COST_PER_HOUR_CENTS = 100_000; // $1,000 per hour
+const BASE_COST_PER_HOUR_CENTS = 85_000; // $850 per hour
 const PER_FILTER_CENTS = 10_000; // $100
 
 function hasArrayItems(arr?: string[]): boolean {
