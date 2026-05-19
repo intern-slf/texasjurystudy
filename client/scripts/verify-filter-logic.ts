@@ -1,5 +1,5 @@
 
-import { combineCaseFilters, relaxFilters, FILTER_PRIORITY, applyCaseFilters } from "../lib/filter-utils";
+import { combineCaseFilters, relaxFilters, applyCaseFilters } from "../lib/filter-utils";
 
 // Mock Data
 const case1 = {
@@ -8,18 +8,6 @@ const case1 = {
     political_affiliation: ["Republican"],
   }
 };
-
-const case2 = {
-  id: "2",
-  filters: {
-    political_affiliation: ["Democrat"],
-  }
-};
-
-const case3 = {
-    id: "3",
-    filters: {} // Empty
-}
 
 console.log("--- Test Case 1: Single Case (Republican) ---");
 const combined1 = combineCaseFilters([case1.filters]);
@@ -30,10 +18,12 @@ console.log("Relaxed Level 0:", JSON.stringify(relaxed0, null, 2));
 // Mock Query Builder
 const mockQuery = {
     sql: [] as string[],
-    in(col: string, val: any) { this.sql.push(`${col} IN [${val.join(', ')}]`); return this; },
-    gte(col: string, val: any) { this.sql.push(`${col} >= ${val}`); return this; },
-    lte(col: string, val: any) { this.sql.push(`${col} <= ${val}`); return this; },
-    eq(col: string, val: any) { this.sql.push(`${col} = ${val}`); return this; },
+    in(col: string, val: readonly string[]) { this.sql.push(`${col} IN [${val.join(', ')}]`); return this; },
+    gte(col: string, val: string) { this.sql.push(`${col} >= ${val}`); return this; },
+    lte(col: string, val: string) { this.sql.push(`${col} <= ${val}`); return this; },
+    eq(col: string, val: string) { this.sql.push(`${col} = ${val}`); return this; },
+    ilike(col: string, pattern: string) { this.sql.push(`${col} ILIKE ${pattern}`); return this; },
+    or(filter: string) { this.sql.push(`OR (${filter})`); return this; },
     limit() { return this; },
     not() { return this; },
     select() { return this; }

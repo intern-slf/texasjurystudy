@@ -40,6 +40,8 @@ interface Case {
   admin_scheduled_at: string | null;
   schedule_status: string | null;
   parent_case_id: string | null;
+  admin_status?: string | null;
+  rejection_reason?: string | null;
   [key: string]: unknown; // Allow for dynamic fields from Supabase
 }
 
@@ -374,7 +376,7 @@ export default async function RequesteeDashboard({
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
                           <CaseVideoGuide focusGroupType={c.focus_group_type as string | null | undefined} />
-                          {(c as any).admin_status === "rejected" ? (
+                          {c.admin_status === "rejected" ? (
                             <Badge variant="destructive" className="font-medium">
                               Rejected
                             </Badge>
@@ -498,16 +500,16 @@ export default async function RequesteeDashboard({
                   {tab === "current" && (
                     <div className="space-y-6">
                       {/* Rejection banner */}
-                      {(c as any).admin_status === "rejected" && (
+                      {c.admin_status === "rejected" && (
                         <div className="space-y-4">
                           <div className="flex items-start gap-3 p-4 bg-red-50 text-red-800 rounded-lg border border-red-200">
                             <AlertCircle className="h-5 w-5 mt-0.5 shrink-0 text-red-600" />
                             <div className="flex-1">
                               <p className="text-sm font-semibold">This case has been rejected by the admin.</p>
-                              {(c as any).rejection_reason && (
+                              {c.rejection_reason && (
                                 <div className="mt-2 p-3 bg-white/70 rounded border border-red-100">
                                   <p className="text-xs font-medium uppercase tracking-wide text-red-600 mb-1">Reason</p>
-                                  <p className="text-sm text-red-900">{(c as any).rejection_reason}</p>
+                                  <p className="text-sm text-red-900">{c.rejection_reason}</p>
                                 </div>
                               )}
                             </div>

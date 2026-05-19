@@ -29,8 +29,8 @@ export async function POST(req: NextRequest) {
       status: 200,
       headers: { "Content-Type": "image/jpeg" },
     });
-  } catch (err: any) {
-    const msg = err?.message ?? "Unknown error";
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Unknown error";
     console.error("[convert-heic]", msg);
     return NextResponse.json({ error: msg }, { status: 500 });
   }

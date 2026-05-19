@@ -1,0 +1,17 @@
+# Claude Code local state (sessions, settings, logs)
+.claude/
+
+# OS junk
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE / editor state
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs (at repo root)
+*.log

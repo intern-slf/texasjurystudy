@@ -29,11 +29,11 @@ export async function getAncestorCaseIds(caseId: string): Promise<string[]> {
   let currentId: string | null = caseId;
 
   while (currentId) {
-    const { data, error }: { data: { parent_case_id: string | null } | null, error: any } = await supabase
+    const { data, error } = await supabase
       .from("cases")
       .select("parent_case_id")
       .eq("id", currentId)
-      .single();
+      .single() as { data: { parent_case_id: string | null } | null; error: { message?: string } | null };
 
     if (error || !data?.parent_case_id) {
       break;
@@ -110,7 +110,7 @@ export async function getFullCaseChain(caseId: string): Promise<CaseChainNode[]>
 
   const sessionIds = [...new Set((sessionCases ?? []).map((sc) => sc.session_id))];
 
-  let participantsBySession: Record<string, { participant_id: string; invite_status: string }[]> = {};
+  const participantsBySession: Record<string, { participant_id: string; invite_status: string }[]> = {};
   if (sessionIds.length > 0) {
     const { data: sp } = await supabase
       .from("session_participants")
@@ -137,7 +137,7 @@ export async function getFullCaseChain(caseId: string): Promise<CaseChainNode[]>
   }
 
   // 5. Fetch participant details
-  let juryDetailsMap: Record<string, { first_name: string; last_name: string; email: string }> = {};
+  const juryDetailsMap: Record<string, { first_name: string; last_name: string; email: string }> = {};
   const uniquePIds = Array.from(allParticipantIds);
   if (uniquePIds.length > 0) {
     const { data: juryData } = await supabase
@@ -305,18 +305,48 @@ export async function getLineageParticipantDetails(caseIds: string[]) {
     if (error) throw error;
     if (!data) return [];
 
+    type LineageParticipant = {
+      participant_id: string | null;
+      invite_status?: string | null;
+      profiles?: { email?: string | null; full_name?: string | null } | { email?: string | null; full_name?: string | null }[] | null;
+      [key: string]: unknown;
+    };
+    type LineageSession = {
+      session_date?: string | null;
+      session_participants?: LineageParticipant[] | null;
+      [key: string]: unknown;
+    };
+    type LineageSessionCase = {
+      session_id?: string | null;
+      sessions?: LineageSession | LineageSession[] | null;
+      [key: string]: unknown;
+    };
+    type LineageCaseItem = {
+      id: string;
+      title?: string | null;
+      session_cases?: LineageSessionCase[] | null;
+      [key: string]: unknown;
+    };
+    type JuryDetails = {
+      user_id?: string;
+      first_name?: string | null;
+      last_name?: string | null;
+      email?: string | null;
+    };
+
     // 2. Collect all unique participant IDs
     const participantIds = new Set<string>();
-    data.forEach((caseItem: any) => {
-        caseItem.session_cases?.forEach((sc: any) => {
-            sc.sessions?.session_participants?.forEach((p: any) => {
+    (data as unknown as LineageCaseItem[]).forEach((caseItem) => {
+        caseItem.session_cases?.forEach((sc) => {
+            const session = Array.isArray(sc.sessions) ? sc.sessions[0] : sc.sessions;
+            session?.session_participants?.forEach((p) => {
                 if (p.participant_id) participantIds.add(p.participant_id);
             });
         });
     });
 
     const uniqueIds = Array.from(participantIds);
-    let juryDetailsMap: Record<string, any> = {};
+    const juryDetailsMap: Record<string, JuryDetails> = {};
 
     // 3. Fetch jury participants details separately
     if (uniqueIds.length > 0) {
@@ -352,18 +382,24 @@ export async function getLineageParticipantDetails(caseIds: string[]) {
         }
     }
 
-    // 4. Merge jury details back into the structure
-    return data.map((caseItem: any) => ({
+    // 4. Merge jury details back into the structure.
+    //    Note: original runtime code spread `sc.sessions` directly even if it
+    //    was an array; preserve identical behaviour by casting back to unknown
+    //    and re-shaping via the same pattern.
+    return (data as unknown as LineageCaseItem[]).map((caseItem) => ({
         ...caseItem,
-        session_cases: caseItem.session_cases?.map((sc: any) => ({
-            ...sc,
-            sessions: {
-                ...sc.sessions,
-                session_participants: sc.sessions?.session_participants?.map((p: any) => ({
-                    ...p,
-                    jury_participants: juryDetailsMap[p.participant_id] || null
-                }))
-            }
-        }))
+        session_cases: caseItem.session_cases?.map((sc) => {
+            const session = (Array.isArray(sc.sessions) ? sc.sessions[0] : sc.sessions) ?? undefined;
+            return {
+                ...sc,
+                sessions: {
+                    ...(session ?? {}),
+                    session_participants: session?.session_participants?.map((p) => ({
+                        ...p,
+                        jury_participants: (p.participant_id && juryDetailsMap[p.participant_id]) || null
+                    }))
+                }
+            };
+        })
     }));
 }

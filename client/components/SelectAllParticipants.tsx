@@ -4,10 +4,8 @@ import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 export default function SelectAllParticipants({
-  total,
   isOldData = false,
 }: {
-  total?: number;
   isOldData?: boolean;
 }) {
   const [allSelected, setAllSelected] = useState(false);

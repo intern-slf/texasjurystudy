@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useEffect } from "react";
 import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
 import { autoBlacklistIfIneligible } from "@/lib/actions/autoBlacklist";
@@ -121,18 +121,6 @@ export default function ParticipantForm({ userId, email }: Props) {
     fetchFromAgreement();
   }, [userId, supabase]);
 
-  const calculatedAge = useMemo(() => {
-    if (!dob) return null;
-    const birth = new Date(dob + "T00:00:00");
-    const today = new Date();
-    let age = today.getFullYear() - birth.getFullYear();
-    const monthDiff = today.getMonth() - birth.getMonth();
-    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
-      age--;
-    }
-    return age >= 0 ? age : null;
-  }, [dob]);
-
   // Driver's license / ID fields
   const [idFile, setIdFile] = useState<File | null>(null);
   const [idPreview, setIdPreview] = useState<string | null>(null);
@@ -199,8 +187,9 @@ export default function ParticipantForm({ userId, email }: Props) {
           const blob = await res.blob();
           const name = (file.name.replace(/\.(heic|heif)$/i, "") || "photo") + ".jpg";
           processedFile = new File([blob], name, { type: "image/jpeg" });
-        } catch (err: any) {
-          setError(`Could not convert HEIC image: ${err.message}`);
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          setError(`Could not convert HEIC image: ${msg}`);
           return;
         }
       }

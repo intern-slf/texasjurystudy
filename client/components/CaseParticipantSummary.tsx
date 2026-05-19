@@ -70,7 +70,7 @@ export default function CaseParticipantSummary({ caseId }: Props) {
         .select("user_id, first_name, last_name")
         .in("user_id", pIds);
 
-      let detailsMap: Record<string, { first_name: string; last_name: string }> = {};
+      const detailsMap: Record<string, { first_name: string; last_name: string }> = {};
       for (const jd of juryData ?? []) {
         detailsMap[jd.user_id] = jd;
       }

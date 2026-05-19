@@ -2,7 +2,6 @@
 
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { sendEmail, emailWrapper } from '@/lib/mail';
-import { redirect } from 'next/navigation';
 
 export async function signupWithCustomEmail(formData: FormData) {
     try {
@@ -76,9 +75,10 @@ export async function signupWithCustomEmail(formData: FormData) {
         });
 
         return { success: true };
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error("Signup Error:", error);
-        return { error: error.message || "Internal Server Error during signup" };
+        const msg = error instanceof Error ? error.message : "Internal Server Error during signup";
+        return { error: msg };
     }
 }
 
