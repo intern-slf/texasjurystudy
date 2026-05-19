@@ -1,15 +1,26 @@
-import { Suspense } from "react"; // 1. Import Suspense
+import { Suspense } from "react";
 import { SignUpForm } from "@/components/sign-up-form";
+import { AuthShell } from "@/components/auth-shell";
+import { ShieldCheck, Users, Zap } from "lucide-react";
 
 export default function Page() {
   return (
-    <div className="flex min-h-svh w-full items-center justify-center p-6 md:p-10">
-      <div className="w-full max-w-sm">
-        {/* 2. Wrap the form in Suspense */}
-        <Suspense fallback={<div className="h-[400px] animate-pulse bg-muted rounded-xl" />}>
-          <SignUpForm />
-        </Suspense>
-      </div>
-    </div>
+    <AuthShell
+      tagline="Join Texas Jury Study"
+      title="Create your"
+      accent="free account."
+      description="It takes a couple of minutes. Pick the role that fits and we'll guide you the rest of the way."
+      features={[
+        { icon: Zap, text: "Free to create — no commitment, no payment up front" },
+        { icon: Users, text: "Choose your role: participant or requestee" },
+        { icon: ShieldCheck, text: "Your details stay private and secure" },
+      ]}
+    >
+      <Suspense
+        fallback={<div className="h-[420px] animate-pulse bg-muted rounded-2xl" />}
+      >
+        <SignUpForm />
+      </Suspense>
+    </AuthShell>
   );
 }

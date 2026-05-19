@@ -1,6 +1,5 @@
 "use client";
 
-import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,7 +17,7 @@ import { useState } from "react";
 import { Loader2 } from "lucide-react";
 
 export function LoginForm({
-  className,
+  className: _className,
   ...props
 }: React.ComponentPropsWithoutRef<"div">) {
   const [email, setEmail] = useState("");
@@ -68,20 +67,16 @@ export function LoginForm({
   };
 
   return (
-  <div
-    className={cn(
-      "flex min-h-screen items-center justify-center bg-gradient-to-br from-indigo-500/10 via-background to-purple-500/10 px-4",
-      className
-    )}
-    {...props}
-  >
-    <Card className="w-full max-w-md border border-white/10 bg-background/80 backdrop-blur-xl shadow-2xl rounded-2xl">
+    <Card
+      className="w-full border border-border/60 bg-background/80 backdrop-blur-xl shadow-2xl rounded-2xl"
+      {...props}
+    >
       <CardHeader className="space-y-2 text-center pb-2">
-        <CardTitle className="text-3xl font-bold tracking-tight">
-          Welcome Back
+        <CardTitle className="text-2xl font-bold tracking-tight">
+          Welcome back
         </CardTitle>
         <CardDescription className="text-muted-foreground">
-          Login to access your dashboard
+          Sign in to access your dashboard
         </CardDescription>
       </CardHeader>
 
@@ -162,7 +157,5 @@ export function LoginForm({
         </form>
       </CardContent>
     </Card>
-  </div>
-);
-
+  );
 }
