@@ -39,14 +39,22 @@ async function fetchCandidates(
     .select("id, title, filters, county, participants_from_county")
     .in("id", caseIds);
 
-  const filtersList = (cases ?? []).map((c: any) => {
+  type CaseRow = {
+    id: string;
+    title: string;
+    filters?: CaseFilters | null;
+    county?: string | null;
+    participants_from_county?: string | null;
+  };
+  const filtersList = ((cases as CaseRow[] | null) ?? []).map((c) => {
     const f = (c.filters ?? {}) as CaseFilters;
     // Inject case-level county into filters when requestee wants participants from their county
     if (c.participants_from_county === "Yes" && c.county) {
       if (!f.location) f.location = {};
       const existing = f.location.county ?? [];
-      if (!existing.some((v: string) => v.toLowerCase() === c.county.toLowerCase())) {
-        f.location.county = [...existing, c.county];
+      const countyVal = c.county;
+      if (!existing.some((v: string) => v.toLowerCase() === countyVal.toLowerCase())) {
+        f.location.county = [...existing, countyVal];
       }
     }
     return f;
@@ -84,7 +92,7 @@ async function fetchCandidates(
     .from("roles")
     .select("user_id")
     .eq("role", "blacklisted");
-  const blacklistedIds = (blacklistedRoles ?? []).map((r: any) => r.user_id as string);
+  const blacklistedIds = (blacklistedRoles ?? []).map((r: { user_id: string }) => r.user_id);
 
   // Lineage exclusions
   const allLineageIds: string[] = [];
@@ -97,7 +105,27 @@ async function fetchCandidates(
 
   const nowIso = new Date().toISOString();
   const seenIds = new Set<string>(alreadyInvitedIds);
-  let rawParticipants: any[] = [];
+  type FilterCheck = {
+    key: string;
+    label: string;
+    passes: boolean;
+    detail: string;
+    subRows?: string[];
+    subTypes?: { label: string; passes: boolean; subRows: string[] }[];
+  };
+  type RawParticipant = {
+    user_id?: string | null;
+    id?: string | null;
+    first_name?: string | null;
+    last_name?: string | null;
+    city?: string | null;
+    date_of_birth?: string | null;
+    political_affiliation?: string | null;
+    matchLevel?: number;
+    filterChecks?: FilterCheck[];
+    [key: string]: unknown;
+  };
+  let rawParticipants: RawParticipant[] = [];
   const minRequired = 350;
 
   for (let level = 0; level <= FILTER_PRIORITY.length; level++) {
@@ -110,7 +138,6 @@ async function fetchCandidates(
     if (!isOldData) {
       const exclusions = Array.from(new Set([...blacklistedIds, ...allLineageIds]));
       if (exclusions.length > 0) {
-        // @ts-ignore
         query = query.not("user_id", "in", `(${exclusions.map((id) => `"${id}"`).join(",")})`);
       }
       query = query.or(`eligible_after_at.is.null,eligible_after_at.lte.${nowIso}`);
@@ -119,18 +146,16 @@ async function fetchCandidates(
 
     if (seenIds.size > 0) {
       const idField = isOldData ? "id" : "user_id";
-      // @ts-ignore
       query = query.not(idField, "in", `(${Array.from(seenIds).map((id) => `"${id}"`).join(",")})`);
     }
 
-    // @ts-ignore
     const { data: batch } = await query.limit(minRequired - rawParticipants.length + 20);
 
     if (batch && batch.length > 0) {
-      const shuffled = batch.sort(() => Math.random() - 0.5);
+      const shuffled = (batch as RawParticipant[]).sort(() => Math.random() - 0.5);
       for (const p of shuffled) {
         const pId = p.user_id || p.id;
-        if (seenIds.has(pId)) continue;
+        if (!pId || seenIds.has(pId)) continue;
         seenIds.add(pId);
         p.matchLevel = level;
         p.filterChecks = FILTER_PRIORITY.map((key) => ({
@@ -138,7 +163,7 @@ async function fetchCandidates(
           label: FILTER_LABELS[key] || key,
           ...checkFilterMatch(p, combinedFilters, key),
         }));
-        const allFiltersPassed = p.filterChecks.every((fc: any) => fc.passes);
+        const allFiltersPassed = (p.filterChecks ?? []).every((fc) => fc.passes);
         if (!allFiltersPassed && p.matchLevel === 0) p.matchLevel = 1;
         rawParticipants.push(p);
       }
@@ -149,12 +174,12 @@ async function fetchCandidates(
   rawParticipants = sortParticipantsByMultiCaseMatch(rawParticipants);
 
   return rawParticipants.map((p): Candidate => ({
-    id: p.user_id || p.id,
-    first_name: p.first_name,
-    last_name: p.last_name,
-    city: p.city,
-    date_of_birth: p.date_of_birth,
-    political_affiliation: p.political_affiliation,
+    id: (p.user_id || p.id) ?? "",
+    first_name: p.first_name ?? "",
+    last_name: p.last_name ?? "",
+    city: p.city ?? undefined,
+    date_of_birth: p.date_of_birth ?? undefined,
+    political_affiliation: p.political_affiliation ?? undefined,
     matchLevel: p.matchLevel,
     filterChecks: p.filterChecks,
   }));
@@ -238,7 +263,8 @@ export default async function SessionsPage({
 
       const participantIds = sParticipants.map((p) => p.participant_id);
 
-      let participantDetails: any[] = [];
+      type ParticipantDetail = { user_id: string; first_name: string | null; last_name: string | null };
+      let participantDetails: ParticipantDetail[] = [];
       if (participantIds.length) {
         const { data: jData } = await supabase
           .from("jury_participants")

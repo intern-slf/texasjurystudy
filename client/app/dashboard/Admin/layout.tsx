@@ -70,13 +70,16 @@ export default async function AdminLayout({
   // Match the Approved Cases page filter: include "approved" + "submitted",
   // and hide cases whose linked sessions are all in the past.
   const todayStr = new Date().toISOString().slice(0, 10);
-  const approvedCount = (allCases ?? []).filter((c: any) => {
-    if (!["approved", "submitted"].includes(c.admin_status)) return false;
+  type SessionCaseRow = { sessions?: { session_date?: string | null } | { session_date?: string | null }[] | null };
+  type CaseRow = { admin_status?: string | null; session_cases?: SessionCaseRow[] | null };
+  const approvedCount = ((allCases ?? []) as CaseRow[]).filter((c) => {
+    if (!c.admin_status || !["approved", "submitted"].includes(c.admin_status)) return false;
     const sessionCases = c.session_cases ?? [];
     if (sessionCases.length === 0) return true;
-    return sessionCases.some(
-      (sc: any) => sc.sessions?.session_date >= todayStr
-    );
+    return sessionCases.some((sc) => {
+      const session = Array.isArray(sc.sessions) ? sc.sessions[0] : sc.sessions;
+      return (session?.session_date ?? "") >= todayStr;
+    });
   }).length;
 
   // Sidebar badge counts

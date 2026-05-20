@@ -29,8 +29,46 @@ const US_STATES = [
   "Virginia","Washington","West Virginia","Wisconsin","Wyoming",
 ];
 
+interface ParticipantData {
+  user_id?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  street_address?: string | null;
+  address_line_2?: string | null;
+  city?: string | null;
+  state?: string | null;
+  county?: string | null;
+  zip_code?: string | null;
+  date_of_birth?: string | null;
+  gender?: string | null;
+  race?: string | null;
+  political_affiliation?: string | null;
+  education_level?: string | null;
+  marital_status?: string | null;
+  family_income?: string | null;
+  availability_weekdays?: string | null;
+  availability_weekends?: string | null;
+  served_on_jury?: string | null;
+  has_children?: string | null;
+  served_armed_forces?: string | null;
+  currently_employed?: string | null;
+  convicted_felon?: string | null;
+  us_citizen?: string | null;
+  drivers_license_number?: string | null;
+  drivers_license_photo_url?: string | null;
+  driver_license_number?: string | null;
+  driver_license_image_url?: string | null;
+  paypal_username?: string | null;
+  profile_photo_url?: string | null;
+  industry?: string | null;
+  heard_about_us?: string | null;
+  [key: string]: unknown;
+}
+
 type Props = {
-  participant: Record<string, any>;
+  participant: ParticipantData;
   adminMode?: boolean;
   onUpdate?: (payload: Record<string, unknown>) => Promise<void>;
   onUpdateDob?: (dob: string) => Promise<void>;
@@ -239,8 +277,9 @@ export default function EditProfileForm({ participant, adminMode, onUpdate, onUp
           const blob = await res.blob();
           const name = (file.name.replace(/\.(heic|heif)$/i, "") || "photo") + ".jpg";
           processedFile = new File([blob], name, { type: "image/jpeg" });
-        } catch (err: any) {
-          setError(`Could not convert HEIC image: ${err.message}`);
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          setError(`Could not convert HEIC image: ${msg}`);
           return;
         }
       }
@@ -358,8 +397,9 @@ export default function EditProfileForm({ participant, adminMode, onUpdate, onUp
     if (onUpdate) {
       try {
         await onUpdate(payload as Record<string, unknown>);
-      } catch (err: any) {
-        setError(err.message ?? "Failed to save changes.");
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : "Failed to save changes.";
+        setError(msg);
         setLoading(false);
         return;
       }
@@ -381,8 +421,9 @@ export default function EditProfileForm({ participant, adminMode, onUpdate, onUp
       if (onUpdateDob) {
         try {
           await onUpdateDob(dob);
-        } catch (err: any) {
-          setError(err.message ?? "Failed to save date of birth.");
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : "Failed to save date of birth.";
+          setError(msg);
           setLoading(false);
           return;
         }
@@ -395,7 +436,7 @@ export default function EditProfileForm({ participant, adminMode, onUpdate, onUp
     }
 
     // Auto-blacklist (or restore) based on latest answers
-    await autoBlacklistIfIneligible(participant.user_id, convictedFelon, usCitizen);
+    await autoBlacklistIfIneligible(participant.user_id ?? "", convictedFelon, usCitizen);
 
     setSuccess(true);
     setLoading(false);

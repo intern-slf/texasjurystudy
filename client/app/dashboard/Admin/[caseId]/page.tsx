@@ -244,7 +244,7 @@ export default async function AdminCaseDetailPage({
         <h3 className="text-xl font-bold mb-4">Receipt</h3>
         <ReceiptPricingPreview
           filters={caseInfo.filters}
-          hoursRequested={(rawCase as any).hours_requested}
+          hoursRequested={(rawCase as { hours_requested?: number | null }).hours_requested}
         />
       </section>
 

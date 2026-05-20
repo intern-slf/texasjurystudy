@@ -98,7 +98,7 @@ export default function RequesteeParticipantHistory({ caseId, currentCaseId }: P
 
       const sessionIds = [...new Set((sessionCases ?? []).map((sc) => sc.session_id))];
 
-      let participantsBySession: Record<string, { participant_id: string; invite_status: string }[]> = {};
+      const participantsBySession: Record<string, { participant_id: string; invite_status: string }[]> = {};
       if (sessionIds.length > 0) {
         const { data: sp } = await supabase
           .from("session_participants")
@@ -123,7 +123,7 @@ export default function RequesteeParticipantHistory({ caseId, currentCaseId }: P
         for (const p of sessions) allPIds.add(p.participant_id);
       }
 
-      let detailsMap: Record<string, { first_name: string; last_name: string; email: string }> = {};
+      const detailsMap: Record<string, { first_name: string; last_name: string; email: string }> = {};
       const pIds = Array.from(allPIds);
       if (pIds.length > 0) {
         const { data: juryData } = await supabase
@@ -219,7 +219,7 @@ export default function RequesteeParticipantHistory({ caseId, currentCaseId }: P
   function toggleExpand(id: string) {
     setExpanded((prev) => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
   }

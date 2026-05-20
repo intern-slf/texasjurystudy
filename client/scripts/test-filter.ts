@@ -1,25 +1,35 @@
-import { applyCaseFilters, CaseFilters } from "../lib/filter-utils";
+import { applyCaseFilters, combineCaseFilters, relaxFilters, CaseFilters } from "../lib/filter-utils";
 
 class MockQueryBuilder {
-  filters: Record<string, any[]> = {};
+  filters: Record<string, unknown[]> = {};
 
-  in(column: string, values: any[]) {
+  in(column: string, values: readonly string[]) {
     this.filters[column] = ["in", values];
     return this;
   }
 
-  gte(column: string, value: any) {
+  gte(column: string, value: string) {
     this.filters[`${column}_gte`] = ["gte", value];
     return this;
   }
 
-  lte(column: string, value: any) {
+  lte(column: string, value: string) {
     this.filters[`${column}_lte`] = ["lte", value];
     return this;
   }
 
-  eq(column: string, value: any) {
+  eq(column: string, value: string) {
     this.filters[column] = ["eq", value];
+    return this;
+  }
+
+  ilike(column: string, pattern: string) {
+    this.filters[column] = ["ilike", pattern];
+    return this;
+  }
+
+  or(filter: string) {
+    this.filters[`__or_${Object.keys(this.filters).length}`] = ["or", filter];
     return this;
   }
 }
@@ -41,8 +51,8 @@ function testAgeFilter() {
     "Age filter sets date_of_birth_lte"
   );
   // The gte value (minDOB = today - 45 years) should be a date string
-  const minDOB = query.filters["date_of_birth_gte"][1];
-  const maxDOB = query.filters["date_of_birth_lte"][1];
+  const minDOB = query.filters["date_of_birth_gte"][1] as string;
+  const maxDOB = query.filters["date_of_birth_lte"][1] as string;
   assert(typeof minDOB === "string" && minDOB.length === 10, "minDOB is a date string");
   assert(typeof maxDOB === "string" && maxDOB.length === 10, "maxDOB is a date string");
   assert(minDOB < maxDOB, "minDOB is earlier than maxDOB (older person born first)");
@@ -193,8 +203,7 @@ function testSocioeconomicFilters() {
 
 
 function testCombineFilters() {
-    const { combineCaseFilters } = require("../lib/filter-utils");
-    
+
     // Test 1: Conflict (Yes + No = Any)
     const filters1: CaseFilters = { eligibility: { served_on_jury: "Yes" } };
     const filters2: CaseFilters = { eligibility: { served_on_jury: "No" } };
@@ -214,8 +223,8 @@ function testCombineFilters() {
     const filters6: CaseFilters = { location: { state: ["CA"] } };
     const combined3 = combineCaseFilters([filters5, filters6]);
 
-    assert(combined3.location?.state?.includes("TX"), "Union includes TX");
-    assert(combined3.location?.state?.includes("CA"), "Union includes CA");
+    assert(combined3.location?.state?.includes("TX") ?? false, "Union includes TX");
+    assert(combined3.location?.state?.includes("CA") ?? false, "Union includes CA");
 
     // Test 4: Age Range Widening
     const filters7: CaseFilters = { age: { min: 25, max: 40 } };
@@ -228,8 +237,7 @@ function testCombineFilters() {
 
 
 function testRelaxFilters() {
-    const { relaxFilters, FILTER_PRIORITY } = require("../lib/filter-utils");
-    
+
     const fullFilters: CaseFilters = {
         gender: ["Male"],
         race: ["Asian"],

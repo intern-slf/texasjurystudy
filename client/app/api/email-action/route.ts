@@ -52,7 +52,7 @@ export async function GET(req: NextRequest) {
     const result = await updateInviteStatus(inviteId, action);
     if (result && "blocked" in result && result.blocked) {
       if (result.reason === "missing_profile") {
-        return html(missingProfilePage((result as any).missing ?? [], magicLink));
+        return html(missingProfilePage((result as { missing?: string[] }).missing ?? [], magicLink));
       }
       return html(sessionFullPage(magicLink));
     }
