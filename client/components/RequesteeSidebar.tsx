@@ -8,10 +8,11 @@ import {
   History,
   CheckCircle2,
   HelpCircle,
+  Home,
 } from "lucide-react";
 
 type Props = {
-  activeTab?: "current" | "request" | "approved" | "previous" | "new" | "faqs";
+  activeTab?: "current" | "request" | "approved" | "previous" | "new" | "faqs" | "home";
 };
 
 export default function RequesteeSidebar({ activeTab }: Props) {
@@ -21,6 +22,12 @@ export default function RequesteeSidebar({ activeTab }: Props) {
   const currentTab = searchParams.get("tab") || activeTab;
 
   const navItems = [
+    {
+      label: "Home",
+      href: "/dashboard/requestee/home",
+      id: "home",
+      icon: Home,
+    },
     {
       label: "Create New Case",
       href: "/dashboard/requestee/new",
@@ -64,7 +71,9 @@ export default function RequesteeSidebar({ activeTab }: Props) {
           const Icon = item.icon;
 
           const isActive =
-            item.id === "new"
+            item.id === "home"
+              ? pathname === "/dashboard/requestee/home"
+              : item.id === "new"
               ? pathname === "/dashboard/requestee/new"
               : item.id === "faqs"
               ? pathname === "/dashboard/requestee/faqs"
