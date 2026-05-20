@@ -16,6 +16,7 @@ import {
   FILTER_PRIORITY,
   FILTER_LABELS,
   CaseFilters,
+  ParticipantRow,
   checkFilterMatch,
   attachMultiCaseScores,
   sortParticipantsByMultiCaseMatch
@@ -83,13 +84,25 @@ export default async function NewSessionPage({
     : { data: [] };
 
   // Calculate combined filters
-  const filtersList = (cases || []).map((c: any) => {
+  type CaseRow = {
+    id: string;
+    title: string;
+    scheduled_at?: string | null;
+    admin_scheduled_at?: string | null;
+    schedule_status?: string | null;
+    filters?: CaseFilters | null;
+    county?: string | null;
+    participants_from_county?: string | null;
+    hours_requested?: number | null;
+  };
+  const filtersList = ((cases as CaseRow[] | null) || []).map((c) => {
     const f = (c.filters ?? {}) as CaseFilters;
     if (c.participants_from_county === "Yes" && c.county) {
       if (!f.location) f.location = {};
       const existing = f.location.county ?? [];
-      if (!existing.some((v: string) => v.toLowerCase() === c.county.toLowerCase())) {
-        f.location.county = [...existing, c.county];
+      const countyVal = c.county;
+      if (!existing.some((v: string) => v.toLowerCase() === countyVal.toLowerCase())) {
+        f.location.county = [...existing, countyVal];
       }
     }
     return f;
@@ -116,16 +129,6 @@ export default async function NewSessionPage({
     }));
   }
 
-  // DIAGNOSTIC CHECK
-  const { count: totalInTable, error: diagnosticError } = await supabase
-    .from(testTable)
-    .select("*", { count: "exact", head: true });
-
-  const { data: sampleBatch, error: sampleError } = await supabase
-    .from(testTable)
-    .select("*")
-    .limit(1);
-
   // DEBUG
   // console.log(`[DIAGNOSTIC] Table: ${testTable}`, {
   //   totalInTable,
@@ -135,7 +138,24 @@ export default async function NewSessionPage({
   // });
 
   // Participants (Soft Filtered)
-  let participants: any[] = [];
+  type FilterCheck = {
+    key: string;
+    label: string;
+    passes: boolean;
+    detail: string;
+    subRows?: string[];
+    subTypes?: { label: string; passes: boolean; subRows: string[] }[];
+  };
+  type Participant = ParticipantRow & {
+    user_id?: string | null;
+    id?: string | null;
+    first_name?: string | null;
+    last_name?: string | null;
+    city?: string | null;
+    matchLevel: number;
+    filterChecks?: FilterCheck[];
+  };
+  let participants: Participant[] = [];
   const seenIds = new Set<string>();
   const nowIso = new Date().toISOString();
 
@@ -145,7 +165,7 @@ export default async function NewSessionPage({
     .from("roles")
     .select("user_id")
     .eq("role", "blacklisted");
-  const blacklistedIds = (blacklistedRoles ?? []).map((r: any) => r.user_id as string);
+  const blacklistedIds = (blacklistedRoles ?? []).map((r: { user_id: string }) => r.user_id);
 
   // --- NEW: Lineage Exclusion Logic ---
   const allLineageParticipantIds: string[] = [];
@@ -176,7 +196,6 @@ export default async function NewSessionPage({
       // 1. Skip participants whose role = 'blacklisted' OR in lineage
       const combinedExclusions = Array.from(new Set([...blacklistedIds, ...allLineageParticipantIds]));
       if (combinedExclusions.length > 0) {
-        // @ts-ignore
         query = query.not("user_id", "in", `(${combinedExclusions.map(id => `"${id}"`).join(",")})`);
       }
       // 2. Skip participants still in cooldown (eligible_after_at in the future)
@@ -187,13 +206,11 @@ export default async function NewSessionPage({
     // ─────────────────────────────────────────────────────────────────
 
     if (seenIds.size > 0) {
-      // @ts-ignore
       const idField = isOldData ? 'id' : 'user_id';
       query = query.not(idField, 'in', `(${Array.from(seenIds).map(id => `"${id}"`).join(',')})`);
     }
 
-    // @ts-ignore
-    const { data: batch, error } = await query.limit(minRequired - participants.length + 20);
+    const { data: batch } = await query.limit(minRequired - participants.length + 20);
 
     // console.log(`[DEBUG] Level ${level} fetch from "${testTable}":`, {
     //   count: batch?.length,
@@ -201,14 +218,14 @@ export default async function NewSessionPage({
     // });
 
     if (batch && batch.length > 0) {
-      const newPeeps = batch.filter((p: any) => {
+      const newPeeps = (batch as Participant[]).filter((p) => {
         const pId = p.user_id || p.id;
-        return !seenIds.has(pId);
+        return pId !== null && pId !== undefined && !seenIds.has(pId);
       });
 
-      newPeeps.forEach((p: any) => {
+      newPeeps.forEach((p) => {
         const pId = p.user_id || p.id;
-        seenIds.add(pId);
+        if (pId) seenIds.add(pId);
         p.matchLevel = level;
 
         // Check each filter against participant's actual data
@@ -220,7 +237,7 @@ export default async function NewSessionPage({
 
         // Recalculate matchLevel: if ANY filter fails (not all cases pass),
         // bump to at least 1 so it shows "Mismatch Details" instead of "Exact Match"
-        const allFiltersPassed = p.filterChecks.every((fc: any) => fc.passes);
+        const allFiltersPassed = (p.filterChecks ?? []).every((fc) => fc.passes);
         if (!allFiltersPassed && p.matchLevel === 0) {
           p.matchLevel = 1;
         }
@@ -283,10 +300,6 @@ export default async function NewSessionPage({
   /* =========================
      Counts
   ========================= */
-  const exactCount = participants.filter((p: any) => p.matchLevel === 0).length;
-  const partialCount = participants.filter((p: any) => p.matchLevel > 0 && p.matchLevel < FILTER_PRIORITY.length).length;
-  const fallbackCount = participants.filter((p: any) => p.matchLevel >= FILTER_PRIORITY.length).length;
-
   /* =========================
      UI
   ========================= */
@@ -408,14 +421,14 @@ export default async function NewSessionPage({
               <h2 className="font-semibold">Recommended Participants</h2>
               <ParticipantCounter total={participants.length} />
             </div>
-            <SelectAllParticipants total={participants.length} isOldData={isOldData} />
+            <SelectAllParticipants isOldData={isOldData} />
           </div>
 
           <ParticipantSearch testTable={testTable} isOldData={isOldData} />
 
           <div className="border rounded divide-y max-h-[500px] overflow-y-auto" data-participant-list>
             {participants?.map((p) => {
-              const pId = p.user_id || p.id;
+              const pId = (p.user_id || p.id) ?? "";
               return (
                 <div
                   key={pId}
@@ -433,7 +446,7 @@ export default async function NewSessionPage({
                     </a>
                     <div className="text-xs text-slate-500 mt-1">
                       {p.date_of_birth
-                        ? `Age ${(() => { const b = new Date(p.date_of_birth); const t = new Date(); let a = t.getFullYear() - b.getFullYear(); const m = t.getMonth() - b.getMonth(); if (m < 0 || (m === 0 && t.getDate() < b.getDate())) a--; return a; })()} \u2022 `
+                        ? `Age ${(() => { const b = new Date(p.date_of_birth as string); const t = new Date(); let a = t.getFullYear() - b.getFullYear(); const m = t.getMonth() - b.getMonth(); if (m < 0 || (m === 0 && t.getDate() < b.getDate())) a--; return a; })()} \u2022 `
                         : ""}
                       {p.city} &bull; {p.political_affiliation ?? "N/A"}
                     </div>
@@ -446,7 +459,7 @@ export default async function NewSessionPage({
                             Exact Match
                           </summary>
                           <div className="mt-1 p-2 bg-green-50 border border-green-200 rounded text-[10px] space-y-0.5">
-                            {(p.filterChecks as any[]).map((fc: any) => (
+                            {(p.filterChecks ?? []).map((fc) => (
                               <div key={fc.key} className={`flex flex-col gap-0.5 ${fc.passes ? "" : "text-red-500"}`}>
                                 {fc.subTypes ? (
                                   <details className="group/sub w-full">
@@ -456,7 +469,7 @@ export default async function NewSessionPage({
                                       <span className="text-[9px] opacity-70 ml-1">(Click)</span>
                                     </summary>
                                     <div className="ml-4 mt-1 space-y-1">
-                                      {fc.subTypes.map((st: any, si: number) => (
+                                      {fc.subTypes.map((st, si: number) => (
                                         <details key={si} className="w-full">
                                           <summary className={`flex gap-1 items-center cursor-pointer list-none text-[9px] ${st.passes ? "text-green-700" : "text-red-500"}`}>
                                             <span>{st.passes ? "\u2713" : "\u2717"}</span>
@@ -505,7 +518,7 @@ export default async function NewSessionPage({
                             Mismatch Details
                           </summary>
                           <div className="mt-1 p-2 bg-red-50/50 border border-red-100 rounded text-[10px] space-y-0.5">
-                            {(p.filterChecks as any[]).map((fc: any) => (
+                            {(p.filterChecks ?? []).map((fc) => (
                               <div key={fc.key} className={`flex flex-col gap-0.5 ${fc.passes ? "text-green-700" : "text-red-500"}`}>
 
                                 {fc.subTypes ? (
@@ -516,7 +529,7 @@ export default async function NewSessionPage({
                                       <span className="text-[9px] opacity-70 ml-1">(Click)</span>
                                     </summary>
                                     <div className="ml-4 mt-1 space-y-1">
-                                      {fc.subTypes.map((st: any, si: number) => (
+                                      {fc.subTypes.map((st, si: number) => (
                                         <details key={si} className="w-full">
                                           <summary className={`flex gap-1 items-center cursor-pointer list-none text-[9px] ${st.passes ? "text-green-700" : "text-red-500"}`}>
                                             <span>{st.passes ? "\u2713" : "\u2717"}</span>

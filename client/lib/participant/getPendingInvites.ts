@@ -30,7 +30,7 @@ export async function getPendingInvites(userId: string) {
 
   // ✅ DEDUPLICATE: Only show one invite per session
   const uniqueSessions = new Set();
-  const filteredData = (data || []).filter((invite: any) => {
+  const filteredData = (data || []).filter((invite: { session_id: string }) => {
     if (uniqueSessions.has(invite.session_id)) return false;
     uniqueSessions.add(invite.session_id);
     return true;

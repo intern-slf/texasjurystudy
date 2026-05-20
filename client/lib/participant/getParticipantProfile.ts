@@ -5,7 +5,6 @@ export async function getParticipantProfile(
   context?: { from?: string; caseId?: string; testTable?: string }
 ) {
   const supabase = await createClient();
-  const testTable = context?.testTable || "jury_participants";
 
   /* =========================
      AUTH USER
@@ -81,7 +80,7 @@ export async function getParticipantProfile(
      FETCH PARTICIPANT
      ========================= */
   // Default to jury_participants unless specifically testing oldData
-  let targetTable = context?.testTable === "oldData" ? "oldData" : "jury_participants";
+  const targetTable = context?.testTable === "oldData" ? "oldData" : "jury_participants";
 
   let { data: participant } = await supabase
     .from(targetTable)

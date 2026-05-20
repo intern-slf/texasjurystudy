@@ -1,5 +1,3 @@
-import { PostgrestFilterBuilder } from "@supabase/postgrest-js";
-
 export interface AgeRange {
   min: number;
   max: number;
@@ -47,7 +45,43 @@ export interface CaseFilters {
   /** Per-case original filters — populated by combineCaseFilters for UI display */
   _perCaseFilters?: { filters: CaseFilters; caseTitle: string; caseIndex: number }[];
   // Add other loose fields if necessary, based on requestee form
-  [key: string]: any;
+  [key: string]: unknown;
+}
+
+/** Minimal shape of a participant row used by filter logic.
+ *  Properties are optional because not every code path supplies a full row. */
+export interface ParticipantRow {
+  gender?: string | null;
+  race?: string | null;
+  date_of_birth?: string | null;
+  political_affiliation?: string | null;
+  state?: string | null;
+  county?: string | null;
+  education_level?: string | null;
+  marital_status?: string | null;
+  family_income?: string | null;
+  availability_weekdays?: string | null;
+  availability_weekends?: string | null;
+  served_on_jury?: string | null;
+  has_children?: string | null;
+  served_armed_forces?: string | null;
+  currently_employed?: string | null;
+  multiScore?: number;
+  multiTotal?: number;
+  casePassCount?: number;
+  __score?: number;
+  [key: string]: unknown;
+}
+
+/** Minimal interface for the chainable Supabase query builder used here.
+ *  Methods return `this` so generic callers retain the original builder type. */
+export interface FilterQueryBuilder {
+  in(column: string, values: readonly string[]): this;
+  eq(column: string, value: string): this;
+  gte(column: string, value: string): this;
+  lte(column: string, value: string): this;
+  ilike(column: string, pattern: string): this;
+  or(filter: string): this;
 }
 
 /**
@@ -57,10 +91,12 @@ export interface CaseFilters {
  * @param filters The CaseFilters object containing criteria
  * @returns The modified query with filters applied
  */
-export function applyCaseFilters(
-  query: any,
+export function applyCaseFilters<Q extends FilterQueryBuilder>(
+  query: Q,
   filters: CaseFilters
-) {
+): Q {
+  // The builder's methods are chainable; we cast through unknown to preserve
+  // the original Q type for callers, which is structurally compatible.
   if (!filters) return query;
 
   // --- IDENTITY ---
@@ -242,15 +278,15 @@ export function combineCaseFilters(filtersList: CaseFilters[]): CaseFilters {
 
     if (uniqueValues.length === 1) {
       // All cases that specify this field agree
-      // @ts-ignore
+      // @ts-expect-error dynamic key assignment into union-typed eligibility
       result.eligibility[field] = uniqueValues[0];
     } else if (uniqueValues.length > 1) {
       // Conflict — don't filter (union = accept both)
-      // @ts-ignore
+      // @ts-expect-error dynamic key assignment into union-typed eligibility
       result.eligibility[field] = undefined;
     } else {
       // No case specifies this → Any
-      // @ts-ignore
+      // @ts-expect-error dynamic key assignment into union-typed eligibility
       result.eligibility[field] = undefined;
     }
   });
@@ -284,29 +320,6 @@ function unionArrays(arrays: (string[] | undefined)[]): string[] | undefined {
   return allValues.size > 0 ? Array.from(allValues) : undefined;
 }
 
-/**
- * Intersection of arrays (kept for potential future use).
- */
-function intersectArrays(arrays: (string[] | undefined)[]): string[] | undefined {
-  const defined = arrays.filter((arr): arr is string[] => {
-    if (!Array.isArray(arr)) return false;
-    if (arr.length === 0) return false;
-    if (arr.length === 1 && arr[0].toLowerCase() === "any") return false;
-    return true;
-  });
-
-  if (defined.length === 0) return undefined;
-  if (defined.length === 1) return [...defined[0]];
-
-  let common = new Set<string>(defined[0]);
-  for (let i = 1; i < defined.length; i++) {
-    const next = new Set<string>(defined[i]);
-    common = new Set([...common].filter(v => next.has(v)));
-  }
-
-  return common.size > 0 ? Array.from(common) : ["No Common Value"];
-}
-
 /* =============================================================================
    FILTER LABEL MAP (shared between sessions/new and InviteMoreModal)
 ============================================================================= */
@@ -324,13 +337,13 @@ export const FILTER_LABELS: Record<string, string> = {
    checkArrayForCase — helper used by checkFilterMatch
 ============================================================================= */
 export function checkArrayForCase(
-  participant: any,
+  participant: ParticipantRow,
   caseFilters: CaseFilters,
   field: string,
   pField: string
 ): { pass: boolean; pVal: string; caseVals: string[] | undefined } {
-  const arr = (caseFilters as any)[field] as string[] | undefined;
-  const pVal = participant[pField] ?? "";
+  const arr = (caseFilters as Record<string, unknown>)[field] as string[] | undefined;
+  const pVal = (participant[pField] as string | undefined) ?? "";
   if (!arr || arr.length === 0) return { pass: true, pVal, caseVals: undefined };
   return { pass: arr.includes(pVal), pVal, caseVals: arr };
 }
@@ -340,7 +353,7 @@ export function checkArrayForCase(
    Returns { passes, detail, subRows?, subTypes? }
 ============================================================================= */
 export function checkFilterMatch(
-  participant: any,
+  participant: ParticipantRow,
   filters: CaseFilters | null,
   filterKey: string
 ): {
@@ -351,7 +364,7 @@ export function checkFilterMatch(
 } {
   if (!filters) return { passes: true, detail: "No filter" };
 
-  const filterVal = (filters as any)[filterKey];
+  const filterVal = (filters as Record<string, unknown>)[filterKey];
   const perCase = filters._perCaseFilters;
   const hasMultipleCases = perCase && perCase.length > 1;
 
@@ -485,10 +498,10 @@ export function checkFilterMatch(
               const pAvail = [pW && "Weekdays", pE && "Weekends"].filter(Boolean).join(", ") || "None";
               rows.push(`${pc.caseTitle}: Needs ${avail.join(", ")} (participant: ${pAvail}) ${m ? "✅" : "❌"}`);
             } else {
-              const vals = (socio as any)?.[def.field] as string[] | undefined;
+              const vals = (socio as Record<string, unknown> | undefined)?.[def.field] as string[] | undefined;
               if (!vals || vals.length === 0) { rows.push(`${pc.caseTitle}: Any ✅`); continue; }
               hasAnyRequirement = true;
-              const pVal = participant[def.pField!] ?? "N/A";
+              const pVal = (participant[def.pField!] as string | null | undefined) ?? "N/A";
               const m = vals.includes(pVal);
               if (!m) typeAllPass = false;
               rows.push(`${pc.caseTitle}: ${vals.join(", ")} (participant: ${pVal}) ${m ? "✅" : "❌"}`);
@@ -503,14 +516,14 @@ export function checkFilterMatch(
         return { passes: allTypesPass, detail: allTypesPass ? "All cases matched" : "Not all cases matched", subTypes };
       }
 
-      const socio = filterVal as any;
+      const socio = filterVal as NonNullable<CaseFilters["socioeconomic"]> | undefined;
       if (!socio) return { passes: true, detail: "Any" };
 
       const subTypes: { label: string; passes: boolean; subRows: string[] }[] = [];
       let allPass = true;
 
       if (socio.education_level?.length) {
-        const m = socio.education_level.includes(participant.education_level);
+        const m = socio.education_level.includes(participant.education_level ?? "");
         if (!m) allPass = false;
         subTypes.push({ label: "Education", passes: m, subRows: [`${participant.education_level} (Needs: ${socio.education_level.join(", ")}) ${m ? "✅" : "❌"}`] });
       } else {
@@ -518,7 +531,7 @@ export function checkFilterMatch(
       }
 
       if (socio.marital_status?.length) {
-        const m = socio.marital_status.includes(participant.marital_status);
+        const m = socio.marital_status.includes(participant.marital_status ?? "");
         if (!m) allPass = false;
         subTypes.push({ label: "Marital Status", passes: m, subRows: [`${participant.marital_status} (Needs: ${socio.marital_status.join(", ")}) ${m ? "✅" : "❌"}`] });
       } else {
@@ -526,7 +539,7 @@ export function checkFilterMatch(
       }
 
       if (socio.family_income?.length) {
-        const m = socio.family_income.includes(participant.family_income);
+        const m = socio.family_income.includes(participant.family_income ?? "");
         if (!m) allPass = false;
         subTypes.push({ label: "Income", passes: m, subRows: [`${participant.family_income} (Needs: ${socio.family_income.join(", ")}) ${m ? "✅" : "❌"}`] });
       } else {
@@ -565,7 +578,7 @@ export function checkFilterMatch(
 
           for (const pc of perCase!) {
             const required = pc.filters.eligibility?.[def.key as keyof NonNullable<CaseFilters["eligibility"]>];
-            const pVal = participant[def.key] ?? "N/A";
+            const pVal = (participant[def.key] as string | null | undefined) ?? "N/A";
             if (!required || required === "Any") { rows.push(`${pc.caseTitle}: Any ✅`); continue; }
             hasAnyRequirement = true;
             const m = pVal === required;
@@ -581,15 +594,15 @@ export function checkFilterMatch(
         return { passes: allTypesPass, detail: allTypesPass ? "All cases matched" : "Not all cases matched", subTypes };
       }
 
-      const elig = filterVal as any;
+      const elig = filterVal as NonNullable<CaseFilters["eligibility"]> | undefined;
       if (!elig) return { passes: true, detail: "Any" };
 
       const subTypes: { label: string; passes: boolean; subRows: string[] }[] = [];
       let allPass = true;
 
       for (const def of fields) {
-        const required = elig[def.key];
-        const pVal = participant[def.key] ?? "N/A";
+        const required = elig[def.key as keyof typeof elig];
+        const pVal = (participant[def.key] as string | null | undefined) ?? "N/A";
         if (!required || required === "Any") {
           subTypes.push({ label: def.label, passes: true, subRows: [`${pVal} (Any)`] });
           continue;
@@ -646,7 +659,7 @@ export function relaxFilters(filters: CaseFilters, level: number): CaseFilters {
  * Counts every filter & sub-filter.
  */
 export function getMatchScoreDetailed(
-  participant: any,
+  participant: ParticipantRow,
   filters: CaseFilters
 ) {
   if (!filters) return { score: 0, total: 0 };
@@ -657,12 +670,12 @@ export function getMatchScoreDetailed(
   // --- IDENTITY ---
   if (filters.gender?.length) {
     total++;
-    if (filters.gender.includes(participant.gender)) score++;
+    if (filters.gender.includes(participant.gender ?? "")) score++;
   }
 
   if (filters.race?.length) {
     total++;
-    if (filters.race.includes(participant.race)) score++;
+    if (filters.race.includes(participant.race ?? "")) score++;
   }
 
   // --- AGE ---
@@ -681,13 +694,13 @@ export function getMatchScoreDetailed(
 
   if (filters.political_affiliation?.length) {
     total++;
-    if (filters.political_affiliation.includes(participant.political_affiliation)) score++;
+    if (filters.political_affiliation.includes(participant.political_affiliation ?? "")) score++;
   }
 
   // --- LOCATION ---
   if (filters.location?.state?.length) {
     total++;
-    if (filters.location.state.includes(participant.state)) score++;
+    if (filters.location.state.includes(participant.state ?? "")) score++;
   }
   if (filters.location?.county?.length) {
     total++;
@@ -697,17 +710,17 @@ export function getMatchScoreDetailed(
   // --- SOCIOECONOMIC ---
   if (filters.socioeconomic?.education_level?.length) {
     total++;
-    if (filters.socioeconomic.education_level.includes(participant.education_level)) score++;
+    if (filters.socioeconomic.education_level.includes(participant.education_level ?? "")) score++;
   }
 
   if (filters.socioeconomic?.marital_status?.length) {
     total++;
-    if (filters.socioeconomic.marital_status.includes(participant.marital_status)) score++;
+    if (filters.socioeconomic.marital_status.includes(participant.marital_status ?? "")) score++;
   }
 
   if (filters.socioeconomic?.family_income?.length) {
     total++;
-    if (filters.socioeconomic.family_income.includes(participant.family_income)) score++;
+    if (filters.socioeconomic.family_income.includes(participant.family_income ?? "")) score++;
   }
 
   if (filters.socioeconomic?.availability?.length) {
@@ -742,7 +755,7 @@ export function getMatchScoreDetailed(
  * Also returns how many checks were evaluated.
  */
 export function getMultiCaseScoreDetailed(
-  participant: any,
+  participant: ParticipantRow,
   filtersList: CaseFilters[]
 ) {
   let score = 0;
@@ -760,10 +773,10 @@ export function getMultiCaseScoreDetailed(
 /**
  * Attach multi-case score to each participant.
  */
-export function attachMultiCaseScores(
-  participants: any[],
+export function attachMultiCaseScores<P extends ParticipantRow>(
+  participants: P[],
   filtersList: CaseFilters[]
-) {
+): (P & { multiScore: number; multiTotal: number; casePassCount: number })[] {
   return participants.map((p) => {
     const { score, total } = getMultiCaseScoreDetailed(p, filtersList);
     const passCount = getCasePassCount(p, filtersList);
@@ -781,17 +794,17 @@ export function attachMultiCaseScores(
 /**
  * Sort by multi-case score.
  */
-export function sortParticipantsByMultiCaseMatch(
-  participants: any[]
-) {
+export function sortParticipantsByMultiCaseMatch<P extends ParticipantRow>(
+  participants: P[]
+): P[] {
   return [...participants].sort((a, b) => {
     // 1️⃣ who satisfies more cases
-    if (a.casePassCount !== b.casePassCount) {
-      return b.casePassCount - a.casePassCount;
+    if ((a.casePassCount ?? 0) !== (b.casePassCount ?? 0)) {
+      return (b.casePassCount ?? 0) - (a.casePassCount ?? 0);
     }
 
     // 2️⃣ who has better overall score
-    return b.multiScore - a.multiScore;
+    return (b.multiScore ?? 0) - (a.multiScore ?? 0);
   });
 }
 
@@ -800,10 +813,10 @@ export function sortParticipantsByMultiCaseMatch(
 /**
  * Sort participants by best match first.
  */
-export function sortParticipantsByMatch(
-  participants: any[],
+export function sortParticipantsByMatch<P extends ParticipantRow>(
+  participants: P[],
   filters: CaseFilters
-) {
+): (P & { __score: number })[] {
   return participants
     .map(p => ({
       ...p,
@@ -818,7 +831,7 @@ export function sortParticipantsByMatch(
  * Did participant satisfy ONE entire case?
  */
 export function doesParticipantPassCase(
-  participant: any,
+  participant: ParticipantRow,
   filters: CaseFilters
 ) {
   const { score, total } = getMatchScoreDetailed(participant, filters);
@@ -829,7 +842,7 @@ export function doesParticipantPassCase(
  * Count how many cases participant fully satisfies.
  */
 export function getCasePassCount(
-  participant: any,
+  participant: ParticipantRow,
   filtersList: CaseFilters[]
 ) {
   let passCount = 0;

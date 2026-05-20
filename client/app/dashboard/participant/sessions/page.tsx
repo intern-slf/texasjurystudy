@@ -53,27 +53,38 @@ export default async function ParticipantSessionsPage({
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
+  type SessionCaseRow = {
+    start_time?: string | null;
+    end_time?: string | null;
+    cases?: { title?: string | null } | { title?: string | null }[] | null;
+  };
+  type SessionRow = {
+    session_date?: string | null;
+    zoom_link?: string | null;
+    session_cases?: SessionCaseRow[] | null;
+  };
+
   const sessions = (acceptedInvites ?? [])
     .flatMap((inv) => {
-      const session = Array.isArray(inv.sessions) ? inv.sessions[0] : inv.sessions;
-      const date: string = (session as any)?.session_date ?? "";
+      const session = (Array.isArray(inv.sessions) ? inv.sessions[0] : inv.sessions) as SessionRow | null | undefined;
+      const date: string = session?.session_date ?? "";
       if (!date) return [];
 
-      const sessionCases: any[] = (session as any)?.session_cases ?? [];
-      const starts = sessionCases.map((c: any) => c.start_time).filter(Boolean).sort();
-      const ends   = sessionCases.map((c: any) => c.end_time).filter(Boolean).sort();
+      const sessionCases: SessionCaseRow[] = session?.session_cases ?? [];
+      const starts = sessionCases.map((c) => c.start_time).filter((v): v is string => Boolean(v)).sort();
+      const ends   = sessionCases.map((c) => c.end_time).filter((v): v is string => Boolean(v)).sort();
       const timeRange = starts.length && ends.length
         ? `${fmtCt(starts[0])} – ${fmtCt(ends[ends.length - 1])} (CT)`
         : "TBD";
 
       const caseTitles = sessionCases
-        .map((c: any) => {
+        .map((c) => {
           const caseDetail = Array.isArray(c.cases) ? c.cases[0] : c.cases;
           return caseDetail?.title as string | undefined;
         })
         .filter(Boolean) as string[];
 
-      const zoomLink: string | null = (session as any)?.zoom_link ?? null;
+      const zoomLink: string | null = session?.zoom_link ?? null;
 
       return [{
         sessionId: inv.session_id,
@@ -145,11 +156,11 @@ export default async function ParticipantSessionsPage({
             Requested
           </h2>
           {pendingInvites.map((invite) => {
-            const session = Array.isArray(invite.sessions) ? invite.sessions[0] : invite.sessions;
-            const date: string = (session as any)?.session_date ?? "";
-            const sessionCases: any[] = (session as any)?.session_cases ?? [];
-            const starts = sessionCases.map((c: any) => c.start_time).filter(Boolean).sort();
-            const ends = sessionCases.map((c: any) => c.end_time).filter(Boolean).sort();
+            const session = (Array.isArray(invite.sessions) ? invite.sessions[0] : invite.sessions) as SessionRow | null | undefined;
+            const date: string = session?.session_date ?? "";
+            const sessionCases: SessionCaseRow[] = session?.session_cases ?? [];
+            const starts = sessionCases.map((c) => c.start_time).filter((v): v is string => Boolean(v)).sort();
+            const ends = sessionCases.map((c) => c.end_time).filter((v): v is string => Boolean(v)).sort();
             const timeRange = starts.length && ends.length
               ? `${fmtCt(starts[0])} – ${fmtCt(ends[ends.length - 1])} (CT)`
               : "TBD";
@@ -181,7 +192,7 @@ export default async function ParticipantSessionsPage({
                       const result = await updateInviteStatus(invite.id, "accepted");
                       if (result && "blocked" in result && result.blocked) {
                         if (result.reason === "missing_profile") {
-                          const missing = (result as any).missing as string[];
+                          const missing = (result as { missing?: string[] }).missing ?? [];
                           redirect(`/dashboard/participant/sessions?missingProfile=${missing.join(",")}`);
                         }
                         redirect("/dashboard/participant/sessions?sessionFull=1");

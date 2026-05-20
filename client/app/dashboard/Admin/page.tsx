@@ -18,7 +18,6 @@ import { approveCaseAction } from "@/lib/actions/adminCase";
 import { localToUTC } from "@/lib/timezone";
 import { AdminActionButton } from "@/components/AdminActionButton";
 import { RejectCaseButton } from "@/components/RejectCaseButton";
-import { Button } from "@/components/ui/button";
 import TimezoneInput from "@/components/TimezoneInput";
 import { Calendar, FileText } from "lucide-react";
 
@@ -112,7 +111,6 @@ export default async function AdminDashboardPage({
   const resolvedParams = await searchParams;
   const tab: AdminTab = resolvedParams?.tab ?? "requested";
   const isOldData = resolvedParams?.test_table === "oldData";
-  const testTable = isOldData ? "oldData" : "jury_participants";
 
   /* =========================
       FETCH CASES BY TAB
@@ -179,14 +177,16 @@ export default async function AdminDashboardPage({
 
   // On the approved tab, hide cases whose session has already passed
   const todayStr = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  type SessionCaseRow = { sessions?: { session_date?: string | null } | { session_date?: string | null }[] | null };
   const filteredCases = tab === "approved"
     ? cases.filter((c) => {
-        const sessionCases = (c as any).session_cases ?? [];
+        const sessionCases = ((c as { session_cases?: SessionCaseRow[] | null }).session_cases ?? []);
         if (sessionCases.length === 0) return true; // not in any session — keep
         // keep only if at least one linked session is today or in the future
-        return sessionCases.some(
-          (sc: any) => sc.sessions?.session_date >= todayStr
-        );
+        return sessionCases.some((sc) => {
+          const session = Array.isArray(sc.sessions) ? sc.sessions[0] : sc.sessions;
+          return (session?.session_date ?? "") >= todayStr;
+        });
       })
     : cases;
 

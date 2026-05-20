@@ -6,7 +6,6 @@ import { Button } from "./ui/button";
 import Link from "next/link";
 import {
     Users,
-    ChevronRight,
     Calendar,
     Mail,
     User as UserIcon,
@@ -86,17 +85,24 @@ export default function PreviousParticipantsModal({ caseId, ancestorIds }: Props
             if (!data) return;
 
             // 2. Collect all unique participant IDs to fetch their jury_participants details
+            type RawParticipant = { participant_id?: string | null; [key: string]: unknown };
+            type RawSession = { session_date?: string | null; session_participants?: RawParticipant[] | null; [key: string]: unknown };
+            type RawSessionCase = { session_id?: string | null; sessions?: RawSession | RawSession[] | null; [key: string]: unknown };
+            type RawCaseItem = { id: string; title?: string | null; session_cases?: RawSessionCase[] | null; [key: string]: unknown };
+            type JuryDetails = { user_id?: string; first_name?: string | null; last_name?: string | null; email?: string | null };
+
             const participantIds = new Set<string>();
-            data.forEach((caseItem: any) => {
-                caseItem.session_cases?.forEach((sc: any) => {
-                    sc.sessions?.session_participants?.forEach((p: any) => {
+            (data as unknown as RawCaseItem[]).forEach((caseItem) => {
+                caseItem.session_cases?.forEach((sc) => {
+                    const session = Array.isArray(sc.sessions) ? sc.sessions[0] : sc.sessions;
+                    session?.session_participants?.forEach((p) => {
                         if (p.participant_id) participantIds.add(p.participant_id);
                     });
                 });
             });
 
             const uniqueIds = Array.from(participantIds);
-            let juryDetailsMap: Record<string, any> = {};
+            const juryDetailsMap: Record<string, JuryDetails> = {};
 
             if (uniqueIds.length > 0) {
                 const { data: juryData, error: juryError } = await supabase
@@ -132,35 +138,42 @@ export default function PreviousParticipantsModal({ caseId, ancestorIds }: Props
             }
 
             // 3. Merge data and sort
+            const rawData = data as unknown as RawCaseItem[];
             const sortedData = (allIds as string[])
-                .map(id => {
-                    const caseItem = data.find((c: any) => c.id === id);
+                .map((id): RawCaseItem | null => {
+                    const caseItem = rawData.find((c) => c.id === id);
                     if (!caseItem) return null;
 
                     // Deep merge jury details into each participant
-                    const processedSessionCases = caseItem.session_cases?.map((sc: any) => ({
-                        ...sc,
-                        sessions: {
-                            ...sc.sessions,
-                            session_participants: sc.sessions?.session_participants?.map((p: any) => ({
-                                ...p,
-                                jury_participants: juryDetailsMap[p.participant_id] || null
-                            }))
-                        }
-                    }));
+                    const processedSessionCases = caseItem.session_cases?.map((sc) => {
+                        const session = (Array.isArray(sc.sessions) ? sc.sessions[0] : sc.sessions) ?? undefined;
+                        return {
+                            ...sc,
+                            sessions: {
+                                ...(session ?? {}),
+                                session_participants: session?.session_participants?.map((p) => ({
+                                    ...p,
+                                    jury_participants: (p.participant_id && juryDetailsMap[p.participant_id]) || null
+                                }))
+                            }
+                        };
+                    });
 
                     return { ...caseItem, session_cases: processedSessionCases };
                 })
-                .filter(Boolean) as unknown as CaseLineageData[];
+                .filter((v): v is RawCaseItem => v !== null) as unknown as CaseLineageData[];
 
             setLineageData(sortedData);
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error("Error fetching lineage participants:", err);
             // More detailed logging for the {} error case
-            if (err.message) console.error("Error Message:", err.message);
-            if (err.details) console.error("Error Details:", err.details);
-            if (err.hint) console.error("Error Hint:", err.hint);
-            if (err.code) console.error("Error Code:", err.code);
+            if (err && typeof err === "object") {
+                const e = err as { message?: unknown; details?: unknown; hint?: unknown; code?: unknown };
+                if (e.message) console.error("Error Message:", e.message);
+                if (e.details) console.error("Error Details:", e.details);
+                if (e.hint) console.error("Error Hint:", e.hint);
+                if (e.code) console.error("Error Code:", e.code);
+            }
         } finally {
             setLoading(false);
         }

@@ -816,14 +816,14 @@ export async function searchEligibleParticipants(
     .from("session_participants")
     .select("participant_id")
     .eq("session_id", sessionId);
-  const alreadyInvitedIds = (sessionParts ?? []).map((p: any) => p.participant_id);
+  const alreadyInvitedIds = (sessionParts ?? []).map((p: { participant_id: string }) => p.participant_id);
 
   // 2. Get blacklisted user IDs from roles table
   const { data: blacklistedRoles } = await supabase
     .from("roles")
     .select("user_id")
     .eq("role", "blacklisted");
-  const blacklistedIds = (blacklistedRoles ?? []).map((r: any) => r.user_id as string);
+  const blacklistedIds = (blacklistedRoles ?? []).map((r: { user_id: string }) => r.user_id);
 
   // Combine all IDs to exclude
   const excludeIds = Array.from(new Set([...alreadyInvitedIds, ...blacklistedIds]));
@@ -847,7 +847,6 @@ export async function searchEligibleParticipants(
 
   if (excludeIds.length > 0) {
     const idField = isOldData ? "id" : "user_id";
-    // @ts-ignore
     q = q.not(idField, "in", `(${excludeIds.map((id) => `"${id}"`).join(",")})`);
   }
 
@@ -859,12 +858,20 @@ export async function searchEligibleParticipants(
     );
   }
 
-  // @ts-ignore
   const { data, error } = await q.limit(50);
 
   if (error) throw error;
 
-  return (data ?? []).map((p: any) => ({
+  type SearchResultRow = {
+    user_id?: string | null;
+    id?: string | null;
+    first_name?: string | null;
+    last_name?: string | null;
+    city?: string | null;
+    date_of_birth?: string | null;
+    political_affiliation?: string | null;
+  };
+  return ((data ?? []) as SearchResultRow[]).map((p) => ({
     id: p.user_id || p.id,
     first_name: p.first_name,
     last_name: p.last_name,
@@ -906,8 +913,8 @@ export async function notifyPresenterByEmail(
   const caseIds = (sessionCases ?? []).map((sc) => sc.case_id);
 
   // 3. Fetch case titles and legacy drive_link field
-  let caseTitleMap = new Map<string, string>();
-  let legacyDriveLinkMap = new Map<string, string>();
+  const caseTitleMap = new Map<string, string>();
+  const legacyDriveLinkMap = new Map<string, string>();
   if (caseIds.length) {
     const { data: caseRows } = await supabase
       .from("cases")

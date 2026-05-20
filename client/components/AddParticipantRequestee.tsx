@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   searchParticipantsForCase,
@@ -79,7 +79,7 @@ export default function AddParticipantRequestee({ caseId, hasSession }: Props) {
   function toggle(id: string) {
     setSelected((prev) => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
   }
@@ -101,8 +101,9 @@ export default function AddParticipantRequestee({ caseId, hasSession }: Props) {
         setInitialLoaded(false);
         setShowConfirm(false);
         router.refresh();
-      } catch (e: any) {
-        alert(e.message || "Failed to add participants");
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : "Failed to add participants";
+        alert(msg);
       }
     });
   }

@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import ParticipantForm from "@/components/ParticipantForm";
 import Link from "next/link";
 import { getPendingInvites } from "@/lib/participant/getPendingInvites";
-import { updateInviteStatus, isSessionFull } from "@/lib/participant/updateInviteStatus";
+import { updateInviteStatus } from "@/lib/participant/updateInviteStatus";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { unstable_noStore as noStore } from "next/cache";
@@ -37,7 +37,7 @@ export default async function ParticipantDashboard({
       const result = await updateInviteStatus(inviteId, status as "accepted" | "declined");
       if (result && "blocked" in result && result.blocked) {
         if (result.reason === "missing_profile") {
-          const missing = (result as any).missing as string[];
+          const missing = (result as { missing?: string[] }).missing ?? [];
           redirectTo = `/dashboard/participant?missingProfile=${missing.join(",")}`;
         } else {
           redirectTo = "/dashboard/participant?sessionFull=1";
@@ -45,8 +45,9 @@ export default async function ParticipantDashboard({
       } else {
         console.log(`[ParticipantDashboard] Update success, preparing to redirect...`);
       }
-    } catch (err: any) {
-      console.error(`[ParticipantDashboard] Failed to handle URL invite response:`, err.message);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[ParticipantDashboard] Failed to handle URL invite response:`, msg);
     }
     redirect(redirectTo);
   }
@@ -153,8 +154,9 @@ export default async function ParticipantDashboard({
                       const cases = session?.session_cases || [];
                       if (cases.length === 0) return "TBD";
 
-                      const startTimes = cases.map((c: any) => c.start_time).filter(Boolean).sort();
-                      const endTimes = cases.map((c: any) => c.end_time).filter(Boolean).sort();
+                      type SCase = { start_time?: string | null; end_time?: string | null };
+                      const startTimes = (cases as SCase[]).map((c) => c.start_time).filter((v): v is string => Boolean(v)).sort();
+                      const endTimes = (cases as SCase[]).map((c) => c.end_time).filter((v): v is string => Boolean(v)).sort();
 
                       if (startTimes.length === 0 || endTimes.length === 0) return "TBD";
 
@@ -177,7 +179,7 @@ export default async function ParticipantDashboard({
                       const result = await updateInviteStatus(invite.id, "accepted");
                       if (result && "blocked" in result && result.blocked) {
                         if (result.reason === "missing_profile") {
-                          const missing = (result as any).missing as string[];
+                          const missing = (result as { missing?: string[] }).missing ?? [];
                           redirect(`/dashboard/participant?missingProfile=${missing.join(",")}`);
                         }
                         redirect("/dashboard/participant?sessionFull=1");
