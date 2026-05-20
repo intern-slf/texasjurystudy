@@ -95,7 +95,7 @@ export default async function RequesteeDashboard({
   const resolvedSearchParams = await searchParams;
 
   if (!resolvedSearchParams?.tab) {
-    redirect("/dashboard/requestee/new");
+    redirect("/dashboard/requestee/home");
   }
 
   const tab: "current" | "approved" | "previous" =

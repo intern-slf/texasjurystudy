@@ -225,7 +225,7 @@ export default function ParticipantsLanding() {
             },
             {
               q: "Will my name be shared?",
-              a: "No. Your identifying details stay private. Only your responses and general demographic profile are visible to the case team.",
+              a: "Yes. Your name is visible to the attorney's case team along with your responses and demographic profile. Sensitive details such as your driver's license and payment information are never shared.",
             },
             {
               q: "How am I paid?",

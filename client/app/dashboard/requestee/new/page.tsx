@@ -453,7 +453,7 @@ export default function NewCasePage() {
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium">Do you prefer participants from your county?</label>
+                <label className="text-sm font-medium">Do you prefer participants similar to the demographics of your county?</label>
                 <select className="input w-full" value={form.participants_from_county} onChange={(e) => setForm({ ...form, participants_from_county: e.target.value })}>
                   <option value="">Select...</option>
                   <option value="Yes">Yes</option>
@@ -461,7 +461,7 @@ export default function NewCasePage() {
                 </select>
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium">Session Completion Timeframe</label>
+                <label className="text-sm font-medium">When do you need to conduct this focus group?</label>
                 <select
                   className="input w-full"
                   value={form.session_completion_timeframe}
