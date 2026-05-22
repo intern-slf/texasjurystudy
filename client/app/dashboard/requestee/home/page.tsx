@@ -302,25 +302,25 @@ const sections: Section[] = [
   {
     id: "timing",
     title: "When will the session be conducted?",
-    subtitle: "Sessions run on a regular schedule, typically within several days of approval.",
+    subtitle: "Most sessions are held within a few days of approval.",
     icon: CalendarDays,
     body: (
       <div className="space-y-4">
         <p>
-          Sessions are conducted on a regular schedule. Most cases are scheduled within several
-          days of approval, subject to current demand.
+          Once a case is approved, the session is usually scheduled within a few days. Exact timing
+          depends on jury availability and how busy the calendar is that week.
         </p>
         <p>
-          A preferred timeframe is selected on the submission form; the final date is confirmed once
-          the case has been reviewed.
+          You select a preferred timeframe when submitting the case. After our team reviews it, we
+          confirm the final date with you by email.
         </p>
         <div className="flex items-center gap-3 rounded-md border border-slate-200 bg-slate-50 p-4">
           <div className="h-10 w-10 rounded-md bg-white border border-slate-200 flex items-center justify-center shrink-0">
             <CalendarDays className="h-5 w-5 text-slate-600" />
           </div>
           <div>
-            <p className="text-sm font-semibold text-slate-900">Typical lead time</p>
-            <p className="text-sm text-slate-600">Several days from approval to session.</p>
+            <p className="text-sm font-semibold text-slate-900">From approval to session</p>
+            <p className="text-sm text-slate-600">Usually a few business days, depending on the calendar.</p>
           </div>
         </div>
       </div>
