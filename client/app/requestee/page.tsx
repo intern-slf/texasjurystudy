@@ -89,12 +89,11 @@ export default function RequesteeLanding() {
 
           {/* Hero stats strip */}
           <div className="mx-auto mt-20 max-w-4xl">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-px overflow-hidden rounded-2xl border bg-border">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-px overflow-hidden rounded-2xl border bg-border">
               {[
                 { value: "6–12", label: "jurors per panel" },
                 { value: "254", label: "Texas counties" },
                 { value: "$850", label: "starting hourly rate" },
-                { value: "$20K+", label: "saved vs. traditional" },
               ].map((stat, i) => (
                 <div key={i} className="bg-background px-6 py-6 text-center">
                   <div className="text-2xl md:text-3xl font-extrabold text-primary">{stat.value}</div>
@@ -110,16 +109,13 @@ export default function RequesteeLanding() {
       <section id="what-is-tjs" className="container mx-auto px-6 py-24 scroll-mt-20">
         <div className="max-w-4xl mx-auto">
           <div className="mb-12 text-center">
-            <span className="inline-block text-sm font-semibold text-primary uppercase tracking-widest">
-              The Service
-            </span>
             <h2 className="mt-3 text-3xl font-bold tracking-tight md:text-5xl">
               What is <span className="text-primary">Texas Jury Study?</span>
             </h2>
           </div>
 
           <p className="text-lg text-muted-foreground leading-relaxed text-center max-w-3xl mx-auto">
-            A virtual jury study service for Texas litigation cases. We assemble panels of <strong className="text-foreground">6 to 12 participants</strong> drawn as a random cross-section of the Texas population — broadly reflective of the venires you&apos;d encounter across the state&apos;s 254 counties. Attorneys, mediators, arbitrators, and insurance adjusters use these panels to pressure-test their case before it matters.
+            A virtual jury study service for Texas litigation cases. We assemble panels of <strong className="text-foreground">6 to 12 participants</strong> drawn as a random cross-section of the Texas population — broadly reflective of the venires you&apos;d encounter across the state&apos;s 254 counties. Attorneys, mediators, arbitrators, and insurance adjusters use these panels to pressure-test their cases.
           </p>
 
           <div className="mt-12 grid gap-6 sm:grid-cols-3">
@@ -162,9 +158,6 @@ export default function RequesteeLanding() {
 
         <div className="container mx-auto px-6 max-w-5xl">
           <div className="mb-12 text-center">
-            <span className="inline-block text-sm font-semibold text-primary uppercase tracking-widest">
-              Who It&apos;s For
-            </span>
             <h2 className="mt-3 text-3xl font-bold tracking-tight md:text-5xl">
               Who should submit a case?
             </h2>
@@ -221,9 +214,6 @@ export default function RequesteeLanding() {
       <section className="container mx-auto px-6 py-24">
         <div className="max-w-5xl mx-auto">
           <div className="mb-12 text-center">
-            <span className="inline-block text-sm font-semibold text-primary uppercase tracking-widest">
-              Timing
-            </span>
             <h2 className="mt-3 text-3xl font-bold tracking-tight md:text-5xl">
               When should you <span className="text-primary">run a study?</span>
             </h2>
@@ -236,7 +226,7 @@ export default function RequesteeLanding() {
             {[
               { stage: "Intake phase", desc: "Decide whether to take the case, and at what value, before you commit resources." },
               { stage: "Throughout litigation", desc: "Re-evaluate strategy as new facts surface, motions are decided, and the record builds." },
-              { stage: "Before & after depositions", desc: "Plan what to ask going in, and assess how the testimony actually lands coming out." },
+              { stage: "Before & after depositions", desc: "Plan what to ask going in, and assess how the testimony actually lands coming out." }, //have to update/change
               { stage: "Before trial", desc: "Test openings, themes, exhibits, and damages frameworks while there&apos;s still time to adjust." },
             ].map((item, i) => (
               <div
@@ -255,7 +245,7 @@ export default function RequesteeLanding() {
           </div>
 
           <p className="mt-10 text-center text-sm text-muted-foreground italic max-w-2xl mx-auto">
-            Many of our requestees run studies multiple times on the same case — continuous re-evaluation is part of how good trial strategy is built.
+            Many of our customer run studies multiple times on the same case — continuous re-evaluation is part of how good trial strategy is built.
           </p>
         </div>
       </section>
@@ -273,9 +263,6 @@ export default function RequesteeLanding() {
 
         <div className="container mx-auto px-6 max-w-5xl">
           <div className="mb-12 text-center">
-            <span className="inline-block text-sm font-semibold text-primary uppercase tracking-widest">
-              Pricing
-            </span>
             <h2 className="mt-3 text-3xl font-bold tracking-tight md:text-5xl">
               Flexible, <span className="text-primary">cost-effective</span> pricing.
             </h2>
@@ -297,11 +284,11 @@ export default function RequesteeLanding() {
                   <div className="text-lg font-medium text-muted-foreground">/hour</div>
                 </div>
                 <p className="text-muted-foreground mt-4 leading-relaxed">
-                  Starting price for virtual studies. In-person pricing is available and discussed separately based on your needs.
+                  Starting price for virtual studies. In-person pricing is available based on your needs.
                 </p>
                 <ul className="mt-6 space-y-2.5">
                   {[
-                    "Pay per session — no retainer",
+                    "Pay per session",
                     "Virtual delivery by default",
                     "In-person available on request",
                   ].map((point, i) => (
@@ -327,7 +314,7 @@ export default function RequesteeLanding() {
                 <div className="text-5xl font-extrabold text-muted-foreground">$20K–$30K</div>
               </div>
               <p className="text-muted-foreground mt-4 leading-relaxed">
-                Typical cost for a comparable engagement with a traditional jury consultant — often out of reach for everyday cases.
+                Typical cost for a engagement with a traditional jury consultant — often out of reach for everyday cases.
               </p>
               <ul className="mt-6 space-y-2.5 text-muted-foreground">
                 {[
@@ -354,14 +341,11 @@ export default function RequesteeLanding() {
       <section id="get-started" className="container mx-auto px-6 py-24 scroll-mt-20">
         <div className="max-w-5xl mx-auto">
           <div className="mb-12 text-center">
-            <span className="inline-block text-sm font-semibold text-primary uppercase tracking-widest">
-              Get Started
-            </span>
             <h2 className="mt-3 text-3xl font-bold tracking-tight md:text-5xl">
               How do I sign up?
             </h2>
             <p className="mt-5 text-lg text-muted-foreground max-w-2xl mx-auto">
-              If the service makes sense for your practice, the next step is to create a requestee account. Submit your first case, share the materials you want the panel to consider, and we&apos;ll handle the rest.
+              If the service makes sense for your practice, the next step is to create an account. Submit your first case, share the materials you want the panel to consider, and we&apos;ll handle the rest.
             </p>
           </div>
 
@@ -385,14 +369,14 @@ export default function RequesteeLanding() {
                 Ready to submit a case?
               </h3>
               <p className="text-primary-foreground/80 text-lg">
-                Create your free requestee account — no commitment, and no charge until you actually run a study.
+                Create your account — no commitment, and no charge until you actually run a study.
               </p>
               <div className="flex flex-col sm:flex-row gap-3 justify-center pt-2">
                 <Link
                   href="/auth/signup?role=requestee"
                   className="inline-flex h-12 items-center justify-center rounded-md bg-background px-8 text-sm font-semibold text-primary shadow-lg transition-all hover:bg-background/90 hover:-translate-y-0.5"
                 >
-                  Create Requestee Account
+                  Create Account
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Link>
                 <Link
