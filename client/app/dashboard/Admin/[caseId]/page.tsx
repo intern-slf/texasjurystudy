@@ -122,15 +122,13 @@ export default async function AdminCaseDetailPage({
 
   let requesteeProfile: { id: string; email: string | null; full_name: string | null } | null = null;
   if (requesteeUserId) {
-    const [{ data: authUser }, { data: profile }, { data: agreement }] = await Promise.all([
+    const [{ data: authUser }, { data: agreement }] = await Promise.all([
       supabaseAdmin.auth.admin.getUserById(requesteeUserId),
-      supabaseAdmin.from("profiles").select("id, email, full_name").eq("id", requesteeUserId).single(),
       supabaseAdmin.from("confidentiality_agreements_requestee").select("first_name, last_name").eq("user_id", requesteeUserId).single(),
     ]);
 
-    const email = authUser?.user?.email || profile?.email || null;
-    const full_name = profile?.full_name
-      || (agreement ? `${agreement.first_name} ${agreement.last_name}`.trim() : null)
+    const email = authUser?.user?.email || null;
+    const full_name = (agreement ? `${agreement.first_name} ${agreement.last_name}`.trim() : null)
       || authUser?.user?.user_metadata?.full_name
       || null;
 
