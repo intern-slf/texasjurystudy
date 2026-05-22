@@ -157,7 +157,8 @@ const sections: Section[] = [
         </div>
       </div>
     ),
-    videoUrl: FOCUS_GROUP_VIDEOS.narrative[0]?.url ?? "",
+    // videoUrl: FOCUS_GROUP_VIDEOS.narrative[0]?.url ?? "",
+    videoUrl: "",
     videoCaption: "Narrative focus group",
     videoLabel: FOCUS_GROUP_VIDEOS.narrative[0]?.question ?? "Narrative focus group overview",
   },
@@ -419,7 +420,8 @@ const sections: Section[] = [
         </div>
       </div>
     ),
-    videoUrl: FOCUS_GROUP_VIDEOS.general.url,
+    // videoUrl: FOCUS_GROUP_VIDEOS.general.url,
+    videoUrl: "",
     videoCaption: "Included deliverables",
     videoLabel: FOCUS_GROUP_VIDEOS.general.title,
   },
