@@ -1,0 +1,17 @@
+[extend]
+useDefault = true
+
+[allowlist]
+description = "CI placeholders and vendored deps"
+paths = [
+  '''client/node_modules/''',
+  '''client/package-lock\.json''',
+]
+regexes = [
+  '''placeholder-anon-key''',
+  '''placeholder-service-role-key''',
+  '''placeholder-ci-secret-not-used-at-runtime''',
+  '''placeholder@example\.com''',
+  '''smtp\.example\.com''',
+  '''https://placeholder\.supabase\.co''',
+]
