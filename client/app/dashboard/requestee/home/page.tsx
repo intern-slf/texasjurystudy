@@ -493,9 +493,6 @@ export default function RequesteeHomePage() {
         <div className="max-w-5xl mx-auto px-6 sm:px-10 py-12 sm:py-16">
           {/* HERO */}
           <header className="mb-14 pb-10 border-b border-slate-200">
-            <p className="text-[11px] font-semibold uppercase tracking-widest text-slate-500 mb-4">
-              Orientation
-            </p>
 
             <h1 className="text-4xl sm:text-5xl font-bold tracking-tight text-slate-900 leading-[1.1]">
               Ready to Submit Your Case
@@ -509,9 +506,8 @@ export default function RequesteeHomePage() {
             </p>
 
             {/* Hero summary */}
-            <dl className="mt-10 grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-4">
+            <dl className="mt-10 grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-4">
               {[
-                { k: "1 hour", v: "Standard session" },
                 { k: "3 business days", v: "Session video" },
                 { k: "1 week", v: "Written transcript" },
                 { k: "1 observer", v: "Per session" },
