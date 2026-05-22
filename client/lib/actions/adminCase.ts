@@ -35,16 +35,6 @@ export async function approveCaseAction(caseId: string) {
       console.error("[approveCaseAction] supabaseAdmin call failed:", e);
     }
 
-    // Fallback to profiles table
-    if (!requesteeEmail) {
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("email")
-        .eq("id", updatedCase.user_id)
-        .single();
-      requesteeEmail = profile?.email ?? null;
-    }
-
     if (requesteeEmail) {
       try {
         await sendApprovalEmail(requesteeEmail, updatedCase.title);
@@ -87,15 +77,6 @@ export async function rejectCaseAction(caseId: string, reason: string) {
       requesteeEmail = userData?.user?.email ?? null;
     } catch (e) {
       console.error("[rejectCaseAction] supabaseAdmin call failed:", e);
-    }
-
-    if (!requesteeEmail) {
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("email")
-        .eq("id", updatedCase.user_id)
-        .single();
-      requesteeEmail = profile?.email ?? null;
     }
 
     if (requesteeEmail) {

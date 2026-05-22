@@ -279,7 +279,6 @@ export async function getLineageParticipantDetails(caseIds: string[]) {
   
     const supabase = await createClient();
   
-    // 1. Fetch cases and their session participants (profiles only)
     const { data, error } = await supabase
       .from("cases")
       .select(`
@@ -291,10 +290,6 @@ export async function getLineageParticipantDetails(caseIds: string[]) {
             session_date,
             session_participants (
               participant_id,
-              profiles!participant_id (
-                email,
-                full_name
-              ),
               invite_status
             )
           )
@@ -308,7 +303,6 @@ export async function getLineageParticipantDetails(caseIds: string[]) {
     type LineageParticipant = {
       participant_id: string | null;
       invite_status?: string | null;
-      profiles?: { email?: string | null; full_name?: string | null } | { email?: string | null; full_name?: string | null }[] | null;
       [key: string]: unknown;
     };
     type LineageSession = {

@@ -16,11 +16,6 @@ import { Badge } from "./ui/badge";
 interface Participant {
     participant_id: string;
     invite_status: string;
-    profiles: {
-        id: string;
-        email: string;
-        full_name: string;
-    } | null;
     jury_participants: {
         first_name: string;
         last_name: string;
@@ -56,7 +51,6 @@ export default function PreviousParticipantsModal({ caseId, ancestorIds }: Props
         const allIds = [caseId, ...ancestorIds];
 
         try {
-            // 1. Fetch cases and their session participants (basic profiles only)
             const { data, error } = await supabase
                 .from("cases")
                 .select(`
@@ -69,12 +63,7 @@ export default function PreviousParticipantsModal({ caseId, ancestorIds }: Props
                             session_date,
                             session_participants (
                                 participant_id,
-                                invite_status,
-                                profiles!participant_id (
-                                    id,
-                                    email,
-                                    full_name
-                                )
+                                invite_status
                             )
                         )
                     )
@@ -267,15 +256,13 @@ export default function PreviousParticipantsModal({ caseId, ancestorIds }: Props
                                                                         </div>
                                                                         <div className="flex-1 min-w-0">
                                                                             <p className="text-sm font-bold text-slate-900 group-hover:text-primary transition-colors truncate">
-                                                                                {p.profiles?.full_name ||
-                                                                                    (p.jury_participants ? `${p.jury_participants.first_name} ${p.jury_participants.last_name}` : null) ||
-                                                                                    p.profiles?.email ||
+                                                                                {(p.jury_participants ? `${p.jury_participants.first_name} ${p.jury_participants.last_name}` : null) ||
                                                                                     p.jury_participants?.email ||
                                                                                     `Participant ${p.participant_id.slice(0, 8)}`}
                                                                             </p>
                                                                             <div className="flex items-center gap-1.5 text-xs text-slate-500">
                                                                                 <Mail className="h-3 w-3" />
-                                                                                <span className="truncate">{p.profiles?.email || p.jury_participants?.email || "No email"}</span>
+                                                                                <span className="truncate">{p.jury_participants?.email || "No email"}</span>
                                                                             </div>
                                                                         </div>
                                                                         <Badge

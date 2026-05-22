@@ -276,23 +276,9 @@ No INSERT/UPDATE/DELETE policies → writes blocked for anon/authenticated (corr
 
 ---
 
-### 🟩 `case_audit_logs` — RLS enabled
+### ⬛ `case_audit_logs` — DROPPED 2026-05-22
 
-**Code access:** writes from `client/app/dashboard/requestee/page.tsx:155,181,205` (requestee activity logging) using the anon-key server client.
-
-**Recommended policy:**
-- `INSERT`: any authenticated user (they're logging their own action), with a `WITH CHECK` clause forcing `actor_user_id = auth.uid()`.
-- `SELECT`: admin only.
-- `UPDATE` / `DELETE`: nobody (logs are append-only).
-
-**Current dashboard policies (2026-05-17):**
-
-| Policy | Cmd | Role | USING | WITH CHECK |
-|---|---|---|---|---|
-| system can insert audit logs | INSERT | public | — | `auth.uid() = user_id` |
-| user can read own audit logs | SELECT | public | `auth.uid() = user_id` | — |
-
-**Diff from recommendation:** SELECT is self-scoped only — no admin SELECT policy (admins must read via `supabaseAdmin`). No UPDATE/DELETE policies → correctly append-only. Matches F7's "acceptable for now" judgment.
+Removed: writes were never read. Insert calls deleted from `client/app/dashboard/requestee/page.tsx` (softDelete/restore/permanentDelete).
 
 ---
 
@@ -391,35 +377,9 @@ Confirmed unused (0 code references, 0 rows, no FKs/functions/views depending on
 
 ---
 
-### 🟩 `profiles` — RLS enabled
+### ⬛ `profiles` — DROPPED 2026-05-22
 
-Standard Supabase `profiles` table.
-
-**Code access:**
-- `client/app/dashboard/Admin/[caseId]/page.tsx:127` — admin reads requestee's profile (via `supabaseAdmin`, service_role).
-- `client/lib/actions/adminCase.ts:41,94` — admin reads requestee profiles (need to confirm client used).
-
-**Recommended policy:**
-- `SELECT`: admin (all), self (own row).
-- `UPDATE`: self (own row).
-- `INSERT`: handled by a trigger on `auth.users` typically — confirm.
-- `DELETE`: nobody (cascade from auth.users).
-
-**Current dashboard policies (2026-05-17):**
-
-| Policy | Cmd | Role | USING | WITH CHECK |
-|---|---|---|---|---|
-| Users can insert own profile | INSERT | public | — | `auth.uid() = id` |
-| Users can read own profile | SELECT | public | `auth.uid() = id` | — |
-| requestee can read participants of own cases | SELECT | public | `EXISTS (session_participants sp JOIN session_cases sc JOIN cases c WHERE sp.participant_id = profiles.id AND c.user_id = auth.uid())` | — |
-| Users can update own profile | UPDATE | public | `auth.uid() = id` | — |
-
-**Diffs from recommendation:**
-- Column is `id`, not `user_id` (Supabase default — confirm).
-- Requestee SELECT keys only on `c.user_id`, not `c.requestee_id` — F16 (admin-assigned requestees locked out).
-- No admin SELECT/UPDATE policies → admin reads go through `supabaseAdmin` (matches `client/app/dashboard/Admin/[caseId]/page.tsx:127`).
-- No DELETE policy → correctly nobody (cascade only).
-- F20 still open: `profiles` table is empty; missing `handle_new_user()` trigger.
+Table was empty (no `handle_new_user()` trigger) and every read had a working fallback via `auth.users` (`supabaseAdmin.auth.admin.getUserById`) + `confidentiality_agreements_requestee`. Removed fallback fetches from `adminCase.ts`, `Admin/[caseId]/page.tsx`; removed `profiles!participant_id` relational join from `case-lineage.ts` and `PreviousParticipantsModal.tsx` (those joins returned empty and code already fell back to `jury_participants`).
 
 ---
 
@@ -439,7 +399,7 @@ Confirmed unused (0 code references, 0 rows, no FKs/functions/views depending on
 | F4 | ✅ CLOSED | `oldData` RLS enabled 2026-05-17. Added admin SELECT (via `is_admin()`) + requestee SELECT (role-scoped). No INSERT/UPDATE/DELETE policies → writes blocked for anon/authenticated (no code writes to this table anyway). Per-case requestee scoping deferred — see audit notes. | | Closed |
 | F5 | ✅ CLOSED | `roles` "Service role manages all" (`USING true, WITH CHECK true, TO public`) — allowed any auth user to UPDATE their own role to 'admin'. Dropped + replaced with "admin can read all roles" SELECT policy. (2026-05-16) | | Closed |
 | F6 | ✅ CLOSED | `jury_participants` "Allow authenticated update participant" (`USING true`) — allowed any auth user to tamper with any participant's `approved_by_admin`, `blacklist_reason`, demographics. Dropped. (2026-05-16) | | Closed |
-| F7 | 🟨 MED | Verify `case_audit_logs` "system can insert audit logs" `WITH CHECK (auth.uid() = user_id)` — already correct, but anyone can self-log; not a real issue. SELECT also `auth.uid() = user_id` — admin can't read others' logs via anon (they'd need supabaseAdmin). Acceptable for now. | | Closed |
+| F7 | ✅ CLOSED | `case_audit_logs` dropped 2026-05-22 (writes never read, no consumers) | | Closed |
 | F8a | ✅ CLOSED | `requestee_responses` dropped 2026-05-16 (0 rows, no dependencies) | | Closed |
 | F8b | ✅ CLOSED | `transcript_orders` dropped 2026-05-16 (0 rows, no dependencies) | | Closed |
 | F8c | ✅ CLOSED | Truncated table name is `confidentiality_agreements_requestee` — active, used in requestee dashboard | | Closed |
@@ -454,7 +414,7 @@ Confirmed unused (0 code references, 0 rows, no FKs/functions/views depending on
 | F17 | 🟨 MED | Duplicate-policy cleanup needed: `cases` (16 policies, ~10 redundant), `confidentiality_agreements` (2 dup INSERT + 2 dup SELECT), `jury_participants` (dup INSERT, dup UPDATE), `session_participants` (dup UPDATE), `sessions` (3 dup INSERT), `roles` (1 dup SELECT). | | Open |
 | F18 | ⬜ INFO | `reviewer` role appears in `jury_participants` "requestee can read" policy but doesn't exist in `roles.role` CHECK constraint (only allows `participant`, `requestee`, `admin`, `blacklisted`). Dead or planned role — confirm. | | Open |
 | F19 | 🟨 MED | `session_participants` "participants can update own invite" allows UPDATE on *all* columns of own row, not just `invite_status`/`responded_at`. A participant could change `session_id` on their own row from devtools (realistic exploit small — they'd need a valid session UUID). Fix later with column-level grants. | | Open |
-| F20 | ⬜ INFO | `public.profiles` table is empty — likely missing the standard Supabase `handle_new_user()` trigger that auto-creates a profile row when an `auth.users` row is inserted. Code in `adminCase.ts:41,94` and `Admin/[caseId]/page.tsx:127` reads profiles for requestee info but currently returns empty. Not breaking anything today. Future cleanup: add the trigger + backfill. | | Open |
+| F20 | ✅ CLOSED | `profiles` table dropped 2026-05-22. Not needed — `auth.users` (via `supabaseAdmin`) is the source of truth; all 4 read sites refactored to use it directly. | | Closed |
 | F21 | 🟥 HIGH | `case_drive_links` "Authenticated users can view drive links" has `USING (true)` — any authenticated user (incl. participants) can read every case's Google Drive URLs. Drop this policy; the per-owner `ALL` policy already covers the legit requestee read. Add an admin SELECT + a case-scoped requestee SELECT if cross-requestee reads are needed. (Found 2026-05-17 during dashboard policy dump.) | | Open |
 | F22 | 🟨 MED | Audit dump (2026-05-17) confirmed F17 duplicates concretely: `cases` has 4 dup INSERTs + 2 dup admin SELECT + 2 dup own-row SELECT + 2 dup own-row UPDATE; `case_documents` has 2 dup admin SELECT; `confidentiality_agreements` has 2 dup INSERT + 2 dup SELECT; `jury_participants` has 2 dup INSERT; `roles` has 2 dup own-row SELECT. Drop the older/redundant duplicates in a single cleanup pass. | | Open |
 

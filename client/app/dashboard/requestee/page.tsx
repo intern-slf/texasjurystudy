@@ -154,12 +154,6 @@ export default async function RequesteeDashboard({
       .eq("id", caseId)
       .eq("user_id", activeUser.id);
 
-    await supabase.from("case_audit_logs").insert({
-      case_id: caseId,
-      user_id: activeUser.id,
-      action: "soft_delete",
-    });
-
     revalidatePath("/dashboard/requestee");
   }
 
@@ -180,12 +174,6 @@ export default async function RequesteeDashboard({
       .eq("id", caseId)
       .eq("user_id", activeUser.id);
 
-    await supabase.from("case_audit_logs").insert({
-      case_id: caseId,
-      user_id: activeUser.id,
-      action: "restore",
-    });
-
     revalidatePath("/dashboard/requestee");
   }
 
@@ -203,12 +191,6 @@ export default async function RequesteeDashboard({
       .eq("id", caseId)
       .eq("user_id", activeUser.id)
       .eq("status", "previous");
-
-    await supabase.from("case_audit_logs").insert({
-      case_id: caseId,
-      user_id: activeUser.id,
-      action: "permanent_delete",
-    });
 
     revalidatePath("/dashboard/requestee");
   }
