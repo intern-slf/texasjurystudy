@@ -68,9 +68,9 @@ vi.mock("@/lib/supabase/admin", () => ({
 // sendEmail mock (for app/auth/actions.ts)
 // ---------------------------------------------------------------------------
 type SendEmailArgs = { to: string; subject: string; html: string };
-const sendEmailSpy = vi.fn(
-  async (_args: SendEmailArgs) => ({ messageId: "fake-message-id" })
-);
+const sendEmailSpy = vi.fn<
+  (args: SendEmailArgs) => Promise<{ messageId: string }>
+>(async () => ({ messageId: "fake-message-id" }));
 vi.mock("@/lib/mail", () => ({
   sendEmail: (args: SendEmailArgs) => sendEmailSpy(args),
   emailWrapper: (content: string) => `<wrapped>${content}</wrapped>`,
@@ -287,13 +287,11 @@ describe("Authentication", () => {
     }) {
       return {
         auth: {
-          setSession: vi.fn(
-            async (_args: SetSessionArgs) =>
-              opts.setSession ?? { data: {}, error: null }
+          setSession: vi.fn<(args: SetSessionArgs) => Promise<SupaResult<unknown>>>(
+            async () => opts.setSession ?? { data: {}, error: null }
           ),
-          updateUser: vi.fn(
-            async (_args: UpdateUserArgs) =>
-              opts.updateUser ?? { data: {}, error: null }
+          updateUser: vi.fn<(args: UpdateUserArgs) => Promise<SupaResult<unknown>>>(
+            async () => opts.updateUser ?? { data: {}, error: null }
           ),
         },
       };
