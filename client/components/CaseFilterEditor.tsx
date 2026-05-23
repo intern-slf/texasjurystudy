@@ -3,26 +3,7 @@
 import { useState, useTransition } from "react";
 import { updateCaseFilters } from "@/app/dashboard/requestee/actions/updateCaseFilters";
 import { CaseFilters } from "@/lib/filter-utils";
-const EDUCATION_LEVELS = [
-  "Less than High School",
-  "High School or GED",
-  "Associate's or Technical Degree",
-  "Some College",
-  "Bachelor Degree",
-  "Graduate Degree",
-];
-
-function applyEducationAutoSelect(option: string, current: string[]): string[] {
-  const idx = EDUCATION_LEVELS.indexOf(option);
-  const isSelected = current.includes(option);
-  if (isSelected) {
-    const toRemove = new Set(EDUCATION_LEVELS.slice(idx));
-    return current.filter((v) => !toRemove.has(v));
-  } else {
-    const toAdd = EDUCATION_LEVELS.slice(idx);
-    return Array.from(new Set([...current, ...toAdd]));
-  }
-}
+import { EDUCATION_LEVELS, applyEducationAutoSelect } from "@/lib/education-hierarchy";
 
 function MultiCheckbox({
   label, options, values, onChange,
