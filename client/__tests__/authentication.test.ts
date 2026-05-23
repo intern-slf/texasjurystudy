@@ -67,9 +67,12 @@ vi.mock("@/lib/supabase/admin", () => ({
 // ---------------------------------------------------------------------------
 // sendEmail mock (for app/auth/actions.ts)
 // ---------------------------------------------------------------------------
-const sendEmailSpy = vi.fn(async () => ({ messageId: "fake-message-id" }));
+type SendEmailArgs = { to: string; subject: string; html: string };
+const sendEmailSpy = vi.fn(
+  async (_args: SendEmailArgs) => ({ messageId: "fake-message-id" })
+);
 vi.mock("@/lib/mail", () => ({
-  sendEmail: (...args: unknown[]) => sendEmailSpy(...(args as [])),
+  sendEmail: (args: SendEmailArgs) => sendEmailSpy(args),
   emailWrapper: (content: string) => `<wrapped>${content}</wrapped>`,
 }));
 
@@ -154,7 +157,7 @@ describe("Authentication", () => {
         })
       );
       expect(sendEmailSpy).toHaveBeenCalledTimes(1);
-      const emailArgs = sendEmailSpy.mock.calls[0][0] as { to: string; subject: string; html: string };
+      const emailArgs = sendEmailSpy.mock.calls[0][0];
       expect(emailArgs.to).toBe("participant@example.com");
       expect(emailArgs.html).toContain("http://test.local/verify?token=x");
     });
@@ -242,7 +245,7 @@ describe("Authentication", () => {
 
       expect(result).toEqual({ success: true });
       expect(sendEmailSpy).toHaveBeenCalledTimes(1);
-      const args = sendEmailSpy.mock.calls[0][0] as { to: string; subject: string; html: string };
+      const args = sendEmailSpy.mock.calls[0][0];
       expect(args.to).toBe("known@example.com");
       expect(args.subject).toMatch(/Password Reset/i);
       expect(args.html).toContain("http://test.local/verify?token=x");
@@ -275,14 +278,23 @@ describe("Authentication", () => {
     // client surface it depends on (setSession → updateUser) plus the
     // mismatched-confirmation guard that protects the submit handler.
 
+    type SetSessionArgs = { access_token: string; refresh_token: string };
+    type UpdateUserArgs = { password: string };
+
     function makeMockClient(opts: {
       setSession?: SupaResult<unknown>;
       updateUser?: SupaResult<unknown>;
     }) {
       return {
         auth: {
-          setSession: vi.fn(async () => opts.setSession ?? { data: {}, error: null }),
-          updateUser: vi.fn(async () => opts.updateUser ?? { data: {}, error: null }),
+          setSession: vi.fn(
+            async (_args: SetSessionArgs) =>
+              opts.setSession ?? { data: {}, error: null }
+          ),
+          updateUser: vi.fn(
+            async (_args: UpdateUserArgs) =>
+              opts.updateUser ?? { data: {}, error: null }
+          ),
         },
       };
     }
@@ -302,9 +314,9 @@ describe("Authentication", () => {
       await client.auth.setSession({
         access_token: "fresh-access",
         refresh_token: "fresh-refresh",
-      } as unknown as never);
+      });
 
-      const res = await client.auth.updateUser({ password: "NewSecret123!" } as unknown as never);
+      const res = await client.auth.updateUser({ password: "NewSecret123!" });
 
       expect(client.auth.setSession).toHaveBeenCalledTimes(1);
       expect(client.auth.updateUser).toHaveBeenCalledWith({ password: "NewSecret123!" });
@@ -319,7 +331,7 @@ describe("Authentication", () => {
         },
       });
 
-      const res = await client.auth.updateUser({ password: "NewSecret123!" } as unknown as never);
+      const res = await client.auth.updateUser({ password: "NewSecret123!" });
 
       expect(res.error).toMatchObject({
         message: expect.stringMatching(/expired|missing/i),
@@ -335,7 +347,7 @@ describe("Authentication", () => {
 
       // The submit guard must short-circuit before hitting Supabase
       if (passwordsMatch(password, confirm)) {
-        await client.auth.updateUser({ password } as unknown as never);
+        await client.auth.updateUser({ password });
       }
 
       expect(client.auth.updateUser).not.toHaveBeenCalled();
