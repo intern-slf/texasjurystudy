@@ -5,7 +5,6 @@ import {
   vi,
   beforeAll,
   beforeEach,
-  afterEach,
 } from "vitest";
 import { NextRequest } from "next/server";
 import { generateEmailActionToken } from "@/lib/emailActionToken";
