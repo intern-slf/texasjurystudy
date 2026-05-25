@@ -839,60 +839,59 @@ export async function sendReactivationEmail(opts: {
   noUrl: string;
 }) {
   const { to, firstName, yesUrl, noUrl } = opts;
-  const greeting = firstName ? `Hi ${firstName},` : "Hello,";
+  const salutation = firstName ? `Dear ${firstName},` : "Dear Participant,";
 
   const html = emailWrapper(`
-    <h2 style="margin:0 0 12px;font-size:24px;font-weight:700;color:#1e3a8a;">Are you still interested?</h2>
-    <p style="margin:0 0 16px;font-size:15px;color:#475569;">${greeting}</p>
+    <h2 style="margin:0 0 20px;font-size:22px;font-weight:700;color:#1e3a8a;line-height:1.3;">
+      Are you still interested in participating?
+    </h2>
+
+    <p style="margin:0 0 16px;font-size:15px;color:#1e293b;line-height:1.7;">
+      ${salutation}
+    </p>
     <p style="margin:0 0 16px;font-size:15px;color:#475569;line-height:1.7;">
-      <strong>Texas Jury Study has launched a new website.</strong> You previously
-      signed up to participate in our paid focus groups, and we are reaching out
-      to confirm you would still like to be part of the panel.
+      Thank you for your past interest in the <strong>Texas Jury Study</strong>.
+      We have recently launched our new website and are writing to confirm whether
+      you would still like to remain a member of our paid focus group panel.
     </p>
     <p style="margin:0 0 28px;font-size:15px;color:#475569;line-height:1.7;">
-      Please choose one of the options below. Your response is recorded as soon
-      as you click — no further action required.
+      Please select one of the options below. Your response will be recorded
+      immediately &mdash; no further action is required on your part.
     </p>
 
-    <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto 12px;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
       <tr>
-        <td style="border-radius:8px;background-color:#16a34a;">
+        <td align="center" style="padding:0 0 12px;">
           <a href="${yesUrl}"
-             style="display:inline-block;padding:16px 36px;font-size:16px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:8px;">
+             style="display:inline-block;background-color:#16a34a;color:#ffffff;font-size:16px;font-weight:700;text-decoration:none;padding:14px 28px;border-radius:8px;min-width:240px;text-align:center;line-height:1.2;">
             Yes, I&rsquo;m still interested
           </a>
         </td>
       </tr>
-    </table>
-
-    <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto 28px;">
       <tr>
-        <td style="border-radius:8px;background-color:#dc2626;">
+        <td align="center" style="padding:0 0 28px;">
           <a href="${noUrl}"
-             style="display:inline-block;padding:14px 32px;font-size:15px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">
+             style="display:inline-block;background-color:#dc2626;color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;padding:14px 28px;border-radius:8px;min-width:240px;text-align:center;line-height:1.2;">
             No, please remove me
           </a>
         </td>
       </tr>
     </table>
 
-    <p style="margin:0 0 8px;font-size:13px;color:#64748b;line-height:1.6;">
-      You have <strong>30 days</strong> to respond. If we don&rsquo;t hear back,
-      your profile will be marked inactive in our panel.
+    <p style="margin:0 0 20px;font-size:14px;color:#64748b;line-height:1.7;">
+      You have <strong>30 days</strong> to respond. If we do not hear from you
+      within that time, your profile will be marked inactive in our panel.
     </p>
-    <p style="margin:24px 0 0;font-size:12px;color:#94a3b8;line-height:1.6;">
-      Links expire in 30 days. If the buttons don&rsquo;t work, copy and paste
-      one of these into your browser:<br/>
-      <strong style="color:#16a34a;">Yes:</strong>
-      <span style="color:#475569;word-break:break-all;">${yesUrl}</span><br/>
-      <strong style="color:#dc2626;">No:</strong>
-      <span style="color:#475569;word-break:break-all;">${noUrl}</span>
+
+    <p style="margin:0;font-size:14px;color:#475569;line-height:1.7;">
+      Sincerely,<br/>
+      <strong>The Texas Jury Study Team</strong>
     </p>
   `);
 
   await sendEmail({
     to,
-    subject: "Texas Jury Study has launched — are you still interested?",
+    subject: "Texas Jury Study — are you still interested in participating?",
     html,
   });
 }
