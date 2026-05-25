@@ -16,13 +16,18 @@ type ParticipantTab = "approved" | "new" | "blacklisted";
 export default async function ParticipantsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: ParticipantTab }>;
+  searchParams: Promise<{ tab?: ParticipantTab; sent?: string; failed?: string }>;
 }) {
   const supabase = await createClient();
   const resolvedParams = await searchParams;
   const rawTab = resolvedParams?.tab;
   const tab: ParticipantTab =
     rawTab === "new" ? "new" : rawTab === "blacklisted" ? "blacklisted" : "approved";
+
+  const sentCount = Number(resolvedParams?.sent);
+  const failedCount = Number(resolvedParams?.failed);
+  const showSentBanner = Number.isFinite(sentCount) && sentCount > 0;
+  const showFailedBanner = Number.isFinite(failedCount) && failedCount > 0;
 
   /* =========================
      FETCH PARTICIPANTS
@@ -31,7 +36,7 @@ export default async function ParticipantsPage({
   let query = supabase
     .from("jury_participants")
     .select(
-      "user_id, first_name, last_name, email, gender, city, state, phone, date_of_birth, entry_date, approved_by_admin, driver_license_number, driver_license_image_url, blacklist_reason, blacklisted_at"
+      "user_id, first_name, last_name, email, gender, city, state, phone, date_of_birth, entry_date, approved_by_admin, driver_license_number, driver_license_image_url, blacklist_reason, blacklisted_at, reactivation_status, reactivation_email_sent_at, reactivation_confirmed_at"
     )
     .order("entry_date", { ascending: false });
 
@@ -43,7 +48,10 @@ export default async function ParticipantsPage({
     query = query.eq("approved_by_admin", true).is("blacklisted_at", null);
   }
 
-  const { data: participants } = await query;
+  const { data: participants, error: participantsError } = await query;
+  if (participantsError) {
+    console.error("[participants page] supabase select failed:", participantsError);
+  }
 
   /* =========================
      GENERATE SIGNED URLs FOR ID IMAGES (new tab only)
@@ -74,6 +82,21 @@ export default async function ParticipantsPage({
 
   return (
     <div className="space-y-6">
+      {(showSentBanner || showFailedBanner) && (
+        <div className="space-y-2">
+          {showSentBanner && (
+            <div className="rounded-md border border-green-300 bg-green-50 px-4 py-3 text-sm text-green-800">
+              Reactivation email sent to {sentCount} participant{sentCount === 1 ? "" : "s"}.
+            </div>
+          )}
+          {showFailedBanner && (
+            <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              {failedCount} email{failedCount === 1 ? "" : "s"} could not be sent. Check the server logs for details.
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ================= HEADER ================= */}
       <div className="flex items-center justify-between">
         <div>

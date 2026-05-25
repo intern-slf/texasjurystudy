@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import {
   Table,
   TableBody,
@@ -11,9 +12,12 @@ import {
 } from "@/components/ui/table";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import Link from "next/link";
-import { Search, X } from "lucide-react";
+import { Search, X, Mail } from "lucide-react";
 import { unblacklistParticipant } from "@/lib/actions/adminParticipant";
+
+const MAX_SELECTION = 500;
 
 function calcAge(dob: string): number {
   const birth = new Date(dob);
@@ -39,6 +43,9 @@ type Participant = {
   blacklisted_at: string | null;
   approved_by_admin: boolean | null;
   idSignedUrl: string | null;
+  reactivation_status: "pending" | "yes" | "no" | null;
+  reactivation_email_sent_at: string | null;
+  reactivation_confirmed_at: string | null;
   [key: string]: unknown;
 };
 
@@ -48,9 +55,13 @@ type Props = {
 };
 
 export default function ParticipantsTable({ participants, tab }: Props) {
+  const router = useRouter();
   const [query, setQuery] = useState("");
   const [isPending, startTransition] = useTransition();
   const [pendingId, setPendingId] = useState<string | null>(null);
+
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -72,6 +83,12 @@ export default function ParticipantsTable({ participants, tab }: Props) {
     });
   }, [participants, query]);
 
+  const filteredIds = useMemo(() => filtered.map((p) => p.user_id), [filtered]);
+  const allFilteredSelected =
+    filteredIds.length > 0 && filteredIds.every((id) => selected.has(id));
+  const someFilteredSelected =
+    !allFilteredSelected && filteredIds.some((id) => selected.has(id));
+
   function handleUnblacklist(userId: string) {
     setPendingId(userId);
     startTransition(async () => {
@@ -80,25 +97,105 @@ export default function ParticipantsTable({ participants, tab }: Props) {
     });
   }
 
+  function enterSelectMode() {
+    setSelectMode(true);
+    setSelected(new Set());
+  }
+
+  function cancelSelectMode() {
+    setSelectMode(false);
+    setSelected(new Set());
+  }
+
+  function toggleRow(userId: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(userId)) next.delete(userId);
+      else next.add(userId);
+      return next;
+    });
+  }
+
+  function toggleSelectAllFiltered() {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allFilteredSelected) {
+        filteredIds.forEach((id) => next.delete(id));
+      } else {
+        filteredIds.forEach((id) => next.add(id));
+      }
+      return next;
+    });
+  }
+
+  function handleContinue() {
+    if (selected.size === 0) return;
+    if (selected.size > MAX_SELECTION) {
+      alert(
+        `You selected ${selected.size} participants. Please send in batches of ${MAX_SELECTION} or fewer.`
+      );
+      return;
+    }
+    const ids = Array.from(selected).join(",");
+    router.push(`/dashboard/Admin/participants/send-mail?ids=${ids}`);
+  }
+
+  const showSendMail = tab === "approved";
+
   return (
     <div className="space-y-4">
-      {/* ── SEARCH BAR ── */}
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-        <Input
-          type="text"
-          placeholder="Search by name, email, location…"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          className="pl-9 pr-9 h-9 text-sm bg-white"
-        />
-        {query && (
-          <button
-            onClick={() => setQuery("")}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
+      {/* ── TOOLBAR: SEARCH + SEND MAIL ── */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="relative max-w-sm flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+          <Input
+            type="text"
+            placeholder="Search by name, email, location…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            className="pl-9 pr-9 h-9 text-sm bg-white"
+          />
+          {query && (
+            <button
+              onClick={() => setQuery("")}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+
+        {showSendMail && (
+          <div className="flex items-center gap-2">
+            {selectMode ? (
+              <>
+                <span className="text-sm text-muted-foreground">
+                  {selected.size} selected
+                </span>
+                <button
+                  onClick={cancelSelectMode}
+                  className="inline-flex items-center rounded-md bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-200 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleContinue}
+                  disabled={selected.size === 0}
+                  className="inline-flex items-center rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  Continue ({selected.size})
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={enterSelectMode}
+                className="inline-flex items-center gap-1.5 rounded-md border border-green-600 bg-white px-3 py-1.5 text-sm font-medium text-green-700 shadow-sm hover:bg-green-50 transition-colors"
+              >
+                <Mail className="h-4 w-4" />
+                Send Mail
+              </button>
+            )}
+          </div>
         )}
       </div>
 
@@ -117,7 +214,24 @@ export default function ParticipantsTable({ participants, tab }: Props) {
           <Table>
             <TableHeader className="bg-muted/30">
               <TableRow className="hover:bg-muted/30">
-                <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground pl-6">
+                {selectMode && (
+                  <TableHead className="pl-6 w-10">
+                    <Checkbox
+                      checked={
+                        allFilteredSelected
+                          ? true
+                          : someFilteredSelected
+                            ? "indeterminate"
+                            : false
+                      }
+                      onCheckedChange={toggleSelectAllFiltered}
+                      aria-label="Select all"
+                    />
+                  </TableHead>
+                )}
+                <TableHead
+                  className={`text-xs font-semibold uppercase tracking-wide text-muted-foreground ${selectMode ? "" : "pl-6"}`}
+                >
                   Name
                 </TableHead>
                 <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -134,6 +248,9 @@ export default function ParticipantsTable({ participants, tab }: Props) {
                 </TableHead>
                 <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   Phone
+                </TableHead>
+                <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Active
                 </TableHead>
                 {tab === "blacklisted" ? (
                   <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -156,13 +273,27 @@ export default function ParticipantsTable({ participants, tab }: Props) {
                   ? new Date(p.entry_date).toLocaleDateString()
                   : "—";
                 const isThisPending = isPending && pendingId === p.user_id;
+                const isSelected = selected.has(p.user_id);
+                const status = p.reactivation_status ?? "pending";
 
                 return (
                   <TableRow
                     key={p.user_id}
-                    className="group hover:bg-muted/40 transition-colors"
+                    data-state={isSelected ? "selected" : undefined}
+                    className="group hover:bg-muted/40 transition-colors data-[state=selected]:bg-green-50/60"
                   >
-                    <TableCell className="font-medium text-foreground py-4 pl-6">
+                    {selectMode && (
+                      <TableCell className="pl-6 py-4 w-10">
+                        <Checkbox
+                          checked={isSelected}
+                          onCheckedChange={() => toggleRow(p.user_id)}
+                          aria-label={`Select ${p.first_name ?? ""} ${p.last_name ?? ""}`.trim()}
+                        />
+                      </TableCell>
+                    )}
+                    <TableCell
+                      className={`font-medium text-foreground py-4 ${selectMode ? "" : "pl-6"}`}
+                    >
                       <Link
                         href={`/dashboard/participant/${p.user_id}`}
                         className="text-primary hover:text-primary/80 hover:underline"
@@ -184,6 +315,21 @@ export default function ParticipantsTable({ participants, tab }: Props) {
                     </TableCell>
                     <TableCell className="py-4 text-sm text-muted-foreground">
                       {p.phone || "—"}
+                    </TableCell>
+                    <TableCell className="py-4 text-sm">
+                      {status === "yes" ? (
+                        <span className="inline-flex items-center rounded-full bg-green-400/10 px-2 py-1 text-xs font-medium text-green-600 ring-1 ring-inset ring-green-400/20">
+                          Yes
+                        </span>
+                      ) : status === "no" ? (
+                        <span className="inline-flex items-center rounded-full bg-red-400/10 px-2 py-1 text-xs font-medium text-red-600 ring-1 ring-inset ring-red-400/20">
+                          No
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center rounded-full bg-amber-400/10 px-2 py-1 text-xs font-medium text-amber-700 ring-1 ring-inset ring-amber-400/30">
+                          Pending
+                        </span>
+                      )}
                     </TableCell>
                     {tab === "blacklisted" ? (
                       <TableCell
@@ -240,7 +386,7 @@ export default function ParticipantsTable({ participants, tab }: Props) {
               {!filtered.length && (
                 <TableRow>
                   <TableCell
-                    colSpan={8}
+                    colSpan={selectMode ? 10 : 9}
                     className="text-center py-16 text-muted-foreground italic"
                   >
                     {query

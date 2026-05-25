@@ -828,3 +828,72 @@ export async function sendPresenterInfoEmail(
   });
 }
 
+// ---------------------------------------------------------------------------
+// Reactivation campaign — "Are you still interested?" email
+// Two HMAC-signed CTAs: a green Yes button and a red No button.
+// ---------------------------------------------------------------------------
+export async function sendReactivationEmail(opts: {
+  to: string;
+  firstName: string | null;
+  yesUrl: string;
+  noUrl: string;
+}) {
+  const { to, firstName, yesUrl, noUrl } = opts;
+  const greeting = firstName ? `Hi ${firstName},` : "Hello,";
+
+  const html = emailWrapper(`
+    <h2 style="margin:0 0 12px;font-size:24px;font-weight:700;color:#1e3a8a;">Are you still interested?</h2>
+    <p style="margin:0 0 16px;font-size:15px;color:#475569;">${greeting}</p>
+    <p style="margin:0 0 16px;font-size:15px;color:#475569;line-height:1.7;">
+      <strong>Texas Jury Study has launched a new website.</strong> You previously
+      signed up to participate in our paid focus groups, and we are reaching out
+      to confirm you would still like to be part of the panel.
+    </p>
+    <p style="margin:0 0 28px;font-size:15px;color:#475569;line-height:1.7;">
+      Please choose one of the options below. Your response is recorded as soon
+      as you click — no further action required.
+    </p>
+
+    <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto 12px;">
+      <tr>
+        <td style="border-radius:8px;background-color:#16a34a;">
+          <a href="${yesUrl}"
+             style="display:inline-block;padding:16px 36px;font-size:16px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:8px;">
+            Yes, I&rsquo;m still interested
+          </a>
+        </td>
+      </tr>
+    </table>
+
+    <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto 28px;">
+      <tr>
+        <td style="border-radius:8px;background-color:#dc2626;">
+          <a href="${noUrl}"
+             style="display:inline-block;padding:14px 32px;font-size:15px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">
+            No, please remove me
+          </a>
+        </td>
+      </tr>
+    </table>
+
+    <p style="margin:0 0 8px;font-size:13px;color:#64748b;line-height:1.6;">
+      You have <strong>30 days</strong> to respond. If we don&rsquo;t hear back,
+      your profile will be marked inactive in our panel.
+    </p>
+    <p style="margin:24px 0 0;font-size:12px;color:#94a3b8;line-height:1.6;">
+      Links expire in 30 days. If the buttons don&rsquo;t work, copy and paste
+      one of these into your browser:<br/>
+      <strong style="color:#16a34a;">Yes:</strong>
+      <span style="color:#475569;word-break:break-all;">${yesUrl}</span><br/>
+      <strong style="color:#dc2626;">No:</strong>
+      <span style="color:#475569;word-break:break-all;">${noUrl}</span>
+    </p>
+  `);
+
+  await sendEmail({
+    to,
+    subject: "Texas Jury Study has launched — are you still interested?",
+    html,
+  });
+}
+
