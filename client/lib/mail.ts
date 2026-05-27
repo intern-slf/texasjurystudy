@@ -854,9 +854,8 @@ export async function sendReactivationEmail(opts: {
       We have recently launched our new website and are writing to confirm whether
       you would still like to remain a member of our paid focus group panel.
     </p>
-    <p style="margin:0 0 28px;font-size:15px;color:#475569;line-height:1.7;">
-      Please select one of the options below. Your response will be recorded
-      immediately &mdash; no further action is required on your part.
+    <p style="margin:0 0 24px;font-size:15px;color:#475569;line-height:1.7;">
+      Please select one of the options below to record your response.
     </p>
 
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
@@ -874,6 +873,30 @@ export async function sendReactivationEmail(opts: {
              style="display:inline-block;background-color:#dc2626;color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;padding:14px 28px;border-radius:8px;min-width:240px;text-align:center;line-height:1.2;">
             No, please remove me
           </a>
+        </td>
+      </tr>
+    </table>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#fff7ed;border-left:4px solid #f97316;border-radius:6px;margin:0 0 24px;">
+      <tr>
+        <td style="padding:16px 20px;">
+          <p style="margin:0 0 8px;font-size:13px;font-weight:700;color:#c2410c;text-transform:uppercase;letter-spacing:0.05em;">
+            Action Required to Stay Active
+          </p>
+          <p style="margin:0 0 12px;font-size:14px;color:#7c2d12;line-height:1.7;">
+            To continue receiving paid session invitations, your participant profile
+            must include the following:
+          </p>
+          <ul style="margin:0 0 12px 0;padding-left:20px;color:#7c2d12;font-size:14px;line-height:1.7;">
+            <li><strong>PayPal username</strong> &mdash; we pay exclusively via PayPal</li>
+            <li><strong>Driver&rsquo;s License number and photo</strong> &mdash; to verify Texas residency</li>
+          </ul>
+          <p style="margin:0;font-size:14px;color:#7c2d12;line-height:1.7;">
+            After clicking <em>Yes</em>, please log in and
+            <a href="${process.env.NEXT_PUBLIC_APP_URL}/dashboard/participant/edit" style="color:#c2410c;font-weight:700;text-decoration:underline;">update your profile</a>
+            if any of this information is missing. You will not be able to accept
+            session invitations until your profile is complete.
+          </p>
         </td>
       </tr>
     </table>
