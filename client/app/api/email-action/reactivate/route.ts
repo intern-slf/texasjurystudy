@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
   try {
     const { data: row, error } = await supabaseAdmin
       .from("jury_participants")
-      .select("user_id, reactivation_status")
+      .select("user_id, reactivation_status, paypal_username, driver_license_number, driver_license_image_url")
       .eq("user_id", participantId)
       .single();
 
@@ -50,6 +50,20 @@ export async function GET(req: NextRequest) {
     // Already responded — show what they previously chose, don't overwrite.
     if (row.reactivation_status === "yes" || row.reactivation_status === "no") {
       return html(submittedPage(row.reactivation_status, true));
+    }
+
+    // Mirror session-accept gating: if user said YES, require complete profile
+    // (PayPal + DL) before recording reactivation. Leaves status as "pending"
+    // so they can re-click the link after updating their profile.
+    if (action === "yes") {
+      const missing: string[] = [];
+      if (!row.driver_license_number || !row.driver_license_image_url) missing.push("dl");
+      if (!row.paypal_username) missing.push("paypal");
+
+      if (missing.length > 0) {
+        const magicLink = await getMagicLink(participantId);
+        return html(missingProfilePage(missing, magicLink));
+      }
     }
 
     const { error: updateError } = await supabaseAdmin
@@ -79,6 +93,28 @@ export async function GET(req: NextRequest) {
       errorPage("Something Went Wrong", "We could not record your response. Please try again or contact support."),
       500
     );
+  }
+}
+
+async function getMagicLink(participantId: string): Promise<string> {
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
+  const fallback = `${appUrl}/dashboard/participant/edit`;
+
+  try {
+    const { data: userData } = await supabaseAdmin.auth.admin.getUserById(participantId);
+    const email = userData?.user?.email;
+    if (!email) return fallback;
+
+    const { data, error } = await supabaseAdmin.auth.admin.generateLink({
+      type: "magiclink",
+      email,
+      options: { redirectTo: `${appUrl}/dashboard/participant/edit` },
+    });
+
+    if (error || !data?.properties?.action_link) return fallback;
+    return data.properties.action_link;
+  } catch {
+    return fallback;
   }
 }
 
@@ -142,6 +178,24 @@ function submittedPage(choice: "yes" | "no", repeatClick: boolean): string {
     <h1 style="margin:0 0 12px;font-size:24px;font-weight:700;color:${color};">Successfully submitted your response</h1>
     <p style="margin:0;font-size:15px;color:#475569;line-height:1.6;">${subtitle}</p>
     ${repeatNote}
+  `);
+}
+
+function missingProfilePage(missing: string[], dashboardUrl: string): string {
+  const hasDl = missing.includes("dl");
+  const hasPaypal = missing.includes("paypal");
+  const items = [
+    hasDl && "Driver&rsquo;s License number and photo",
+    hasPaypal && "PayPal username",
+  ].filter(Boolean).join(" and ");
+
+  return page("Profile Incomplete", `
+    <div style="width:64px;height:64px;border-radius:50%;background-color:#fff7ed;border:2px solid #f97316;margin:0 auto 20px;font-size:28px;line-height:60px;color:#c2410c;">⚠</div>
+    <h1 style="margin:0 0 12px;font-size:24px;font-weight:700;color:#c2410c;">Profile Incomplete</h1>
+    <p style="margin:0 0 8px;font-size:15px;color:#475569;line-height:1.6;">Before we can confirm your reactivation, please update your profile with the following missing information:</p>
+    <p style="margin:0 0 20px;font-size:15px;font-weight:600;color:#c2410c;">${items}</p>
+    <p style="margin:0 0 24px;font-size:13px;color:#64748b;line-height:1.6;">Once your profile is complete, click the <strong>Yes, I&rsquo;m still interested</strong> button in the email again to finish reactivating your account.</p>
+    <a href="${dashboardUrl}" style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;background-color:#2563eb;text-decoration:none;border-radius:6px;">Update Profile</a>
   `);
 }
 
