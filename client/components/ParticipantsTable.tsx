@@ -54,9 +54,12 @@ type Props = {
   tab: "approved" | "blacklisted";
 };
 
+type StatusFilter = "all" | "yes" | "no" | "pending";
+
 export default function ParticipantsTable({ participants, tab }: Props) {
   const router = useRouter();
   const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [isPending, startTransition] = useTransition();
   const [pendingId, setPendingId] = useState<string | null>(null);
 
@@ -65,9 +68,14 @@ export default function ParticipantsTable({ participants, tab }: Props) {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return participants;
 
     return participants.filter((p) => {
+      // NULL status is rendered as "pending" in the table — match that here.
+      const status = p.reactivation_status ?? "pending";
+      if (statusFilter !== "all" && status !== statusFilter) return false;
+
+      if (!q) return true;
+
       const name = `${p.first_name ?? ""} ${p.last_name ?? ""}`.toLowerCase();
       const email = (p.email ?? "").toLowerCase();
       const location = `${p.city ?? ""} ${p.state ?? ""}`.toLowerCase();
@@ -81,7 +89,7 @@ export default function ParticipantsTable({ participants, tab }: Props) {
         gender.includes(q)
       );
     });
-  }, [participants, query]);
+  }, [participants, query, statusFilter]);
 
   const filteredIds = useMemo(() => filtered.map((p) => p.user_id), [filtered]);
   const allFilteredSelected =
@@ -144,24 +152,40 @@ export default function ParticipantsTable({ participants, tab }: Props) {
 
   return (
     <div className="space-y-4">
-      {/* ── TOOLBAR: SEARCH + SEND MAIL ── */}
+      {/* ── TOOLBAR: SEARCH + STATUS FILTER + SEND MAIL ── */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="relative max-w-sm flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-          <Input
-            type="text"
-            placeholder="Search by name, email, location…"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            className="pl-9 pr-9 h-9 text-sm bg-white"
-          />
-          {query && (
-            <button
-              onClick={() => setQuery("")}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+        <div className="flex flex-wrap items-center gap-2 flex-1">
+          <div className="relative max-w-sm flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+            <Input
+              type="text"
+              placeholder="Search by name, email, location…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="pl-9 pr-9 h-9 text-sm bg-white"
+            />
+            {query && (
+              <button
+                onClick={() => setQuery("")}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+
+          {tab === "approved" && (
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+              className="h-9 rounded-md border border-input bg-white px-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              aria-label="Filter by active status"
             >
-              <X className="h-3.5 w-3.5" />
-            </button>
+              <option value="all">All statuses</option>
+              <option value="yes">Active: Yes</option>
+              <option value="no">Active: No</option>
+              <option value="pending">Active: Pending</option>
+            </select>
           )}
         </div>
 
@@ -200,7 +224,7 @@ export default function ParticipantsTable({ participants, tab }: Props) {
       </div>
 
       {/* ── RESULT COUNT ── */}
-      {query && (
+      {(query || statusFilter !== "all") && (
         <p className="text-xs text-muted-foreground">
           {filtered.length === 0
             ? "No participants found."
@@ -391,6 +415,8 @@ export default function ParticipantsTable({ participants, tab }: Props) {
                   >
                     {query
                       ? `No results for "${query}"`
+                      : statusFilter !== "all"
+                      ? `No participants with status "${statusFilter}".`
                       : tab === "blacklisted"
                       ? "No blacklisted participants."
                       : "No approved participants yet."}
