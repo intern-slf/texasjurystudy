@@ -13,7 +13,7 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const MAX_SELECTION = 500;
+const MAX_SELECTION = 60;
 
 async function confirmAction(formData: FormData) {
   "use server";

@@ -178,7 +178,7 @@ export async function sendReactivationEmails(userIds: string[]): Promise<Reactiv
     }
 
     // Cap to match the UI guardrail — prevents accidental fan-out.
-    const ids = Array.from(new Set(userIds)).slice(0, 500);
+    const ids = Array.from(new Set(userIds)).slice(0, 60);
 
     // Only target approved, non-blacklisted rows; defense-in-depth against
     // URL-tampered IDs reaching this action.
@@ -196,16 +196,23 @@ export async function sendReactivationEmails(userIds: string[]): Promise<Reactiv
     const nowIso = new Date().toISOString();
     const deadlineIso = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
-    for (const row of rows ?? []) {
+    // Process up to CONCURRENCY emails in parallel per wave. At ~500ms/email
+    // sequential, 1000 sends would exceed Vercel's function timeout; 10-wide
+    // parallelism keeps it well under a minute while staying gentle on the
+    // email provider's rate limits.
+    const CONCURRENCY = 10;
+    type Row = NonNullable<typeof rows>[number];
+
+    async function processOne(row: Row): Promise<void> {
         if (!row.email) {
             result.failed++;
             result.errors.push({ userId: row.user_id, error: "missing email" });
-            continue;
+            return;
         }
 
         try {
-            const yesToken = generateReactivationToken(row.user_id, "yes", secret);
-            const noToken = generateReactivationToken(row.user_id, "no", secret);
+            const yesToken = generateReactivationToken(row.user_id, "yes", secret!);
+            const noToken = generateReactivationToken(row.user_id, "no", secret!);
             const yesUrl = `${appUrl}/api/email-action/reactivate?token=${encodeURIComponent(yesToken)}`;
             const noUrl = `${appUrl}/api/email-action/reactivate?token=${encodeURIComponent(noToken)}`;
 
@@ -235,6 +242,11 @@ export async function sendReactivationEmails(userIds: string[]): Promise<Reactiv
             const message = err instanceof Error ? err.message : "unknown error";
             result.errors.push({ userId: row.user_id, error: message });
         }
+    }
+
+    const allRows = rows ?? [];
+    for (let i = 0; i < allRows.length; i += CONCURRENCY) {
+        await Promise.all(allRows.slice(i, i + CONCURRENCY).map(processOne));
     }
 
     revalidatePath("/dashboard/Admin/participants");

@@ -17,7 +17,7 @@ import Link from "next/link";
 import { Search, X, Mail } from "lucide-react";
 import { unblacklistParticipant } from "@/lib/actions/adminParticipant";
 
-const MAX_SELECTION = 500;
+const MAX_SELECTION = 60;
 
 function calcAge(dob: string): number {
   const birth = new Date(dob);
