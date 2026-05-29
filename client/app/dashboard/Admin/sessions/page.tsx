@@ -292,9 +292,13 @@ export default async function SessionsPage({
         }
       }
 
-      // Fetch recommended candidates (excluding already-invited)
+      // Fetch recommended candidates (excluding already-invited) — only on upcoming tab.
+      // Past sessions render the InviteMoreModal but it's effectively dead UI; no need to pay the cost.
       const alreadyInvitedSet = new Set(participantIds);
-      const candidates = await fetchCandidates(supabase, caseIds, alreadyInvitedSet);
+      const candidates =
+        activeTab === "upcoming"
+          ? await fetchCandidates(supabase, caseIds, alreadyInvitedSet)
+          : [];
 
       return { s, scases, caseDetails, alreadySubmitted, sParticipants, participantDetails, candidates };
     })
