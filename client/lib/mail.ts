@@ -837,8 +837,9 @@ export async function sendReactivationEmail(opts: {
   firstName: string | null;
   yesUrl: string;
   noUrl: string;
+  profileEditUrl: string;
 }) {
-  const { to, firstName, yesUrl, noUrl } = opts;
+  const { to, firstName, yesUrl, noUrl, profileEditUrl } = opts;
   const salutation = firstName ? `Dear ${firstName},` : "Dear Participant,";
 
   const html = emailWrapper(`
@@ -893,7 +894,7 @@ export async function sendReactivationEmail(opts: {
           </ul>
           <p style="margin:0;font-size:14px;color:#7c2d12;line-height:1.7;">
             After clicking <em>Yes</em>, please log in and
-            <a href="${process.env.NEXT_PUBLIC_APP_URL}/dashboard/participant/edit" style="color:#c2410c;font-weight:700;text-decoration:underline;">update your profile</a>
+            <a href="${profileEditUrl}" style="color:#c2410c;font-weight:700;text-decoration:underline;">update your profile</a>
             if any of this information is missing. You will not be able to accept
             session invitations until your profile is complete.
           </p>
