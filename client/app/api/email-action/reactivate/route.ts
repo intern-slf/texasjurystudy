@@ -33,6 +33,14 @@ export async function GET(req: NextRequest) {
 
   const { participantId, action } = payload;
 
+  // "edit" action just bounces the user into the profile editor via a freshly
+  // minted Supabase magic link. The HMAC token can live for 30 days, but the
+  // Supabase magic link is short-lived — generating it on click avoids expiry.
+  if (action === "edit") {
+    const magicLink = await getMagicLink(participantId);
+    return NextResponse.redirect(magicLink, { status: 302 });
+  }
+
   try {
     const { data: row, error } = await supabaseAdmin
       .from("jury_participants")

@@ -2,7 +2,7 @@ import crypto from "crypto";
 
 const THIRTY_DAYS_SECONDS = 60 * 60 * 24 * 30;
 
-export type ReactivationAction = "yes" | "no";
+export type ReactivationAction = "yes" | "no" | "edit";
 
 function toBase64Url(str: string): string {
   return Buffer.from(str)
@@ -58,7 +58,7 @@ export function verifyReactivationToken(
 
     if (
       typeof data.participantId !== "string" ||
-      (data.action !== "yes" && data.action !== "no") ||
+      (data.action !== "yes" && data.action !== "no" && data.action !== "edit") ||
       typeof data.exp !== "number"
     ) {
       return null;

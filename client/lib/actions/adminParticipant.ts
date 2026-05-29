@@ -206,14 +206,17 @@ export async function sendReactivationEmails(userIds: string[]): Promise<Reactiv
         try {
             const yesToken = generateReactivationToken(row.user_id, "yes", secret);
             const noToken = generateReactivationToken(row.user_id, "no", secret);
+            const editToken = generateReactivationToken(row.user_id, "edit", secret);
             const yesUrl = `${appUrl}/api/email-action/reactivate?token=${encodeURIComponent(yesToken)}`;
             const noUrl = `${appUrl}/api/email-action/reactivate?token=${encodeURIComponent(noToken)}`;
+            const profileEditUrl = `${appUrl}/api/email-action/reactivate?token=${encodeURIComponent(editToken)}`;
 
             await sendReactivationEmail({
                 to: row.email,
                 firstName: row.first_name,
                 yesUrl,
                 noUrl,
+                profileEditUrl,
             });
 
             const { error: updateErr } = await supabaseAdmin
