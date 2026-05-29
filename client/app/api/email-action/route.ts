@@ -65,7 +65,8 @@ export async function GET(req: NextRequest) {
 
 async function getMagicLink(participantId: string): Promise<string> {
   const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
-  const fallback = `${appUrl}/dashboard/participant`;
+  const next = "/dashboard/participant";
+  const fallback = `${appUrl}${next}`;
 
   try {
     const { data: userData } = await supabaseAdmin.auth.admin.getUserById(participantId);
@@ -75,11 +76,21 @@ async function getMagicLink(participantId: string): Promise<string> {
     const { data, error } = await supabaseAdmin.auth.admin.generateLink({
       type: "magiclink",
       email,
-      options: { redirectTo: `${appUrl}/dashboard/participant` },
+      options: { redirectTo: `${appUrl}${next}` },
     });
 
-    if (error || !data?.properties?.action_link) return fallback;
-    return data.properties.action_link;
+    // Route through our PKCE /auth/confirm handler — the raw action_link uses
+    // Supabase's implicit (hash-fragment) flow which our /auth/login page
+    // doesn't consume, leaving the user stuck on the login screen.
+    const hashedToken = data?.properties?.hashed_token;
+    if (error || !hashedToken) return fallback;
+
+    const params = new URLSearchParams({
+      token_hash: hashedToken,
+      type: "magiclink",
+      next,
+    });
+    return `${appUrl}/auth/confirm?${params.toString()}`;
   } catch {
     return fallback;
   }
