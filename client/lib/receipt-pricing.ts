@@ -1,4 +1,12 @@
-import { CaseFilters } from "./filter-utils";
+import { CaseFilters, AgeRange } from "./filter-utils";
+
+const DEFAULT_AGE_MIN = 18;
+const DEFAULT_AGE_MAX = 99;
+
+function isNarrowingAgeRange(r: AgeRange | undefined | null): boolean {
+  if (!r) return false;
+  return r.min > DEFAULT_AGE_MIN || r.max < DEFAULT_AGE_MAX;
+}
 
 export interface FilterLineItem {
   label: string;
@@ -50,7 +58,10 @@ export function calculateReceiptPrice(
     filterItems.push({ label: "Race", costCents: PER_FILTER_CENTS });
   }
 
-  if (filters.age || (filters.ageRanges && filters.ageRanges.length > 0)) {
+  const ageIsNarrowed =
+    isNarrowingAgeRange(filters.age) ||
+    (filters.ageRanges?.some(isNarrowingAgeRange) ?? false);
+  if (ageIsNarrowed) {
     filterItems.push({ label: "Age", costCents: PER_FILTER_CENTS });
   }
 
