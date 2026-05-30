@@ -349,6 +349,13 @@ export default function ParticipantsTable({ participants, tab }: Props) {
                         <span className="inline-flex items-center rounded-full bg-red-400/10 px-2 py-1 text-xs font-medium text-red-600 ring-1 ring-inset ring-red-400/20">
                           No
                         </span>
+                      ) : p.reactivation_email_sent_at ? (
+                        <span
+                          className="inline-flex items-center rounded-full bg-blue-400/10 px-2 py-1 text-xs font-medium text-blue-600 ring-1 ring-inset ring-blue-400/30"
+                          title="Reactivation email sent — awaiting response"
+                        >
+                          Pending
+                        </span>
                       ) : (
                         <span className="inline-flex items-center rounded-full bg-amber-400/10 px-2 py-1 text-xs font-medium text-amber-700 ring-1 ring-inset ring-amber-400/30">
                           Pending
