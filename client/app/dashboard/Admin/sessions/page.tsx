@@ -245,6 +245,12 @@ export default async function SessionsPage({
         caseDetails.every((c) => c.admin_status === "submitted")
       );
 
+      // Notifying a presenter is allowed once the session's cases are submitted or approved.
+      const canNotify = Boolean(
+        caseDetails?.length &&
+        caseDetails.every((c) => c.admin_status === "submitted" || c.admin_status === "approved")
+      );
+
       const { data: rawSParticipants } = await supabase
         .from("session_participants")
         .select("participant_id, invite_status")
@@ -300,7 +306,7 @@ export default async function SessionsPage({
           ? await fetchCandidates(supabase, caseIds, alreadyInvitedSet)
           : [];
 
-      return { s, scases, caseDetails, alreadySubmitted, sParticipants, participantDetails, candidates };
+      return { s, scases, caseDetails, alreadySubmitted, canNotify, sParticipants, participantDetails, candidates };
     })
   );
 
@@ -380,7 +386,7 @@ export default async function SessionsPage({
 
       {/* LIST */}
       {displayedSessions.length ? (
-        displayedSessions.map(({ s, scases, caseDetails, alreadySubmitted, sParticipants, participantDetails, candidates }) => (
+        displayedSessions.map(({ s, scases, caseDetails, alreadySubmitted, canNotify, sParticipants, participantDetails, candidates }) => (
           <div
             key={s.id}
             className="border rounded p-6 space-y-6 bg-white shadow-sm"
@@ -566,6 +572,7 @@ export default async function SessionsPage({
                   <NotifyPresenterModal
                     sessionId={s.id}
                     alreadyNotified={alreadySubmitted}
+                    canNotify={canNotify}
                   />
                 </div>
 

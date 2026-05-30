@@ -3,7 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { sendEmail, sendRescheduleEmail, sendSessionCreatedEmail, sendSessionCompletedEmail, sendPresenceConfirmedEmail, sendPresenceDeclinedEmail, sendZoomLinkEmail, sendPresenterInfoEmail, emailWrapper } from "@/lib/mail";
-import type { PresenterParticipantInfo } from "@/lib/mail";
+import type { PresenterParticipantInfo, PresenterCaseInfo } from "@/lib/mail";
 import { checkAndNotifySessionFull } from "@/lib/participant/updateInviteStatus";
 import { generateEmailActionToken } from "@/lib/emailActionToken";
 import { revalidatePath } from "next/cache";
@@ -912,42 +912,78 @@ export async function notifyPresenterByEmail(
 
   const caseIds = (sessionCases ?? []).map((sc) => sc.case_id);
 
-  // 3. Fetch case titles and legacy drive_link field
+  // 3. Fetch case title, description and legacy drive_link field
   const caseTitleMap = new Map<string, string>();
+  const caseDescriptionMap = new Map<string, string | null>();
   const legacyDriveLinkMap = new Map<string, string>();
   if (caseIds.length) {
     const { data: caseRows } = await supabase
       .from("cases")
-      .select("id, title, drive_link")
+      .select("id, title, description, drive_link")
       .in("id", caseIds);
     for (const c of caseRows ?? []) {
       caseTitleMap.set(c.id, c.title);
+      caseDescriptionMap.set(c.id, c.description ?? null);
       if (c.drive_link) legacyDriveLinkMap.set(c.id, c.drive_link);
     }
   }
 
-  // 4. Fetch Google Drive links for each case (case_drive_links table + legacy drive_link field)
-  const driveLinks: { caseTitle: string; urls: string[] }[] = [];
+  // 3b. Fetch uploaded documents for all cases and mint long-lived (≈always valid) signed URLs.
+  //     The case-documents bucket stays private; a 10-year expiry keeps links working in the inbox.
+  const SIGNED_URL_TTL = 60 * 60 * 24 * 365 * 10; // ~10 years
+  const docsByCase = new Map<string, { name: string; storage_path: string }[]>();
+  const signedUrlByPath = new Map<string, string>();
+  if (caseIds.length) {
+    const { data: docRows } = await supabase
+      .from("case_documents")
+      .select("id, case_id, original_name, storage_path")
+      .in("case_id", caseIds);
+
+    const allPaths: string[] = [];
+    for (const d of docRows ?? []) {
+      const list = docsByCase.get(d.case_id) ?? [];
+      list.push({ name: d.original_name, storage_path: d.storage_path });
+      docsByCase.set(d.case_id, list);
+      allPaths.push(d.storage_path);
+    }
+
+    if (allPaths.length) {
+      const { data: signed } = await supabase.storage
+        .from("case-documents")
+        .createSignedUrls(allPaths, SIGNED_URL_TTL);
+      for (const s of signed ?? []) {
+        if (s.path && s.signedUrl) signedUrlByPath.set(s.path, s.signedUrl);
+      }
+    }
+  }
+
+  // 4. Build one entry per case: name, description, documents, and Google Drive links
+  //    (case_drive_links table + legacy drive_link field). Preserve session_cases order.
+  const cases: PresenterCaseInfo[] = [];
   for (const caseId of caseIds) {
     const { data: links } = await supabase
       .from("case_drive_links")
       .select("url")
       .eq("case_id", caseId);
 
-    const urls = (links ?? []).map((l) => l.url);
+    const driveUrls = (links ?? []).map((l) => l.url);
 
     // Include legacy drive_link from cases table if not already in case_drive_links
     const legacyLink = legacyDriveLinkMap.get(caseId);
-    if (legacyLink && !urls.includes(legacyLink)) {
-      urls.unshift(legacyLink);
+    if (legacyLink && !driveUrls.includes(legacyLink)) {
+      driveUrls.unshift(legacyLink);
     }
 
-    if (urls.length > 0) {
-      driveLinks.push({
-        caseTitle: caseTitleMap.get(caseId) ?? "Unknown Case",
-        urls,
-      });
-    }
+    const documents = (docsByCase.get(caseId) ?? [])
+      .map((d) => ({ name: d.name, url: signedUrlByPath.get(d.storage_path) ?? "" }))
+      .filter((d) => d.url);
+
+    cases.push({
+      title: caseTitleMap.get(caseId) ?? "Unknown Case",
+      description: caseDescriptionMap.get(caseId) ?? null,
+      documents,
+      driveUrls,
+    });
   }
 
   // 5. Fetch accepted participants with demographics
@@ -1045,7 +1081,7 @@ export async function notifyPresenterByEmail(
     presenterEmail,
     sessionDateStr,
     session.zoom_link ?? null,
-    driveLinks,
+    cases,
     participants,
   );
 

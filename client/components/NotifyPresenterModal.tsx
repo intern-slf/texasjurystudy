@@ -6,9 +6,10 @@ import { notifyPresenterByEmail } from "@/lib/actions/session";
 interface Props {
   sessionId: string;
   alreadyNotified: boolean;
+  canNotify: boolean;
 }
 
-export default function NotifyPresenterModal({ sessionId, alreadyNotified }: Props) {
+export default function NotifyPresenterModal({ sessionId, alreadyNotified, canNotify }: Props) {
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState("");
   const [sent, setSent] = useState(alreadyNotified);
@@ -44,6 +45,19 @@ export default function NotifyPresenterModal({ sessionId, alreadyNotified }: Pro
     return (
       <button disabled className="px-4 py-2 rounded text-sm text-white bg-gray-400 cursor-not-allowed">
         Already Notified
+      </button>
+    );
+  }
+
+  // Notifying is only allowed once the session's cases are submitted or approved.
+  if (!canNotify) {
+    return (
+      <button
+        disabled
+        title="Cases must be approved or submitted before notifying the presenter."
+        className="px-4 py-2 rounded text-sm text-white bg-gray-400 cursor-not-allowed"
+      >
+        Notify Presenter
       </button>
     );
   }
