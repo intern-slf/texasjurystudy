@@ -1,6 +1,5 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
 import { sendProfileUpdatedEmail, sendReactivationEmail } from "@/lib/mail";
@@ -42,12 +41,15 @@ const FIELD_LABELS: Record<string, string> = {
 ========================= */
 
 export async function verifyParticipant(userId: string) {
-    const supabase = await createClient();
-
-    await supabase
+    // Use supabaseAdmin (service role): there is no admin UPDATE RLS policy on
+    // jury_participants, so the RLS-bound client silently updates 0 rows.
+    // Matches blacklistParticipant / unblacklistParticipant.
+    const { error } = await supabaseAdmin
         .from("jury_participants")
         .update({ approved_by_admin: true })
         .eq("user_id", userId);
+
+    if (error) throw new Error(error.message);
 
     revalidatePath("/dashboard/Admin/participants");
 }
