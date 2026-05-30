@@ -181,7 +181,7 @@ export default function ParticipantsTable({ participants, tab }: Props) {
               className="h-9 rounded-md border border-input bg-white px-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring"
               aria-label="Filter by active status"
             >
-              <option value="all">All statuses</option>
+              <option value="all">All status</option>
               <option value="yes">Active: Yes</option>
               <option value="no">Active: No</option>
               <option value="pending">Active: Pending</option>

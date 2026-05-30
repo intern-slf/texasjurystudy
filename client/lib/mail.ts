@@ -683,6 +683,23 @@ export async function sendZoomLinkEmail(
   });
 }
 
+// Escape user-supplied text before interpolating into the email HTML.
+function escHtml(value: string | null | undefined): string {
+  return (value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+export interface PresenterCaseInfo {
+  title: string;
+  description?: string | null;
+  documents: { name: string; url: string }[];
+  driveUrls: string[];
+}
+
 export interface PresenterParticipantInfo {
   first_name: string;
   last_name: string;
@@ -706,7 +723,7 @@ export async function sendPresenterInfoEmail(
   to: string,
   sessionDate: string,
   zoomLink: string | null,
-  driveLinks: { caseTitle: string; urls: string[] }[],
+  cases: PresenterCaseInfo[],
   participants: PresenterParticipantInfo[],
 ) {
   // Zoom section
@@ -729,25 +746,61 @@ export async function sendPresenterInfoEmail(
       </tr>
     </table>`;
 
-  // Drive links section
-  let driveHtml = "";
-  const allDriveLinks = driveLinks.filter((d) => d.urls.length > 0);
-  if (allDriveLinks.length > 0) {
-    const linksListHtml = allDriveLinks
-      .map((d) => {
-        const urlItems = d.urls
-          .map((u) => `<li style="margin:4px 0;"><a href="${u}" style="font-size:14px;color:#2563eb;word-break:break-all;">${u}</a></li>`)
+  // Cases section — one card per case: name, description, documents, drive links
+  let casesHtml = "";
+  if (cases.length > 0) {
+    const caseCards = cases
+      .map((c) => {
+        const descHtml =
+          c.description && c.description.trim()
+            ? `<p style="margin:4px 0 10px;font-size:14px;color:#334155;line-height:1.6;">${escHtml(c.description)}</p>`
+            : "";
+
+        const docItems = c.documents
+          .map(
+            (doc) =>
+              `<li style="margin:4px 0;"><a href="${doc.url}" style="font-size:14px;color:#2563eb;word-break:break-all;">${escHtml(doc.name)}</a></li>`,
+          )
           .join("");
-        return `<p style="margin:8px 0 4px;font-size:13px;font-weight:700;color:#1e293b;">${d.caseTitle}</p><ul style="margin:0;padding-left:18px;">${urlItems}</ul>`;
+        const docsHtml =
+          c.documents.length > 0
+            ? `<p style="margin:8px 0 4px;font-size:11px;font-weight:700;color:#166534;text-transform:uppercase;letter-spacing:0.08em;">Documents</p><ul style="margin:0;padding-left:18px;">${docItems}</ul>`
+            : "";
+
+        const driveItems = c.driveUrls
+          .map(
+            (u) =>
+              `<li style="margin:4px 0;"><a href="${u}" style="font-size:14px;color:#2563eb;word-break:break-all;">${u}</a></li>`,
+          )
+          .join("");
+        const caseDriveHtml =
+          c.driveUrls.length > 0
+            ? `<p style="margin:8px 0 4px;font-size:11px;font-weight:700;color:#166534;text-transform:uppercase;letter-spacing:0.08em;">Google Drive Links</p><ul style="margin:0;padding-left:18px;">${driveItems}</ul>`
+            : "";
+
+        return `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f0fdf4;border-left:4px solid #16a34a;border-radius:6px;margin:0 0 16px;">
+      <tr>
+        <td style="padding:16px 20px;">
+          <p style="margin:0 0 4px;font-size:15px;font-weight:700;color:#166534;">${escHtml(c.title)}</p>
+          ${descHtml}
+          ${docsHtml}
+          ${caseDriveHtml}
+        </td>
+      </tr>
+    </table>`;
       })
       .join("");
 
-    driveHtml = `
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f0fdf4;border-left:4px solid #16a34a;border-radius:6px;margin:0 0 24px;">
+    casesHtml = `
+    <p style="margin:0 0 8px;font-size:11px;font-weight:700;color:#1e40af;text-transform:uppercase;letter-spacing:0.08em;">Cases in this Session (${cases.length})</p>
+    ${caseCards}`;
+  } else {
+    casesHtml = `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#fef9c3;border-left:4px solid #ca8a04;border-radius:6px;margin:0 0 24px;">
       <tr>
         <td style="padding:16px 20px;">
-          <p style="margin:0 0 8px;font-size:11px;font-weight:700;color:#166534;text-transform:uppercase;letter-spacing:0.08em;">Google Drive Links</p>
-          ${linksListHtml}
+          <p style="margin:0;font-size:14px;color:#854d0e;">No cases are attached to this session yet.</p>
         </td>
       </tr>
     </table>`;
@@ -817,7 +870,7 @@ export async function sendPresenterInfoEmail(
     </p>
 
     ${zoomHtml}
-    ${driveHtml}
+    ${casesHtml}
     ${participantsHtml}
   `);
 

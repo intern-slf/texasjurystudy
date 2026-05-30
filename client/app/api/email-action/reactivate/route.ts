@@ -213,7 +213,7 @@ function missingProfilePage(missing: string[], dashboardUrl: string): string {
     <h1 style="margin:0 0 12px;font-size:24px;font-weight:700;color:#c2410c;">Profile Incomplete</h1>
     <p style="margin:0 0 8px;font-size:15px;color:#475569;line-height:1.6;">Before we can confirm your reactivation, please update your profile with the following missing information:</p>
     <p style="margin:0 0 20px;font-size:15px;font-weight:600;color:#c2410c;">${items}</p>
-    <p style="margin:0 0 24px;font-size:13px;color:#64748b;line-height:1.6;">Once your profile is complete, click the <strong>Yes, I&rsquo;m still interested</strong> button in the email again to finish reactivating your account.</p>
+    <p style="margin:0 0 24px;padding:12px 16px;background-color:#fef9c3;border-radius:6px;font-size:13px;color:#64748b;line-height:1.6;">Once your profile is complete, click the <strong>Yes, I&rsquo;m still interested</strong> button in the email again to finish reactivating your account.</p>
     <a href="${dashboardUrl}" style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;background-color:#2563eb;text-decoration:none;border-radius:6px;">Update Profile</a>
   `);
 }
