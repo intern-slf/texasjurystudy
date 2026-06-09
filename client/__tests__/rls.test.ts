@@ -165,6 +165,73 @@ function juryParticipantsSelect(
 }
 
 // ---------------------------------------------------------------------------
+// storage.objects policy (buckets: id-documents, case-documents, transcripts,
+// videos) — hardened 2026-06-09 (F23). RLS is enabled on storage.objects and
+// all four buckets are private. Policies are PERMISSIVE (OR'd):
+//
+//   #1 "Users can only manage their own files"  ALL    USING/CHECK auth.uid() = owner   (every bucket)
+//   #2 "admin can read all id-documents"         SELECT bucket_id='id-documents'   AND is_admin()
+//   #3 "admin can read all case-documents"       SELECT bucket_id='case-documents' AND is_admin()
+//   #4 "admin can update id-documents"           UPDATE bucket_id='id-documents'   AND is_admin()
+//
+// The seven pre-F23 wide-open "Allow authenticated ..." policies (bucket_id-only,
+// no owner/role check) were dropped — they had let ANY authenticated user read,
+// overwrite, or delete EVERY file in id-documents (driver licenses) and
+// case-documents (confidential case files). See
+// supabase/migrations/20260609_storage_admin_update_id_documents.sql and
+// docs/rls-policies.md (Storage buckets / F23).
+//
+// owner is the uploader's auth.uid(), auto-set by Supabase on INSERT and
+// preserved on upsert-overwrite. service_role uploads (the video script) leave
+// owner null and bypass RLS entirely.
+// ---------------------------------------------------------------------------
+type StorageOp = "SELECT" | "INSERT" | "UPDATE" | "DELETE";
+type StorageBucket =
+  | "id-documents"
+  | "case-documents"
+  | "transcripts"
+  | "videos";
+type StorageObject = { bucket: StorageBucket; owner: string | null; path: string };
+
+function storageObjectsAccess(
+  caller: Caller,
+  op: StorageOp,
+  obj: StorageObject
+): Result<StorageObject> {
+  // service_role bypasses RLS entirely (e.g. scripts/upload-videos.ts).
+  if (caller.role === "service_role") return allow([obj]);
+
+  const admin = caller.role === "admin";
+
+  // INSERT: policy #1 WITH CHECK (auth.uid() = owner). Supabase auto-sets owner
+  // to the caller, so any authenticated user may create an object they own — in
+  // ANY bucket (the owner policy is bucket-agnostic). The created row is owned
+  // by the caller.
+  if (op === "INSERT") return allow([{ ...obj, owner: caller.id }]);
+
+  // SELECT / UPDATE / DELETE evaluate USING against the EXISTING object.
+  // Policy #1: the owner may do anything to their own file.
+  if (obj.owner !== null && obj.owner === caller.id) return allow([obj]);
+
+  // Policy #2 / #3: admins may READ any id-documents / case-documents object.
+  if (
+    op === "SELECT" &&
+    admin &&
+    (obj.bucket === "id-documents" || obj.bucket === "case-documents")
+  )
+    return allow([obj]);
+
+  // Policy #4: admins may UPDATE (overwrite) any id-documents object — restores
+  // the admin "replace a participant's license" flow without re-opening reads.
+  if (op === "UPDATE" && admin && obj.bucket === "id-documents")
+    return allow([obj]);
+
+  return deny(
+    `no storage.objects policy grants ${op} on ${obj.bucket} for ${caller.role}`
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Seed data — the same fixture powers every describe below.
 // ---------------------------------------------------------------------------
 const cases: CaseRow[] = [
@@ -218,6 +285,15 @@ const juryParticipants: JuryParticipantRow[] = [
     education_level: "Graduate Degree",
     political_affiliation: "Democrat",
   },
+];
+
+const storageObjects: StorageObject[] = [
+  { bucket: "id-documents", owner: "p-1", path: "p-1/license.jpg" },
+  { bucket: "id-documents", owner: "p-2", path: "p-2/license.jpg" },
+  { bucket: "case-documents", owner: "req-1", path: "case-A/contract.pdf" },
+  { bucket: "case-documents", owner: "req-2", path: "case-B/contract.pdf" },
+  // Uploaded by the service-role video script — owner is null.
+  { bucket: "videos", owner: null, path: "general_instructions.mp4" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -398,6 +474,127 @@ describe("RLS (Row Level Security)", () => {
         expect(row).toHaveProperty("county");
         expect(row).toHaveProperty("age_bracket");
       }
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // rls-storage-objects.test.ts — storage bucket RLS (F23, 2026-06-09)
+  // -------------------------------------------------------------------------
+  describe("rls-storage-objects.test.ts", () => {
+    const license = (owner: string): StorageObject =>
+      storageObjects.find(
+        (o) => o.bucket === "id-documents" && o.owner === owner
+      )!;
+    const caseDoc = (owner: string): StorageObject =>
+      storageObjects.find(
+        (o) => o.bucket === "case-documents" && o.owner === owner
+      )!;
+
+    const participant = (id: string): Caller => ({ id, role: "participant" });
+    const requestee = (id: string): Caller => ({ id, role: "requestee" });
+    const admin: Caller = { id: "admin-1", role: "admin" };
+
+    it("Participant reads only their OWN driver license", () => {
+      expect(
+        storageObjectsAccess(participant("p-1"), "SELECT", license("p-1")).denied
+      ).toBe(false);
+      // The F23 leak, now closed: a participant must NOT read another
+      // participant's license. Pre-fix the wide-open SELECT policy allowed it.
+      const cross = storageObjectsAccess(
+        participant("p-1"),
+        "SELECT",
+        license("p-2")
+      );
+      expect(cross.denied).toBe(true);
+      expect((cross as Denied).code).toBe("42501");
+    });
+
+    it("Participant cannot read case documents", () => {
+      expect(
+        storageObjectsAccess(participant("p-1"), "SELECT", caseDoc("req-1")).denied
+      ).toBe(true);
+    });
+
+    it("Admin reads any license and any case document", () => {
+      expect(storageObjectsAccess(admin, "SELECT", license("p-1")).denied).toBe(
+        false
+      );
+      expect(storageObjectsAccess(admin, "SELECT", license("p-2")).denied).toBe(
+        false
+      );
+      expect(
+        storageObjectsAccess(admin, "SELECT", caseDoc("req-1")).denied
+      ).toBe(false);
+      expect(
+        storageObjectsAccess(admin, "SELECT", caseDoc("req-2")).denied
+      ).toBe(false);
+    });
+
+    it("Requestee reads/deletes only their OWN case documents", () => {
+      expect(
+        storageObjectsAccess(requestee("req-1"), "SELECT", caseDoc("req-1")).denied
+      ).toBe(false);
+      expect(
+        storageObjectsAccess(requestee("req-1"), "DELETE", caseDoc("req-1")).denied
+      ).toBe(false);
+      // Cannot reach another requestee's case document …
+      expect(
+        storageObjectsAccess(requestee("req-1"), "SELECT", caseDoc("req-2")).denied
+      ).toBe(true);
+      // … nor any participant's license (requestees never need them).
+      expect(
+        storageObjectsAccess(requestee("req-1"), "SELECT", license("p-1")).denied
+      ).toBe(true);
+    });
+
+    it("Owner may overwrite/delete own file; non-owner non-admin cannot", () => {
+      // Participant upserts (UPDATE) / deletes their own license — allowed.
+      expect(
+        storageObjectsAccess(participant("p-1"), "UPDATE", license("p-1")).denied
+      ).toBe(false);
+      expect(
+        storageObjectsAccess(participant("p-1"), "DELETE", license("p-1")).denied
+      ).toBe(false);
+      // A different participant cannot overwrite or delete it (closed F23 vector).
+      expect(
+        storageObjectsAccess(participant("p-2"), "UPDATE", license("p-1")).denied
+      ).toBe(true);
+      expect(
+        storageObjectsAccess(participant("p-2"), "DELETE", license("p-1")).denied
+      ).toBe(true);
+    });
+
+    it("Admin can overwrite an existing participant license (policy #4) but not a case doc", () => {
+      // The regression F23 introduced and then closed: admin replace of an
+      // existing license via the anon-client edit form (upsert -> UPDATE branch).
+      expect(storageObjectsAccess(admin, "UPDATE", license("p-1")).denied).toBe(
+        false
+      );
+      // There is intentionally NO admin UPDATE policy on case-documents — admin
+      // edits/deletes of case docs go through the service role if ever needed.
+      expect(
+        storageObjectsAccess(admin, "UPDATE", caseDoc("req-1")).denied
+      ).toBe(true);
+    });
+
+    it("INSERT is owner-scoped: the caller becomes the owner", () => {
+      const res = storageObjectsAccess(participant("p-3"), "INSERT", {
+        bucket: "id-documents",
+        owner: null,
+        path: "p-3/license.jpg",
+      });
+      expect(res.denied).toBe(false);
+      expect((res as Allowed<StorageObject>).rows[0].owner).toBe("p-3");
+    });
+
+    it("service_role bypasses storage RLS (video upload script)", () => {
+      const svc: Caller = { id: "svc", role: "service_role" };
+      const video = storageObjects.find((o) => o.bucket === "videos")!;
+      expect(storageObjectsAccess(svc, "INSERT", video).denied).toBe(false);
+      // Even reads of a file it does not own bypass RLS.
+      expect(storageObjectsAccess(svc, "SELECT", license("p-1")).denied).toBe(
+        false
+      );
     });
   });
 });

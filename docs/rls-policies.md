@@ -389,6 +389,53 @@ Confirmed unused (0 code references, 0 rows, no FKs/functions/views depending on
 
 ---
 
+## Storage buckets (added 2026-06-09)
+
+The original audit covered **tables only**. Storage was first dumped 2026-06-09 — see F23. RLS lives on `storage.objects` (single table backing all buckets); per-bucket scoping is done inside each policy via `bucket_id = '<name>'`. Policies are **permissive/OR'd**, so a broad `bucket_id`-only policy shadows any narrower owner/role policy on the same bucket.
+
+**Buckets (all private — `storage.buckets.public = false`, confirmed 2026-06-09):**
+
+| Bucket | Contents | Read path in code | Client |
+|---|---|---|---|
+| `id-documents` | participant driver-license images (sensitive PII) | `createSignedUrl` — `EditProfileForm.tsx`, `Admin/participants/page.tsx:74`, `participant/[participantId]/page.tsx:131` | participant + admin use **anon** (RLS applies) |
+| `case-documents` | requestee case-file uploads | `createSignedUrl` — `requestee/actions/caseDocuments.tsx:92`, `Admin/[caseId]/page.tsx:101`, `Admin/page.tsx:161` | requestee + admin use **anon** (RLS applies) |
+| `transcripts` | session transcripts (50 MB limit) | `session.ts:953` (`createSignedUrls`) | — |
+| `videos` | focus-group videos | app actually streams Loom (`lib/focus-group-videos.ts`); bucket appears legacy | — |
+
+**`storage.objects` policies — before (dumped 2026-06-09):** RLS enabled, 8 policies. Seven were wide-open `bucket_id = '...'`-only grants (no owner/role check) → **any authenticated user could read/update/delete every file** in `id-documents` and `case-documents`. The one correct policy (`Users can only manage their own files`, `auth.uid() = owner`, ALL) was fully shadowed.
+
+**Fix applied 2026-06-09 (F23):**
+- Dropped the 7 broad policies: `Allow authenticated read access to id-documents`, `Allow authenticated delete from id-documents`, `Allow authenticated update to id-documents`, `Allow authenticated uploads to id-documents`, `Allow authenticated downloads`, `Allow authenticated deletes`, `Allow authenticated uploads`.
+- Kept `Users can only manage their own files` (`auth.uid() = owner`, ALL) — covers participant self-access to their own license + requestee self-access to their own case docs (Supabase auto-sets `owner = auth.uid()` on upload, so INSERT passes `WITH CHECK`).
+- Added two admin read paths (admins read via anon client, so they need a real policy — they do **not** go through service role for storage):
+
+```sql
+create policy "admin can read all id-documents"
+  on storage.objects for select to authenticated
+  using (bucket_id = 'id-documents' and is_admin());
+
+create policy "admin can read all case-documents"
+  on storage.objects for select to authenticated
+  using (bucket_id = 'case-documents' and is_admin());
+```
+
+**Resulting access:** participant ↔ own license ✅ / another's license ❌ (leak closed); requestee ↔ own case docs ✅; admin reads all in both buckets ✅; any user deleting/overwriting others' files ❌. `transcripts`/`videos` had no broad policies → only the owner-ALL policy applies (deny-by-default for non-owners), left untouched.
+
+**Regression found + fixed (2026-06-09, code-traced across all 14 storage call-sites):** one legitimate flow broke — an admin **replacing an existing** participant license via the admin edit form (`EditProfileForm.tsx:350`, adminMode, `upsert:true`). That upload runs on the **anon browser client**, so an `upsert` overwrite triggers the UPDATE branch on a row owned by the *participant* → the owner-ALL policy fails for the admin (admin ≠ owner) and the SELECT-only admin policies don't help → blocked (42501). Uploading a *brand-new* license still works (INSERT, owner = admin). Closed by adding an admin UPDATE policy mirroring the admin SELECTs — migration `supabase/migrations/20260609_storage_admin_update_id_documents.sql`:
+
+```sql
+create policy "admin can update id-documents"
+  on storage.objects for update to authenticated
+  using      (bucket_id = 'id-documents' and is_admin())
+  with check (bucket_id = 'id-documents' and is_admin());
+```
+
+The other 13 sites were verified unaffected: participant self-service (`ParticipantForm`, `EditProfileForm` self), requestee case-docs upload/remove/read (`caseDocuments.tsx`), admin reads (`Admin/page`, `Admin/[caseId]`, `Admin/participants`, `participant/[participantId]`), presenter-email signed URLs (`session.ts:951`, via admin SELECT), and the service-role video upload script (bypasses RLS). The `participant/[participantId]` path was also confirmed **never** a cross-participant anon leak (requestees blocked, participants forced to their own row).
+
+**Residual gap (not introduced by F23):** owner-scoping means if an admin ever *uploads* a case doc for a requestee to read, the requestee can't see it (owner = admin). No such flow today (requestees only upload their own); revisit with a case-scoped SELECT if that changes.
+
+---
+
 ## Findings & action items
 
 | # | Severity | Item | Owner | Status |
@@ -417,6 +464,7 @@ Confirmed unused (0 code references, 0 rows, no FKs/functions/views depending on
 | F20 | ✅ CLOSED | `profiles` table dropped 2026-05-22. Not needed — `auth.users` (via `supabaseAdmin`) is the source of truth; all 4 read sites refactored to use it directly. | | Closed |
 | F21 | 🟥 HIGH | `case_drive_links` "Authenticated users can view drive links" has `USING (true)` — any authenticated user (incl. participants) can read every case's Google Drive URLs. Drop this policy; the per-owner `ALL` policy already covers the legit requestee read. Add an admin SELECT + a case-scoped requestee SELECT if cross-requestee reads are needed. (Found 2026-05-17 during dashboard policy dump.) | | Open |
 | F22 | 🟨 MED | Audit dump (2026-05-17) confirmed F17 duplicates concretely: `cases` has 4 dup INSERTs + 2 dup admin SELECT + 2 dup own-row SELECT + 2 dup own-row UPDATE; `case_documents` has 2 dup admin SELECT; `confidentiality_agreements` has 2 dup INSERT + 2 dup SELECT; `jury_participants` has 2 dup INSERT; `roles` has 2 dup own-row SELECT. Drop the older/redundant duplicates in a single cleanup pass. | | Open |
+| F23 | ✅ CLOSED | **Storage RLS wide open (was 🟥 HIGH).** First storage dump (2026-06-09): all 4 buckets private + RLS on, but 7 of 8 `storage.objects` policies were `bucket_id`-only with no owner/role check → any authenticated user could read/update/delete **every** file in `id-documents` (driver licenses) and `case-documents` (confidential case files). Confirms the UNVERIFIED `id-documents` note from the magic-link auth review. Fixed: dropped the 7 broad policies, kept the `owner`-scoped ALL policy, added admin-only SELECT for both buckets. Code-trace of all 14 storage call-sites found one functional regression (admin overwrite of an existing participant license via the anon-client edit form) → closed by an admin UPDATE policy on `id-documents` (migration `20260609_storage_admin_update_id_documents.sql`). See **Storage buckets** section above. | | Closed 2026-06-09 — verified via `pg_policies` dump: only 4 scoped policies remain (owner-ALL, admin SELECT ×2, admin UPDATE on `id-documents`); all 7 wide-open policies gone |
 
 ---
 
