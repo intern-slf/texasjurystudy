@@ -16,7 +16,7 @@ type ParticipantTab = "approved" | "new" | "blacklisted";
 export default async function ParticipantsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: ParticipantTab; sent?: string; failed?: string }>;
+  searchParams: Promise<{ tab?: ParticipantTab; sent?: string; failed?: string; skipped?: string }>;
 }) {
   const supabase = await createClient();
   const resolvedParams = await searchParams;
@@ -26,8 +26,10 @@ export default async function ParticipantsPage({
 
   const sentCount = Number(resolvedParams?.sent);
   const failedCount = Number(resolvedParams?.failed);
+  const skippedCount = Number(resolvedParams?.skipped);
   const showSentBanner = Number.isFinite(sentCount) && sentCount > 0;
   const showFailedBanner = Number.isFinite(failedCount) && failedCount > 0;
+  const showSkippedBanner = Number.isFinite(skippedCount) && skippedCount > 0;
 
   /* =========================
      FETCH PARTICIPANTS
@@ -106,11 +108,17 @@ export default async function ParticipantsPage({
 
   return (
     <div className="space-y-6">
-      {(showSentBanner || showFailedBanner) && (
+      {(showSentBanner || showFailedBanner || showSkippedBanner) && (
         <div className="space-y-2">
           {showSentBanner && (
             <div className="rounded-md border border-green-300 bg-green-50 px-4 py-3 text-sm text-green-800">
               Reactivation email sent to {sentCount} participant{sentCount === 1 ? "" : "s"}.
+            </div>
+          )}
+          {showSkippedBanner && (
+            <div className="rounded-md border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+              {skippedCount} participant{skippedCount === 1 ? " was" : "s were"} skipped — already
+              emailed in the last 10 minutes (no duplicate sent).
             </div>
           )}
           {showFailedBanner && (

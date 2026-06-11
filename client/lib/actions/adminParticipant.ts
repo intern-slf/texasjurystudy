@@ -163,11 +163,17 @@ export async function adminUpdateParticipantDob(userId: string, dateOfBirth: str
 export type ReactivationResult = {
     sent: number;
     failed: number;
+    skipped: number;
     errors: { userId: string; error: string }[];
 };
 
+// Don't re-email anyone we successfully emailed within this window. Long enough
+// to absorb rapid double-submits and quick "some failed, let me retry" clicks;
+// far shorter than the days/weeks between intentional re-send campaigns.
+const RESEND_COOLDOWN_MS = 10 * 60 * 1000;
+
 export async function sendReactivationEmails(userIds: string[]): Promise<ReactivationResult> {
-    const result: ReactivationResult = { sent: 0, failed: 0, errors: [] };
+    const result: ReactivationResult = { sent: 0, failed: 0, skipped: 0, errors: [] };
 
     const secret = process.env.EMAIL_ACTION_SECRET;
     if (!secret) {
@@ -186,7 +192,7 @@ export async function sendReactivationEmails(userIds: string[]): Promise<Reactiv
     // URL-tampered IDs reaching this action.
     const { data: rows, error } = await supabaseAdmin
         .from("jury_participants")
-        .select("user_id, email, first_name")
+        .select("user_id, email, first_name, reactivation_email_sent_at")
         .in("user_id", ids)
         .eq("approved_by_admin", true)
         .is("blacklisted_at", null);
@@ -195,17 +201,34 @@ export async function sendReactivationEmails(userIds: string[]): Promise<Reactiv
         throw new Error(`Failed to load participants: ${error.message}`);
     }
 
-    const nowIso = new Date().toISOString();
-    const deadlineIso = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    const nowMs = Date.now();
+    const nowIso = new Date(nowMs).toISOString();
+    const deadlineIso = new Date(nowMs + 30 * 24 * 60 * 60 * 1000).toISOString();
 
-    for (const row of rows ?? []) {
-        if (!row.email) {
-            result.failed++;
-            result.errors.push({ userId: row.user_id, error: "missing email" });
-            continue;
+    // Idempotency guard: drop anyone already emailed within the cooldown. This
+    // neutralises rapid double-submits, and makes retries safe — a failed send
+    // never sets reactivation_email_sent_at, so a retry only re-targets the
+    // rows that didn't go out, never the ones that already did.
+    const targets = (rows ?? []).filter((row) => {
+        const sentAtMs = row.reactivation_email_sent_at
+            ? new Date(row.reactivation_email_sent_at).getTime()
+            : 0;
+        if (sentAtMs && nowMs - sentAtMs < RESEND_COOLDOWN_MS) {
+            result.skipped++;
+            return false;
         }
+        return true;
+    });
 
-        try {
+    // Fire the emails concurrently. The SMTP transporter is pooled
+    // (maxConnections), so this many sends run at once and the rest queue —
+    // far faster than awaiting one handshake per recipient in series.
+    const outcomes = await Promise.allSettled(
+        targets.map(async (row) => {
+            if (!row.email) {
+                throw new Error("missing email");
+            }
+
             const yesToken = generateReactivationToken(row.user_id, "yes", secret);
             const noToken = generateReactivationToken(row.user_id, "no", secret);
             const editToken = generateReactivationToken(row.user_id, "edit", secret);
@@ -220,25 +243,40 @@ export async function sendReactivationEmails(userIds: string[]): Promise<Reactiv
                 noUrl,
                 profileEditUrl,
             });
+        })
+    );
 
-            const { error: updateErr } = await supabaseAdmin
-                .from("jury_participants")
-                .update({
-                    reactivation_email_sent_at: nowIso,
-                    reactivation_deadline_at: deadlineIso,
-                })
-                .eq("user_id", row.user_id);
-
-            if (updateErr) {
-                result.failed++;
-                result.errors.push({ userId: row.user_id, error: updateErr.message });
-            } else {
-                result.sent++;
-            }
-        } catch (err) {
+    const sentUserIds: string[] = [];
+    outcomes.forEach((outcome, i) => {
+        const row = targets[i];
+        if (outcome.status === "fulfilled") {
+            sentUserIds.push(row.user_id);
+        } else {
             result.failed++;
-            const message = err instanceof Error ? err.message : "unknown error";
+            const reason = outcome.reason;
+            const message = reason instanceof Error ? reason.message : "unknown error";
             result.errors.push({ userId: row.user_id, error: message });
+        }
+    });
+
+    // One bulk UPDATE for everyone that sent — the timestamps are identical, so
+    // this replaces N per-row PATCHes with a single round-trip.
+    if (sentUserIds.length > 0) {
+        const { error: updateErr } = await supabaseAdmin
+            .from("jury_participants")
+            .update({
+                reactivation_email_sent_at: nowIso,
+                reactivation_deadline_at: deadlineIso,
+            })
+            .in("user_id", sentUserIds);
+
+        if (updateErr) {
+            // Emails went out but we couldn't record it — surface as failures
+            // so the admin knows the campaign state is inconsistent.
+            result.failed += sentUserIds.length;
+            result.errors.push({ userId: "(bulk update)", error: updateErr.message });
+        } else {
+            result.sent += sentUserIds.length;
         }
     }
 

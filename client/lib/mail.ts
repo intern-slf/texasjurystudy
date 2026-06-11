@@ -52,6 +52,20 @@ const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST,
   port: Number(process.env.SMTP_PORT) || 587,
   secure: false, // true for 465, false for other ports
+  // Pool connections so bulk sends (e.g. reactivation campaign) reuse a few
+  // SMTP connections instead of doing a TCP+TLS+AUTH handshake per email.
+  // This is what prevents Gmail's "454-4.7.0 Too many login attempts" — without
+  // a pool, every email re-runs AUTH PLAIN and Gmail throttles the logins.
+  // maxConnections also acts as the concurrency cap when callers fire sends in
+  // parallel — nodemailer queues messages onto these connections. rateLimit/
+  // rateDelta cap throughput (msgs per window) so we don't trip Gmail's message
+  // rate limit either. NOTE: this does NOT raise Gmail's daily send cap
+  // (~500 free / ~2000 Workspace) — a real campaign needs a transactional ESP.
+  pool: true,
+  maxConnections: 3,
+  maxMessages: 100,
+  rateDelta: 1000,
+  rateLimit: 5,
   auth: {
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS,

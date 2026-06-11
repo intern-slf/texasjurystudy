@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { sendReactivationEmails } from "@/lib/actions/adminParticipant";
+import SubmitButton from "./SubmitButton";
 import {
   Table,
   TableBody,
@@ -29,9 +30,10 @@ async function confirmAction(formData: FormData) {
   }
 
   const result = await sendReactivationEmails(ids);
-  redirect(
-    `/dashboard/Admin/participants?sent=${result.sent}${result.failed ? `&failed=${result.failed}` : ""}`
-  );
+  const qs = new URLSearchParams({ sent: String(result.sent) });
+  if (result.failed) qs.set("failed", String(result.failed));
+  if (result.skipped) qs.set("skipped", String(result.skipped));
+  redirect(`/dashboard/Admin/participants?${qs.toString()}`);
 }
 
 export default async function SendMailConfirmPage({
@@ -195,13 +197,7 @@ export default async function SendMailConfirmPage({
         >
           Cancel
         </Link>
-        <button
-          type="submit"
-          disabled={recipients.length === 0}
-          className="inline-flex items-center rounded-md bg-green-600 px-5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-        >
-          Confirm and Send ({recipients.length})
-        </button>
+        <SubmitButton count={recipients.length} />
       </form>
     </div>
   );
