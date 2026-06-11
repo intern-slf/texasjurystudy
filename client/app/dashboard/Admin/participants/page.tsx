@@ -61,15 +61,11 @@ export default async function ParticipantsPage({
   >[number];
 
   const participants: ParticipantRow[] = [];
-  let participantsError: Awaited<
-    ReturnType<ReturnType<typeof buildQuery>["range"]>
-  >["error"] = null;
 
   for (let from = 0; ; from += PAGE_SIZE) {
     const { data, error } = await buildQuery().range(from, from + PAGE_SIZE - 1);
 
     if (error) {
-      participantsError = error;
       console.error("[participants page] supabase select failed:", error);
       break;
     }
