@@ -33,24 +33,48 @@ export default async function ParticipantsPage({
      FETCH PARTICIPANTS
   ========================= */
 
-  let query = supabase
-    .from("jury_participants")
-    .select(
-      "user_id, first_name, last_name, email, gender, city, state, phone, date_of_birth, entry_date, approved_by_admin, driver_license_number, driver_license_image_url, blacklist_reason, blacklisted_at, reactivation_status, reactivation_email_sent_at, reactivation_confirmed_at"
-    )
-    .order("entry_date", { ascending: false });
+  // Supabase/PostgREST caps a single response at 1000 rows by default, so we
+  // page through with .range() until a short page tells us we've hit the end.
+  const PAGE_SIZE = 1000;
 
-  if (tab === "blacklisted") {
-    query = query.not("blacklisted_at", "is", null);
-  } else if (tab === "new") {
-    query = query.eq("approved_by_admin", false).is("blacklisted_at", null);
-  } else {
-    query = query.eq("approved_by_admin", true).is("blacklisted_at", null);
-  }
+  const buildQuery = () => {
+    let query = supabase
+      .from("jury_participants")
+      .select(
+        "user_id, first_name, last_name, email, gender, city, state, phone, date_of_birth, entry_date, approved_by_admin, driver_license_number, driver_license_image_url, blacklist_reason, blacklisted_at, reactivation_status, reactivation_email_sent_at, reactivation_confirmed_at"
+      )
+      .order("entry_date", { ascending: false });
 
-  const { data: participants, error: participantsError } = await query;
-  if (participantsError) {
-    console.error("[participants page] supabase select failed:", participantsError);
+    if (tab === "blacklisted") {
+      query = query.not("blacklisted_at", "is", null);
+    } else if (tab === "new") {
+      query = query.eq("approved_by_admin", false).is("blacklisted_at", null);
+    } else {
+      query = query.eq("approved_by_admin", true).is("blacklisted_at", null);
+    }
+
+    return query;
+  };
+
+  type ParticipantRow = NonNullable<
+    Awaited<ReturnType<ReturnType<typeof buildQuery>["range"]>>["data"]
+  >[number];
+
+  const participants: ParticipantRow[] = [];
+
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await buildQuery().range(from, from + PAGE_SIZE - 1);
+
+    if (error) {
+      console.error("[participants page] supabase select failed:", error);
+      break;
+    }
+
+    if (!data?.length) break;
+
+    participants.push(...data);
+
+    if (data.length < PAGE_SIZE) break;
   }
 
   /* =========================
