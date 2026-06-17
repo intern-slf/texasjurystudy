@@ -133,30 +133,25 @@ export async function updateInviteStatus(
             return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Chicago" });
           };
 
-          const firstCase = sessionCases[0];
-          const timeStr = firstCase
-            ? `${formatCentralTime(firstCase.start_time)} – ${formatCentralTime(firstCase.end_time)} CT`
-            : "See your dashboard for details";
+          // Span the FULL session: earliest start time -> latest end time across
+          // every case. Using only sessionCases[0] dropped later cases, so a
+          // 9–10 + 10–11 session showed "9 – 10" instead of "9 – 11".
+          const starts = sessionCases.map((r) => r.start_time as string).filter(Boolean).sort();
+          const ends = sessionCases.map((r) => r.end_time as string).filter(Boolean).sort();
+          const timeStr =
+            starts.length && ends.length
+              ? `${formatCentralTime(starts[0])} – ${formatCentralTime(ends[ends.length - 1])} CT`
+              : "See your dashboard for details";
           await sendInviteAcceptedConfirmationEmail(email, session.session_date as string, timeStr);
 
           // If zoom link is already saved, send it immediately to the new participant
           if (session.zoom_link) {
-
-            let zoomTimeStr: string | undefined;
-            if (sessionCases.length > 0) {
-              const starts = sessionCases.map((r) => r.start_time as string).filter(Boolean).sort();
-              const ends = sessionCases.map((r) => r.end_time as string).filter(Boolean).sort();
-              if (starts.length && ends.length) {
-                zoomTimeStr = `${formatCentralTime(starts[0])} – ${formatCentralTime(ends[ends.length - 1])} CT`;
-              }
-            }
-
             const firstName =
               userData?.user?.user_metadata?.first_name ||
               userData?.user?.user_metadata?.full_name?.split(" ")[0] ||
               "Participant";
 
-            await sendZoomLinkEmail(email, firstName, session.session_date as string, session.zoom_link, zoomTimeStr);
+            await sendZoomLinkEmail(email, firstName, session.session_date as string, session.zoom_link, timeStr);
             console.log(`[updateInviteStatus] Sent zoom link email to ${email} (link already saved)`);
           }
         }

@@ -3,7 +3,19 @@
     "allow": [
       "Bash(npx eslint *)",
       "Bash(npx tsc *)",
-      "WebSearch"
+      "WebSearch",
+      "mcp__claude_ai_Google_Drive__read_file_content",
+      "mcp__claude_ai_Google_Drive__get_file_metadata",
+      "Bash(python -c \"import json; d=json.load\\(open\\('mcp-claude_ai_Google_Drive-read_file_content-1781511690970.txt', encoding='utf-8'\\)\\); c=d['fileContent']; print\\('LEN', len\\(c\\)\\); print\\(c[:3000]\\)\")",
+      "mcp__claude_ai_Google_Drive__search_files",
+      "Bash(python -c ' *)",
+      "Bash(python extract.py)",
+      "mcp__claude_ai_Google_Drive__create_file",
+      "mcp__claude_ai_Google_Drive__download_file_content",
+      "Bash(python -c \"import openpyxl; print\\('openpyxl OK', openpyxl.__version__\\)\")",
+      "Bash(python -c \"import pandas; print\\('pandas OK'\\)\")",
+      "Bash(python decode_csv.py)",
+      "Bash(python cleanup.py)"
     ]
   }
 }
