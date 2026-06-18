@@ -9,7 +9,8 @@ import { revalidatePath } from "next/cache";
    ========================= */
 export async function uploadCaseDocument(
   caseId: string,
-  file: File
+  file: File,
+  nameAttested: boolean
 ) {
   const supabase = await createClient();
 
@@ -19,6 +20,14 @@ export async function uploadCaseDocument(
 
   if (!user) {
     throw new Error("Unauthorized");
+  }
+
+  // HIPAA: the requestee must attest they renamed the file (to strip any
+  // patient/identifying info from the original file name) before uploading.
+  // An unchanged file name is a compliance loophole, so block the upload and
+  // record the attestation alongside the document.
+  if (!nameAttested) {
+    throw new Error("File-name attestation is required before uploading.");
   }
 
   const fileExt = file.name.split(".").pop();
@@ -44,6 +53,8 @@ export async function uploadCaseDocument(
       storage_path: storagePath,
       mime_type: file.type,
       file_size: file.size,
+      name_attested: true,
+      name_attested_at: new Date().toISOString(),
     });
 
   if (insertError) {

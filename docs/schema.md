@@ -21,6 +21,8 @@ CREATE TABLE public.case_documents (
   storage_path text NOT NULL,
   mime_type text NOT NULL,
   file_size integer NOT NULL,
+  name_attested boolean NOT NULL DEFAULT false,
+  name_attested_at timestamp with time zone,
   created_at timestamp with time zone DEFAULT now(),
   CONSTRAINT case_documents_pkey PRIMARY KEY (id),
   CONSTRAINT case_documents_case_id_fkey FOREIGN KEY (case_id) REFERENCES public.cases(id),

@@ -171,7 +171,7 @@ describe("Documents & Drive Links", () => {
       state.storageResponses = [{ data: { path: "x" }, error: null }];
       state.responses = [{ error: null }];
 
-      await uploadCaseDocument("case-XYZ", makeFile());
+      await uploadCaseDocument("case-XYZ", makeFile(), true);
 
       const upload = state.capturedStorage.find((c) => c.kind === "upload");
       expect(upload).toBeDefined();
@@ -185,7 +185,7 @@ describe("Documents & Drive Links", () => {
       state.storageResponses = [{ data: { path: "x" }, error: null }];
       state.responses = [{ error: null }];
 
-      await uploadCaseDocument("case-XYZ", makeFile());
+      await uploadCaseDocument("case-XYZ", makeFile(), true);
 
       const tableCall = state.captured.find((c) => c.table === "case_documents")!;
       const insert = tableCall.ops.find((o) => o.op === "insert") as {
@@ -198,6 +198,11 @@ describe("Documents & Drive Links", () => {
       expect(insert.payload.mime_type).toBe("application/pdf");
       expect(insert.payload.storage_path).toMatch(/^case-XYZ\/.+\.pdf$/);
       expect(insert.payload.file_size).toBeGreaterThan(0);
+      expect(insert.payload.name_attested).toBe(true);
+      expect(typeof insert.payload.name_attested_at).toBe("string");
+      expect(
+        Number.isNaN(Date.parse(insert.payload.name_attested_at as string)),
+      ).toBe(false);
     });
 
     it("Requestee-only access", async () => {
@@ -207,8 +212,20 @@ describe("Documents & Drive Links", () => {
       state.user = null;
 
       await expect(
-        uploadCaseDocument("case-XYZ", makeFile())
+        uploadCaseDocument("case-XYZ", makeFile(), true)
       ).rejects.toThrow(/Unauthorized/);
+      expect(state.capturedStorage).toHaveLength(0);
+      expect(state.captured).toHaveLength(0);
+    });
+
+    it("File-name attestation required", async () => {
+      // HIPAA: an authenticated requestee who has not attested that they
+      // renamed the file is rejected before any storage or DB write.
+      state.user = { id: "req-1", user_metadata: { role: "requestee" } };
+
+      await expect(
+        uploadCaseDocument("case-XYZ", makeFile(), false)
+      ).rejects.toThrow(/attestation/i);
       expect(state.capturedStorage).toHaveLength(0);
       expect(state.captured).toHaveLength(0);
     });
