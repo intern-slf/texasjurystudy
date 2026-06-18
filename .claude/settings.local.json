@@ -15,7 +15,8 @@
       "Bash(python -c \"import openpyxl; print\\('openpyxl OK', openpyxl.__version__\\)\")",
       "Bash(python -c \"import pandas; print\\('pandas OK'\\)\")",
       "Bash(python decode_csv.py)",
-      "Bash(python cleanup.py)"
+      "Bash(python cleanup.py)",
+      "Bash(npx vitest *)"
     ]
   }
 }
