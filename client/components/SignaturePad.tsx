@@ -35,7 +35,7 @@ export default function SignaturePad({
     }
   }
 
-  function stop(e: React.PointerEvent) {
+  function stop() {
     if (!drawing.current) return;
     drawing.current = false;
     const canvas = canvasRef.current;
