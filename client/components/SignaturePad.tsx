@@ -9,39 +9,59 @@ export default function SignaturePad({
   onChange: (dataUrl: string) => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  let drawing = false;
+  const drawing = useRef(false);
 
-  function start() {
-    drawing = true;
+  function pos(e: React.PointerEvent) {
+    const canvas = canvasRef.current!;
+    const rect = canvas.getBoundingClientRect();
+    // canvas backing store may differ from CSS size — scale to internal coords
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    return {
+      x: (e.clientX - rect.left) * scaleX,
+      y: (e.clientY - rect.top) * scaleY,
+    };
   }
 
-  function stop() {
-    drawing = false;
+  function start(e: React.PointerEvent) {
+    drawing.current = true;
+    // keep receiving move/up events even if the finger slides off the canvas
+    canvasRef.current?.setPointerCapture(e.pointerId);
+    const ctx = canvasRef.current?.getContext("2d");
+    if (ctx) {
+      const { x, y } = pos(e);
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+    }
+  }
+
+  function stop(e: React.PointerEvent) {
+    if (!drawing.current) return;
+    drawing.current = false;
     const canvas = canvasRef.current;
     if (canvas) {
-      const ctx = canvas.getContext("2d");
-      if (ctx) ctx.beginPath();
+      canvas.getContext("2d")?.beginPath();
       onChange(canvas.toDataURL("image/png"));
     }
   }
 
-  function draw(e: React.MouseEvent) {
-    if (!drawing) return;
+  function draw(e: React.PointerEvent) {
+    if (!drawing.current) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
 
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const rect = canvas.getBoundingClientRect();
+    const { x, y } = pos(e);
     ctx.lineWidth = 2;
     ctx.lineCap = "round";
     ctx.strokeStyle = "#000";
 
-    ctx.lineTo(e.clientX - rect.left, e.clientY - rect.top);
+    ctx.lineTo(x, y);
     ctx.stroke();
     ctx.beginPath();
-    ctx.moveTo(e.clientX - rect.left, e.clientY - rect.top);
+    ctx.moveTo(x, y);
   }
 
   function clear() {
@@ -61,10 +81,12 @@ export default function SignaturePad({
         width={300}
         height={180}
         className="border border-dashed"
-        onMouseDown={start}
-        onMouseUp={stop}
-        onMouseMove={draw}
-        onMouseLeave={stop}
+        style={{ touchAction: "none", maxWidth: "100%" }}
+        onPointerDown={start}
+        onPointerUp={stop}
+        onPointerMove={draw}
+        onPointerCancel={stop}
+        onPointerLeave={stop}
       />
       <button
         type="button"
