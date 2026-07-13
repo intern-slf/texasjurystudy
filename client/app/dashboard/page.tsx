@@ -75,16 +75,29 @@ export default function DashboardPage() {
         data: { user },
       } = await supabase.auth.getUser();
 
-      if (!user || !mounted) {
-        setLoading(false);
+      if (!mounted) return;
+      if (!user) {
+        router.replace("/auth/login");
         return;
       }
 
-      const userRole = user.user_metadata?.role;
+      // Normal signups carry the role in the JWT (user_metadata.role), but
+      // migrated / old-data accounts may have none even though public.roles
+      // has it. Fall back to the roles table (self-read is allowed by RLS)
+      // so those users aren't stranded on this loading screen forever.
+      let userRole = user.user_metadata?.role as Role | undefined;
+      if (userRole !== "requestee" && userRole !== "participant") {
+        const { data: roleRow } = await supabase
+          .from("roles")
+          .select("role")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        userRole = roleRow?.role as Role | undefined;
+      }
 
       if (userRole !== "requestee" && userRole !== "participant") {
         console.error("Invalid role:", userRole);
-        setLoading(false);
+        router.replace("/auth/login");
         return;
       }
 
