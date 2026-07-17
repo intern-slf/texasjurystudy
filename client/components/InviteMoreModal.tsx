@@ -20,6 +20,7 @@ export interface Candidate {
   city?: string;
   date_of_birth?: string;
   political_affiliation?: string;
+  blacklisted?: boolean;
   matchLevel?: number;
   filterChecks?: {
     key: string;
@@ -331,32 +332,61 @@ export default function InviteMoreModal({ sessionId, sessionDate, candidates }: 
                     </p>
                   ) : (
                     <>
-                      {visibleList.map((p) => (
-                        <label
-                          key={p.id}
-                          className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50 cursor-pointer"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={selected.has(p.id)}
-                            onChange={() => toggle(p.id)}
-                            className="h-4 w-4 rounded border-gray-300 shrink-0"
-                          />
-                          <div className="flex-1 min-w-0">
-                            <div className="font-medium text-sm">
-                              {p.first_name} {p.last_name}
-                            </div>
-                            <div className="text-xs text-slate-500">
-                              {p.date_of_birth ? `Age ${calcAge(p.date_of_birth)} \u2022 ` : ""}
-                              {p.city ?? "N/A"} &bull;{" "}
-                              {p.political_affiliation ?? "N/A"}
-                            </div>
-                            <div className="mt-1">
-                              <FilterChecks filterChecks={p.filterChecks} matchLevel={p.matchLevel} />
+                      {visibleList.map((p) =>
+                        p.blacklisted ? (
+                          <div
+                            key={p.id}
+                            title="This participant is blacklisted and cannot be invited."
+                            className="flex items-center gap-3 px-4 py-3 bg-slate-50 opacity-60 cursor-not-allowed select-none"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={false}
+                              disabled
+                              readOnly
+                              className="h-4 w-4 rounded border-gray-300 shrink-0 cursor-not-allowed"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <div className="font-medium text-sm text-slate-500 flex items-center gap-2">
+                                <span>{p.first_name} {p.last_name}</span>
+                                <span className="px-1.5 py-0.5 rounded border text-[10px] font-semibold bg-red-50 text-red-700 border-red-200">
+                                  Blacklisted
+                                </span>
+                              </div>
+                              <div className="text-xs text-slate-400">
+                                {p.date_of_birth ? `Age ${calcAge(p.date_of_birth)} \u2022 ` : ""}
+                                {p.city ?? "N/A"} &bull;{" "}
+                                {p.political_affiliation ?? "N/A"}
+                              </div>
                             </div>
                           </div>
-                        </label>
-                      ))}
+                        ) : (
+                          <label
+                            key={p.id}
+                            className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50 cursor-pointer"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selected.has(p.id)}
+                              onChange={() => toggle(p.id)}
+                              className="h-4 w-4 rounded border-gray-300 shrink-0"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <div className="font-medium text-sm">
+                                {p.first_name} {p.last_name}
+                              </div>
+                              <div className="text-xs text-slate-500">
+                                {p.date_of_birth ? `Age ${calcAge(p.date_of_birth)} \u2022 ` : ""}
+                                {p.city ?? "N/A"} &bull;{" "}
+                                {p.political_affiliation ?? "N/A"}
+                              </div>
+                              <div className="mt-1">
+                                <FilterChecks filterChecks={p.filterChecks} matchLevel={p.matchLevel} />
+                              </div>
+                            </div>
+                          </label>
+                        )
+                      )}
 
                       {/* Show More Button */}
                       {hasMore && (

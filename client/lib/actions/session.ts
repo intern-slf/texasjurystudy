@@ -108,7 +108,36 @@ export async function inviteParticipants(
 ) {
   const supabase = await createClient();
 
-  const rows = participantIds.map((id) => ({
+  // ── Hard guard: blacklisted participants must NEVER be invited/added, no matter
+  //    which caller reaches here (admin new-session, invite-more, requestee-add,
+  //    or a tampered/stale client). Checked with the service role so RLS can't make
+  //    the guard silently pass. Both markers (roles + jury_participants) are checked
+  //    in case they ever drift out of sync.
+  const uniqueIds = Array.from(new Set(participantIds));
+  const [{ data: blByRole }, { data: jpRows }] = await Promise.all([
+    supabaseAdmin.from("roles").select("user_id").eq("role", "blacklisted").in("user_id", uniqueIds),
+    supabaseAdmin.from("jury_participants").select("user_id, blacklisted_at").in("user_id", uniqueIds),
+  ]);
+  const blacklistedSet = new Set<string>([
+    ...((blByRole ?? []).map((r: { user_id: string }) => r.user_id)),
+    ...((jpRows ?? [])
+      .filter((r: { blacklisted_at: string | null }) => r.blacklisted_at != null)
+      .map((r: { user_id: string }) => r.user_id)),
+  ]);
+  const allowedIds = uniqueIds.filter((id) => !blacklistedSet.has(id));
+
+  if (blacklistedSet.size > 0) {
+    console.warn(
+      `[inviteParticipants] Blocked ${blacklistedSet.size} blacklisted participant(s) from session ${sessionId}:`,
+      Array.from(blacklistedSet)
+    );
+  }
+  if (allowedIds.length === 0) {
+    revalidatePath("/dashboard/Admin/sessions");
+    return;
+  }
+
+  const rows = allowedIds.map((id) => ({
     session_id: sessionId,
     participant_id: id,
     invite_status: "pending",
@@ -803,7 +832,10 @@ export async function replaceCaseInSession(
 
 /* =========================
    SEARCH ELIGIBLE PARTICIPANTS
-   Excludes: blocked, ineligible (eligible_after_at), already invited to this session
+   Excludes: ineligible (eligible_after_at), already invited to this session.
+   Blacklisted participants are NOT hidden — they are returned with `blacklisted: true`
+   so the UI can grey them out (they can never actually be invited; inviteParticipants
+   enforces that server-side).
 ========================= */
 export async function searchEligibleParticipants(
   sessionId: string,
@@ -817,50 +849,23 @@ export async function searchEligibleParticipants(
     .select("participant_id")
     .eq("session_id", sessionId);
   const alreadyInvitedIds = (sessionParts ?? []).map((p: { participant_id: string }) => p.participant_id);
+  const alreadyInvitedSet = new Set(alreadyInvitedIds);
 
-  // 2. Get blacklisted user IDs from roles table
+  // 2. Get blacklisted user IDs from roles table (used to flag, not exclude)
   const { data: blacklistedRoles } = await supabase
     .from("roles")
     .select("user_id")
     .eq("role", "blacklisted");
   const blacklistedIds = (blacklistedRoles ?? []).map((r: { user_id: string }) => r.user_id);
 
-  // Combine all IDs to exclude
-  const excludeIds = Array.from(new Set([...alreadyInvitedIds, ...blacklistedIds]));
-
   const { count } = await supabase
     .from("jury_participants")
     .select("*", { count: "exact", head: true });
   const testTable = count === 0 || count === null ? "oldData" : "jury_participants";
   const isOldData = testTable === "oldData";
+  const idField = isOldData ? "id" : "user_id";
 
   const nowIso = new Date().toISOString();
-
-  let q = supabase.from(testTable).select("*");
-
-  if (!isOldData) {
-    q = q
-      .or(`eligible_after_at.is.null,eligible_after_at.lte.${nowIso}`)
-      .eq("approved_by_admin", true)
-      .is("blacklisted_at", null);
-  }
-
-  if (excludeIds.length > 0) {
-    const idField = isOldData ? "id" : "user_id";
-    q = q.not(idField, "in", `(${excludeIds.map((id) => `"${id}"`).join(",")})`);
-  }
-
-  // Search by name
-  if (query.trim()) {
-    const term = query.trim().toLowerCase();
-    q = q.or(
-      `first_name.ilike.%${term}%,last_name.ilike.%${term}%`
-    );
-  }
-
-  const { data, error } = await q.limit(50);
-
-  if (error) throw error;
 
   type SearchResultRow = {
     user_id?: string | null;
@@ -871,14 +876,54 @@ export async function searchEligibleParticipants(
     date_of_birth?: string | null;
     political_affiliation?: string | null;
   };
-  return ((data ?? []) as SearchResultRow[]).map((p) => ({
+  const mapRow = (p: SearchResultRow, blacklisted: boolean) => ({
     id: p.user_id || p.id,
     first_name: p.first_name,
     last_name: p.last_name,
     city: p.city,
     date_of_birth: p.date_of_birth,
     political_affiliation: p.political_affiliation,
-  }));
+    blacklisted,
+  });
+
+  // ── Eligible participants (approved, not blacklisted, not already invited) ──
+  const eligibleExcludeIds = Array.from(new Set([...alreadyInvitedIds, ...blacklistedIds]));
+  let q = supabase.from(testTable).select("*");
+  if (!isOldData) {
+    q = q
+      .or(`eligible_after_at.is.null,eligible_after_at.lte.${nowIso}`)
+      .eq("approved_by_admin", true)
+      .is("blacklisted_at", null);
+  }
+  if (eligibleExcludeIds.length > 0) {
+    q = q.not(idField, "in", `(${eligibleExcludeIds.map((id) => `"${id}"`).join(",")})`);
+  }
+  if (query.trim()) {
+    const term = query.trim().toLowerCase();
+    q = q.or(`first_name.ilike.%${term}%,last_name.ilike.%${term}%`);
+  }
+  const { data: eligibleData, error } = await q.limit(50);
+  if (error) throw error;
+  const eligible = ((eligibleData ?? []) as SearchResultRow[]).map((p) => mapRow(p, false));
+
+  // ── Blacklisted matches (surfaced greyed-out, never invitable) ──
+  const blacklistedToShow = blacklistedIds.filter((id) => !alreadyInvitedSet.has(id));
+  let blacklisted: ReturnType<typeof mapRow>[] = [];
+  if (blacklistedToShow.length > 0) {
+    let bq = supabase
+      .from(testTable)
+      .select("*")
+      .in(idField, blacklistedToShow);
+    if (query.trim()) {
+      const term = query.trim().toLowerCase();
+      bq = bq.or(`first_name.ilike.%${term}%,last_name.ilike.%${term}%`);
+    }
+    const { data: blData } = await bq.limit(50);
+    blacklisted = ((blData ?? []) as SearchResultRow[]).map((p) => mapRow(p, true));
+  }
+
+  // Eligible first, blacklisted (greyed) after
+  return [...eligible, ...blacklisted];
 }
 
 /* =========================
