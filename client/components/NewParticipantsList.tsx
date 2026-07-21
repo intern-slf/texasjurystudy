@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useDeferredValue, useCallback, memo } from "react";
 import VerifyParticipantModal from "@/components/VerifyParticipantModal";
 import { useRouter } from "next/navigation";
 import { Input } from "@/components/ui/input";
@@ -30,6 +30,73 @@ type Participant = {
   idSignedUrl: string | null;
 };
 
+// Memoized so filtering (per keystroke) only re-renders cards whose props
+// actually changed, not the whole grid.
+const NewParticipantCard = memo(function NewParticipantCard({
+  p,
+  onSelect,
+}: {
+  p: Participant;
+  onSelect: (p: Participant) => void;
+}) {
+  return (
+    <button
+      onClick={() => onSelect(p)}
+      className="text-left bg-white border border-slate-200 rounded-xl p-5 hover:shadow-md hover:border-blue-200 transition-all group cursor-pointer"
+    >
+      {/* Name */}
+      <h3 className="font-semibold text-slate-900 group-hover:text-blue-600 transition-colors">
+        {p.first_name} {p.last_name}
+      </h3>
+
+      {/* Email */}
+      <p className="text-sm text-slate-500 mt-1 truncate">
+        {p.email || "No email"}
+      </p>
+
+      {/* Details row */}
+      <div className="flex flex-wrap gap-2 mt-3">
+        {p.date_of_birth && (
+          <span className="text-[11px] px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full">
+            Age {calcAge(p.date_of_birth)}
+          </span>
+        )}
+        {p.gender && (
+          <span className="text-[11px] px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full capitalize">
+            {p.gender}
+          </span>
+        )}
+        {(p.city || p.state) && (
+          <span className="text-[11px] px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full">
+            {[p.city, p.state].filter(Boolean).join(", ")}
+          </span>
+        )}
+      </div>
+
+      {/* ID badge */}
+      <div className="mt-3 pt-3 border-t border-slate-100">
+        {p.idSignedUrl ? (
+          <span className="text-[11px] font-medium text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
+            🪪 ID Uploaded
+          </span>
+        ) : (
+          <span className="text-[11px] font-medium text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
+            ⚠ No ID
+          </span>
+        )}
+      </div>
+
+      {/* Registered date */}
+      <p className="text-[10px] text-slate-400 mt-2">
+        Registered{" "}
+        {p.entry_date
+          ? new Date(p.entry_date).toLocaleDateString()
+          : "—"}
+      </p>
+    </button>
+  );
+});
+
 export default function NewParticipantsList({
   participants,
 }: {
@@ -37,10 +104,13 @@ export default function NewParticipantsList({
 }) {
   const [selected, setSelected] = useState<Participant | null>(null);
   const [query, setQuery] = useState("");
+  // Input stays bound to `query` (instant); filtering runs off the deferred
+  // value so typing stays responsive on large grids.
+  const deferredQuery = useDeferredValue(query);
   const router = useRouter();
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = deferredQuery.trim().toLowerCase();
     if (!q) return participants;
     return participants.filter((p) => {
       const name = `${p.first_name} ${p.last_name}`.toLowerCase();
@@ -49,7 +119,9 @@ export default function NewParticipantsList({
       const phone = (p.phone ?? "").toLowerCase();
       return name.includes(q) || email.includes(q) || location.includes(q) || phone.includes(q);
     });
-  }, [participants, query]);
+  }, [participants, deferredQuery]);
+
+  const handleSelect = useCallback((p: Participant) => setSelected(p), []);
 
   return (
     <>
@@ -88,61 +160,7 @@ export default function NewParticipantsList({
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {filtered.map((p) => (
-            <button
-              key={p.user_id}
-              onClick={() => setSelected(p)}
-              className="text-left bg-white border border-slate-200 rounded-xl p-5 hover:shadow-md hover:border-blue-200 transition-all group cursor-pointer"
-            >
-              {/* Name */}
-              <h3 className="font-semibold text-slate-900 group-hover:text-blue-600 transition-colors">
-                {p.first_name} {p.last_name}
-              </h3>
-
-              {/* Email */}
-              <p className="text-sm text-slate-500 mt-1 truncate">
-                {p.email || "No email"}
-              </p>
-
-              {/* Details row */}
-              <div className="flex flex-wrap gap-2 mt-3">
-                {p.date_of_birth && (
-                  <span className="text-[11px] px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full">
-                    Age {calcAge(p.date_of_birth)}
-                  </span>
-                )}
-                {p.gender && (
-                  <span className="text-[11px] px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full capitalize">
-                    {p.gender}
-                  </span>
-                )}
-                {(p.city || p.state) && (
-                  <span className="text-[11px] px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full">
-                    {[p.city, p.state].filter(Boolean).join(", ")}
-                  </span>
-                )}
-              </div>
-
-              {/* ID badge */}
-              <div className="mt-3 pt-3 border-t border-slate-100">
-                {p.idSignedUrl ? (
-                  <span className="text-[11px] font-medium text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
-                    🪪 ID Uploaded
-                  </span>
-                ) : (
-                  <span className="text-[11px] font-medium text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
-                    ⚠ No ID
-                  </span>
-                )}
-              </div>
-
-              {/* Registered date */}
-              <p className="text-[10px] text-slate-400 mt-2">
-                Registered{" "}
-                {p.entry_date
-                  ? new Date(p.entry_date).toLocaleDateString()
-                  : "—"}
-              </p>
-            </button>
+            <NewParticipantCard key={p.user_id} p={p} onSelect={handleSelect} />
           ))}
         </div>
       )}

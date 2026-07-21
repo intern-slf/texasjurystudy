@@ -23,8 +23,11 @@ export interface CaseChainNode {
 /**
  * Recursively fetches all ancestor case IDs for a given case.
  */
-export async function getAncestorCaseIds(caseId: string): Promise<string[]> {
-  const supabase = await createClient();
+export async function getAncestorCaseIds(
+  caseId: string,
+  client?: Awaited<ReturnType<typeof createClient>>,
+): Promise<string[]> {
+  const supabase = client ?? (await createClient());
   const ancestors: string[] = [];
   let currentId: string | null = caseId;
 
@@ -244,10 +247,13 @@ export async function getBlockedParticipantIds(caseId: string): Promise<string[]
  * Fetches IDs of all participants who were invited to sessions 
  * associated with any case in the given lineage.
  */
-export async function getLineageParticipantIds(caseIds: string[]): Promise<string[]> {
+export async function getLineageParticipantIds(
+  caseIds: string[],
+  client?: Awaited<ReturnType<typeof createClient>>,
+): Promise<string[]> {
   if (caseIds.length === 0) return [];
 
-  const supabase = await createClient();
+  const supabase = client ?? (await createClient());
 
   // 1. Get all session IDs for these cases
   const { data: sessionCases, error: scError } = await supabase
