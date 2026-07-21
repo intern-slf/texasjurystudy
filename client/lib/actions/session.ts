@@ -5,6 +5,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { sendEmail, sendRescheduleEmail, sendSessionCreatedEmail, sendSessionCompletedEmail, sendPresenceConfirmedEmail, sendPresenceDeclinedEmail, sendZoomLinkEmail, sendPresenterInfoEmail, emailWrapper } from "@/lib/mail";
 import type { PresenterParticipantInfo, PresenterCaseInfo } from "@/lib/mail";
 import { checkAndNotifySessionFull } from "@/lib/participant/updateInviteStatus";
+import { recordBackoutStrike } from "@/lib/actions/participantFlags";
 import { generateEmailActionToken } from "@/lib/emailActionToken";
 import { revalidatePath } from "next/cache";
 import { localToUTC, localToUTCTime } from "@/lib/timezone";
@@ -597,6 +598,18 @@ export async function adminRespondOnBehalf(
   }
 
   revalidatePath("/dashboard/Admin/sessions");
+}
+
+/* =========================
+   FLAG PARTICIPANT (no-show / back-out strike)
+   Standalone manual admin action — completely independent of Accept/Decline on
+   behalf and their email logic. Records one strike; recordBackoutStrike
+   auto-blacklists the participant once they reach the flag limit.
+========================= */
+export async function flagParticipant(participantId: string) {
+  await recordBackoutStrike(participantId);
+  revalidatePath("/dashboard/Admin/sessions");
+  revalidatePath("/dashboard/Admin/participants");
 }
 
 /* =========================

@@ -156,6 +156,10 @@ vi.mock("@/lib/mail", () => ({
     sendSessionFullEmailSpy(...(args as [])),
   sendApprovalEmail: vi.fn(async () => undefined),
   sendRejectionEmail: vi.fn(async () => undefined),
+  // Referenced at import by adminParticipant.ts (pulled in via participantFlags);
+  // never called on the blacklist path, but must exist so the import resolves.
+  sendProfileUpdatedEmail: vi.fn(async () => undefined),
+  sendReactivationEmail: vi.fn(async () => undefined),
   emailWrapper: (content: string) => `<wrapped>${content}</wrapped>`,
 }));
 
@@ -668,6 +672,97 @@ describe("Sessions", () => {
           c.ops.some((o) => o.op === "update")
       );
       expect(update).toBeUndefined();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // participant-flags — recordBackoutStrike (accepted → back-out strike system)
+  // -------------------------------------------------------------------------
+  describe("recordBackoutStrike", () => {
+    let recordBackoutStrike: (typeof import("@/lib/actions/participantFlags"))["recordBackoutStrike"];
+    beforeAll(async () => {
+      ({ recordBackoutStrike } = await import("@/lib/actions/participantFlags"));
+    });
+
+    const juryUpdatesWith = (key: string) =>
+      state.captured.filter(
+        (c) =>
+          c.table === "jury_participants" &&
+          c.ops.some(
+            (o) =>
+              o.op === "update" &&
+              key in (o as { op: "update"; payload: Record<string, unknown> }).payload
+          )
+      );
+
+    it("increments flag_count and does NOT blacklist below the limit", async () => {
+      state.responses = [
+        { data: { flag_count: 1 }, error: null }, // read current count
+        { error: null }, // flag_count update
+      ];
+
+      await recordBackoutStrike("p-1");
+
+      const flagUpdates = juryUpdatesWith("flag_count");
+      expect(flagUpdates).toHaveLength(1);
+      const upd = flagUpdates[0].ops.find((o) => o.op === "update") as {
+        op: "update";
+        payload: Record<string, unknown>;
+      };
+      expect(upd.payload.flag_count).toBe(2);
+
+      // No blacklist below the limit
+      const rolesWrite = state.captured.find(
+        (c) => c.table === "roles" && c.ops.some((o) => o.op === "update")
+      );
+      expect(rolesWrite).toBeUndefined();
+    });
+
+    it("auto-blacklists when the third flag is reached", async () => {
+      state.responses = [
+        { data: { flag_count: 2 }, error: null }, // read current count
+        { error: null }, // flag_count update -> 3
+        { error: null }, // roles -> blacklisted
+        { error: null }, // jury_participants blacklist fields
+      ];
+
+      await recordBackoutStrike("p-2");
+
+      // flag_count bumped to 3
+      const flagUpdate = juryUpdatesWith("flag_count")[0].ops.find(
+        (o) => o.op === "update"
+      ) as { op: "update"; payload: Record<string, unknown> };
+      expect(flagUpdate.payload.flag_count).toBe(3);
+
+      // roles flipped to blacklisted
+      const rolesWrite = state.captured.find(
+        (c) => c.table === "roles" && c.ops.some((o) => o.op === "update")
+      )!;
+      const rolesUpd = rolesWrite.ops.find((o) => o.op === "update") as {
+        op: "update";
+        payload: Record<string, unknown>;
+      };
+      expect(rolesUpd.payload.role).toBe("blacklisted");
+
+      // jury_participants blacklist fields written, reason mentions the limit
+      const blWrite = juryUpdatesWith("blacklisted_at")[0].ops.find(
+        (o) =>
+          o.op === "update" &&
+          "blacklisted_at" in (o as { payload: Record<string, unknown> }).payload
+      ) as { op: "update"; payload: Record<string, unknown> };
+      expect(blWrite.payload.blacklisted_at).toEqual(expect.any(String));
+      expect(String(blWrite.payload.blacklist_reason)).toContain("3");
+    });
+
+    it("no-ops when the participant is not in jury_participants (legacy id)", async () => {
+      state.responses = [{ data: null, error: null }]; // read returns no row
+
+      await recordBackoutStrike("old-1");
+
+      const anyWrite = state.captured.find((c) =>
+        c.ops.some((o) => o.op === "update")
+      );
+      expect(anyWrite).toBeUndefined();
     });
   });
 });

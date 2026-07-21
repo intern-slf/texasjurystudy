@@ -46,6 +46,7 @@ type Participant = {
   reactivation_status: "pending" | "yes" | "no" | null;
   reactivation_email_sent_at: string | null;
   reactivation_confirmed_at: string | null;
+  flag_count: number | null;
   [key: string]: unknown;
 };
 
@@ -141,6 +142,18 @@ const ParticipantRow = memo(function ParticipantRow({
           <span className="inline-flex items-center rounded-full bg-amber-400/10 px-2 py-1 text-xs font-medium text-amber-700 ring-1 ring-inset ring-amber-400/30">
             Pending
           </span>
+        )}
+      </TableCell>
+      <TableCell className="py-4 text-sm">
+        {(p.flag_count ?? 0) > 0 ? (
+          <span
+            className="inline-flex items-center rounded-full bg-orange-400/10 px-2 py-1 text-xs font-medium text-orange-600 ring-1 ring-inset ring-orange-400/20"
+            title="Strikes given by admin for no-shows / back-outs. 3 strikes auto-blacklists."
+          >
+            {p.flag_count} / 3
+          </span>
+        ) : (
+          <span className="text-xs text-muted-foreground">0 / 3</span>
         )}
       </TableCell>
       {tab === "blacklisted" ? (
@@ -418,6 +431,9 @@ export default function ParticipantsTable({ participants, tab }: Props) {
                 <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   Active
                 </TableHead>
+                <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Strikes
+                </TableHead>
                 {tab === "blacklisted" ? (
                   <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     Reason
@@ -450,7 +466,7 @@ export default function ParticipantsTable({ participants, tab }: Props) {
               {!filtered.length && (
                 <TableRow>
                   <TableCell
-                    colSpan={selectMode ? 10 : 9}
+                    colSpan={selectMode ? 11 : 10}
                     className="text-center py-16 text-muted-foreground italic"
                   >
                     {query
