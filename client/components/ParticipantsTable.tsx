@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useTransition } from "react";
+import { useState, useMemo, useTransition, useDeferredValue, useCallback, memo } from "react";
 import { useRouter } from "next/navigation";
 import {
   Table,
@@ -56,9 +56,151 @@ type Props = {
 
 type StatusFilter = "all" | "yes" | "no" | "pending";
 
+type RowProps = {
+  p: Participant;
+  tab: "approved" | "blacklisted";
+  selectMode: boolean;
+  isSelected: boolean;
+  isThisPending: boolean;
+  onToggle: (userId: string) => void;
+  onUnblacklist: (userId: string) => void;
+};
+
+// Memoized so a keystroke or a single checkbox toggle only re-renders the rows
+// whose props actually changed, not the entire (potentially huge) table.
+const ParticipantRow = memo(function ParticipantRow({
+  p,
+  tab,
+  selectMode,
+  isSelected,
+  isThisPending,
+  onToggle,
+  onUnblacklist,
+}: RowProps) {
+  const regDate = p.entry_date
+    ? new Date(p.entry_date).toLocaleDateString()
+    : "—";
+  const status = p.reactivation_status ?? "pending";
+
+  return (
+    <TableRow
+      data-state={isSelected ? "selected" : undefined}
+      className="group hover:bg-muted/40 transition-colors data-[state=selected]:bg-green-50/60"
+    >
+      {selectMode && (
+        <TableCell className="pl-6 py-4 w-10">
+          <Checkbox
+            checked={isSelected}
+            onCheckedChange={() => onToggle(p.user_id)}
+            aria-label={`Select ${p.first_name ?? ""} ${p.last_name ?? ""}`.trim()}
+          />
+        </TableCell>
+      )}
+      <TableCell
+        className={`font-medium text-foreground py-4 ${selectMode ? "" : "pl-6"}`}
+      >
+        <Link
+          href={`/dashboard/participant/${p.user_id}`}
+          className="text-primary hover:text-primary/80 hover:underline"
+        >
+          {p.first_name} {p.last_name}
+        </Link>
+      </TableCell>
+      <TableCell className="py-4 text-sm text-muted-foreground">
+        {p.email || "—"}
+      </TableCell>
+      <TableCell className="py-4 text-sm">
+        {p.date_of_birth ? calcAge(p.date_of_birth) : "—"}
+      </TableCell>
+      <TableCell className="py-4 text-sm capitalize">
+        {p.gender || "—"}
+      </TableCell>
+      <TableCell className="py-4 text-sm text-muted-foreground">
+        {[p.city, p.state].filter(Boolean).join(", ") || "—"}
+      </TableCell>
+      <TableCell className="py-4 text-sm text-muted-foreground">
+        {p.phone || "—"}
+      </TableCell>
+      <TableCell className="py-4 text-sm">
+        {status === "yes" ? (
+          <span className="inline-flex items-center rounded-full bg-green-400/10 px-2 py-1 text-xs font-medium text-green-600 ring-1 ring-inset ring-green-400/20">
+            Yes
+          </span>
+        ) : status === "no" ? (
+          <span className="inline-flex items-center rounded-full bg-red-400/10 px-2 py-1 text-xs font-medium text-red-600 ring-1 ring-inset ring-red-400/20">
+            No
+          </span>
+        ) : p.reactivation_email_sent_at ? (
+          <span
+            className="inline-flex items-center rounded-full bg-blue-400/10 px-2 py-1 text-xs font-medium text-blue-600 ring-1 ring-inset ring-blue-400/30"
+            title="Reactivation email sent — awaiting response"
+          >
+            Pending
+          </span>
+        ) : (
+          <span className="inline-flex items-center rounded-full bg-amber-400/10 px-2 py-1 text-xs font-medium text-amber-700 ring-1 ring-inset ring-amber-400/30">
+            Pending
+          </span>
+        )}
+      </TableCell>
+      {tab === "blacklisted" ? (
+        <TableCell
+          className="py-4 text-sm text-red-600 max-w-[200px] truncate"
+          title={p.blacklist_reason || ""}
+        >
+          {p.blacklist_reason || "—"}
+        </TableCell>
+      ) : (
+        <TableCell className="py-4 text-sm text-muted-foreground">
+          {regDate}
+        </TableCell>
+      )}
+
+      {/* ── ACTIONS ── */}
+      <TableCell className="text-right py-4 pr-6">
+        {tab === "blacklisted" ? (
+          <div className="flex items-center justify-end gap-2">
+            <span className="inline-flex items-center rounded-full bg-red-400/10 px-2 py-1 text-xs font-medium text-red-500 ring-1 ring-inset ring-red-400/20">
+              Blacklisted
+            </span>
+            <Link
+              href={`/dashboard/Admin/participants/${p.user_id}/edit`}
+              className="inline-flex items-center rounded-md bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-200 transition-colors"
+            >
+              Edit
+            </Link>
+            <button
+              onClick={() => onUnblacklist(p.user_id)}
+              disabled={isThisPending}
+              className="inline-flex items-center rounded-md bg-blue-600 px-3 py-1 text-xs font-medium text-white shadow-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {isThisPending ? "Moving…" : "Unblacklist"}
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center justify-end gap-2">
+            <span className="inline-flex items-center rounded-full bg-green-400/10 px-2 py-1 text-xs font-medium text-green-500 ring-1 ring-inset ring-green-400/20">
+              Verified
+            </span>
+            <Link
+              href={`/dashboard/Admin/participants/${p.user_id}/edit`}
+              className="inline-flex items-center rounded-md bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-200 transition-colors"
+            >
+              Edit
+            </Link>
+          </div>
+        )}
+      </TableCell>
+    </TableRow>
+  );
+});
+
 export default function ParticipantsTable({ participants, tab }: Props) {
   const router = useRouter();
   const [query, setQuery] = useState("");
+  // Keep the input bound to `query` (instant) but filter/re-render off the
+  // deferred value, so typing stays responsive on large lists.
+  const deferredQuery = useDeferredValue(query);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [isPending, startTransition] = useTransition();
   const [pendingId, setPendingId] = useState<string | null>(null);
@@ -67,7 +209,7 @@ export default function ParticipantsTable({ participants, tab }: Props) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = deferredQuery.trim().toLowerCase();
 
     return participants.filter((p) => {
       // NULL status is rendered as "pending" in the table — match that here.
@@ -89,7 +231,7 @@ export default function ParticipantsTable({ participants, tab }: Props) {
         gender.includes(q)
       );
     });
-  }, [participants, query, statusFilter]);
+  }, [participants, deferredQuery, statusFilter]);
 
   const filteredIds = useMemo(() => filtered.map((p) => p.user_id), [filtered]);
   const allFilteredSelected =
@@ -97,13 +239,13 @@ export default function ParticipantsTable({ participants, tab }: Props) {
   const someFilteredSelected =
     !allFilteredSelected && filteredIds.some((id) => selected.has(id));
 
-  function handleUnblacklist(userId: string) {
+  const handleUnblacklist = useCallback((userId: string) => {
     setPendingId(userId);
     startTransition(async () => {
       await unblacklistParticipant(userId);
       setPendingId(null);
     });
-  }
+  }, []);
 
   function enterSelectMode() {
     setSelectMode(true);
@@ -115,14 +257,14 @@ export default function ParticipantsTable({ participants, tab }: Props) {
     setSelected(new Set());
   }
 
-  function toggleRow(userId: string) {
+  const toggleRow = useCallback((userId: string) => {
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(userId)) next.delete(userId);
       else next.add(userId);
       return next;
     });
-  }
+  }, []);
 
   function toggleSelectAllFiltered() {
     setSelected((prev) => {
@@ -292,127 +434,18 @@ export default function ParticipantsTable({ participants, tab }: Props) {
             </TableHeader>
 
             <TableBody>
-              {filtered.map((p) => {
-                const regDate = p.entry_date
-                  ? new Date(p.entry_date).toLocaleDateString()
-                  : "—";
-                const isThisPending = isPending && pendingId === p.user_id;
-                const isSelected = selected.has(p.user_id);
-                const status = p.reactivation_status ?? "pending";
-
-                return (
-                  <TableRow
-                    key={p.user_id}
-                    data-state={isSelected ? "selected" : undefined}
-                    className="group hover:bg-muted/40 transition-colors data-[state=selected]:bg-green-50/60"
-                  >
-                    {selectMode && (
-                      <TableCell className="pl-6 py-4 w-10">
-                        <Checkbox
-                          checked={isSelected}
-                          onCheckedChange={() => toggleRow(p.user_id)}
-                          aria-label={`Select ${p.first_name ?? ""} ${p.last_name ?? ""}`.trim()}
-                        />
-                      </TableCell>
-                    )}
-                    <TableCell
-                      className={`font-medium text-foreground py-4 ${selectMode ? "" : "pl-6"}`}
-                    >
-                      <Link
-                        href={`/dashboard/participant/${p.user_id}`}
-                        className="text-primary hover:text-primary/80 hover:underline"
-                      >
-                        {p.first_name} {p.last_name}
-                      </Link>
-                    </TableCell>
-                    <TableCell className="py-4 text-sm text-muted-foreground">
-                      {p.email || "—"}
-                    </TableCell>
-                    <TableCell className="py-4 text-sm">
-                      {p.date_of_birth ? calcAge(p.date_of_birth) : "—"}
-                    </TableCell>
-                    <TableCell className="py-4 text-sm capitalize">
-                      {p.gender || "—"}
-                    </TableCell>
-                    <TableCell className="py-4 text-sm text-muted-foreground">
-                      {[p.city, p.state].filter(Boolean).join(", ") || "—"}
-                    </TableCell>
-                    <TableCell className="py-4 text-sm text-muted-foreground">
-                      {p.phone || "—"}
-                    </TableCell>
-                    <TableCell className="py-4 text-sm">
-                      {status === "yes" ? (
-                        <span className="inline-flex items-center rounded-full bg-green-400/10 px-2 py-1 text-xs font-medium text-green-600 ring-1 ring-inset ring-green-400/20">
-                          Yes
-                        </span>
-                      ) : status === "no" ? (
-                        <span className="inline-flex items-center rounded-full bg-red-400/10 px-2 py-1 text-xs font-medium text-red-600 ring-1 ring-inset ring-red-400/20">
-                          No
-                        </span>
-                      ) : p.reactivation_email_sent_at ? (
-                        <span
-                          className="inline-flex items-center rounded-full bg-blue-400/10 px-2 py-1 text-xs font-medium text-blue-600 ring-1 ring-inset ring-blue-400/30"
-                          title="Reactivation email sent — awaiting response"
-                        >
-                          Pending
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center rounded-full bg-amber-400/10 px-2 py-1 text-xs font-medium text-amber-700 ring-1 ring-inset ring-amber-400/30">
-                          Pending
-                        </span>
-                      )}
-                    </TableCell>
-                    {tab === "blacklisted" ? (
-                      <TableCell
-                        className="py-4 text-sm text-red-600 max-w-[200px] truncate"
-                        title={p.blacklist_reason || ""}
-                      >
-                        {p.blacklist_reason || "—"}
-                      </TableCell>
-                    ) : (
-                      <TableCell className="py-4 text-sm text-muted-foreground">
-                        {regDate}
-                      </TableCell>
-                    )}
-
-                    {/* ── ACTIONS ── */}
-                    <TableCell className="text-right py-4 pr-6">
-                      {tab === "blacklisted" ? (
-                        <div className="flex items-center justify-end gap-2">
-                          <span className="inline-flex items-center rounded-full bg-red-400/10 px-2 py-1 text-xs font-medium text-red-500 ring-1 ring-inset ring-red-400/20">
-                            Blacklisted
-                          </span>
-                          <Link
-                            href={`/dashboard/Admin/participants/${p.user_id}/edit`}
-                            className="inline-flex items-center rounded-md bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-200 transition-colors"
-                          >
-                            Edit
-                          </Link>
-                          <button
-                            onClick={() => handleUnblacklist(p.user_id)}
-                            disabled={isThisPending}
-                            className="inline-flex items-center rounded-md bg-blue-600 px-3 py-1 text-xs font-medium text-white shadow-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                          >
-                            {isThisPending ? "Moving…" : "Unblacklist"}
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="flex items-center justify-end gap-2">
-                          <span className="inline-flex items-center rounded-full bg-green-400/10 px-2 py-1 text-xs font-medium text-green-500 ring-1 ring-inset ring-green-400/20">
-                            Verified
-                          </span>
-                          <Link
-                            href={`/dashboard/Admin/participants/${p.user_id}/edit`}
-                            className="inline-flex items-center rounded-md bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-200 transition-colors"
-                          >
-                            Edit
-                          </Link>
-                        </div>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
+              {filtered.map((p) => (
+                <ParticipantRow
+                  key={p.user_id}
+                  p={p}
+                  tab={tab}
+                  selectMode={selectMode}
+                  isSelected={selected.has(p.user_id)}
+                  isThisPending={isPending && pendingId === p.user_id}
+                  onToggle={toggleRow}
+                  onUnblacklist={handleUnblacklist}
+                />
+              ))}
 
               {!filtered.length && (
                 <TableRow>

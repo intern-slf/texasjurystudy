@@ -38,34 +38,47 @@ export default async function AdminLayout({
      ========================= */
   // Include linked session dates so we can filter approved cases the same way
   // the Approved Cases page does (hide cases whose sessions have all passed).
-  const { data: allCases } = await supabase
-    .from("cases")
-    .select("admin_status, session_cases(sessions(session_date))");
+  // These queries don't depend on one another, so run them concurrently
+  // instead of one-after-another (this layout runs on every admin navigation).
+  const [
+    { data: allCases },
+    { count: sessionsCount },
+    { count: approvedParticipantsCount },
+    { count: newParticipantsCount },
+    { count: blacklistedParticipantsCount },
+  ] = await Promise.all([
+    // Only the statuses the badge counts below care about — avoids transferring
+    // the entire cases table (rejected/other rows) just to count two badges.
+    supabase
+      .from("cases")
+      .select("admin_status, session_cases(sessions(session_date))")
+      .in("admin_status", ["all", "approved", "submitted"]),
 
-  // Count total sessions (from real schema)
-  const { count: sessionsCount } = await supabase
-    .from("sessions")
-    .select("*", { count: "exact", head: true });
+    // Count total sessions (from real schema)
+    supabase
+      .from("sessions")
+      .select("*", { count: "exact", head: true }),
 
-  // Count approved participants (not blacklisted)
-  const { count: approvedParticipantsCount } = await supabase
-    .from("jury_participants")
-    .select("*", { count: "exact", head: true })
-    .eq("approved_by_admin", true)
-    .is("blacklisted_at", null);
+    // Count approved participants (not blacklisted)
+    supabase
+      .from("jury_participants")
+      .select("*", { count: "exact", head: true })
+      .eq("approved_by_admin", true)
+      .is("blacklisted_at", null),
 
-  // Count new participants (not approved and not blacklisted)
-  const { count: newParticipantsCount } = await supabase
-    .from("jury_participants")
-    .select("*", { count: "exact", head: true })
-    .eq("approved_by_admin", false)
-    .is("blacklisted_at", null);
+    // Count new participants (not approved and not blacklisted)
+    supabase
+      .from("jury_participants")
+      .select("*", { count: "exact", head: true })
+      .eq("approved_by_admin", false)
+      .is("blacklisted_at", null),
 
-  // Count blacklisted participants
-  const { count: blacklistedParticipantsCount } = await supabase
-    .from("jury_participants")
-    .select("*", { count: "exact", head: true })
-    .not("blacklisted_at", "is", null);
+    // Count blacklisted participants
+    supabase
+      .from("jury_participants")
+      .select("*", { count: "exact", head: true })
+      .not("blacklisted_at", "is", null),
+  ]);
 
   // Match the Approved Cases page filter: include "approved" + "submitted",
   // and hide cases whose linked sessions are all in the past.

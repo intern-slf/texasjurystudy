@@ -152,28 +152,30 @@ export default async function AdminDashboardPage({
       SIGNED URLS
      ========================= */
 
-  const cases: JuryCase[] = await Promise.all(
-    (rawCases ?? []).map(async (c) => {
-      const docsWithUrls = await Promise.all(
-        (c.case_documents ?? []).map(async (doc) => {
-          const { data } = await supabase.storage
-            .from("case-documents")
-            .createSignedUrl(doc.storage_path, 600);
-
-          return {
-            ...doc,
-            signedUrl: data?.signedUrl ?? null,
-          };
-        })
-      );
-
-      return {
-        ...c,
-        case_documents: docsWithUrls,
-        is_in_session: (c.session_cases ?? []).length > 0,
-      };
-    })
+  // Sign every document path in ONE batched storage call instead of a network
+  // round-trip per document. Same bucket, same 600s TTL, same resulting URLs.
+  const allDocPaths = (rawCases ?? []).flatMap((c) =>
+    (c.case_documents ?? []).map((doc) => doc.storage_path)
   );
+
+  const signedUrlByPath = new Map<string, string>();
+  if (allDocPaths.length) {
+    const { data: signed } = await supabase.storage
+      .from("case-documents")
+      .createSignedUrls(allDocPaths, 600);
+    for (const s of signed ?? []) {
+      if (s.path && s.signedUrl) signedUrlByPath.set(s.path, s.signedUrl);
+    }
+  }
+
+  const cases: JuryCase[] = (rawCases ?? []).map((c) => ({
+    ...c,
+    case_documents: (c.case_documents ?? []).map((doc) => ({
+      ...doc,
+      signedUrl: signedUrlByPath.get(doc.storage_path) ?? null,
+    })),
+    is_in_session: (c.session_cases ?? []).length > 0,
+  }));
 
   // On the approved tab, hide cases whose session has already passed
   const todayStr = new Date().toISOString().slice(0, 10); // YYYY-MM-DD

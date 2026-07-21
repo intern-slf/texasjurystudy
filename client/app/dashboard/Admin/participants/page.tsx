@@ -89,7 +89,10 @@ export default async function ParticipantsPage({
 
   let enrichedParticipants: ParticipantWithUrl[] = [];
 
-  if (participants) {
+  // Signed ID-document URLs are only consumed by the "new" tab (the card view /
+  // VerifyParticipantModal). The approved/blacklisted table never renders
+  // idSignedUrl, so we skip the per-participant storage round-trips there.
+  if (tab === "new") {
     enrichedParticipants = await Promise.all(
       participants.map(async (p) => {
         let idSignedUrl: string | null = null;
@@ -104,6 +107,8 @@ export default async function ParticipantsPage({
         return { ...p, idSignedUrl };
       })
     );
+  } else {
+    enrichedParticipants = participants.map((p) => ({ ...p, idSignedUrl: null }));
   }
 
   return (

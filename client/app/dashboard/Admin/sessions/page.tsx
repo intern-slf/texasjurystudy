@@ -30,7 +30,9 @@ import NotifyPresenterModal from "@/components/NotifyPresenterModal";
 async function fetchCandidates(
   supabase: Awaited<ReturnType<typeof createClient>>,
   caseIds: string[],
-  alreadyInvitedIds: Set<string>
+  alreadyInvitedIds: Set<string>,
+  testTable: "jury_participants" | "oldData",
+  blacklistedIds: string[]
 ): Promise<Candidate[]> {
   if (!caseIds.length) return [];
 
@@ -80,26 +82,18 @@ async function fetchCandidates(
     }));
   }
 
-  // Determine table
-  const { count } = await supabase
-    .from("jury_participants")
-    .select("*", { count: "exact", head: true });
-  const testTable = count === 0 || count === null ? "oldData" : "jury_participants";
+  // `testTable` and `blacklistedIds` are session-invariant, so the caller
+  // computes them once per request and passes them in (rather than repeating a
+  // full-table count and a blacklist query for every upcoming session).
   const isOldData = testTable === "oldData";
 
-  // Blacklisted IDs
-  const { data: blacklistedRoles } = await supabase
-    .from("roles")
-    .select("user_id")
-    .eq("role", "blacklisted");
-  const blacklistedIds = (blacklistedRoles ?? []).map((r: { user_id: string }) => r.user_id);
-
-  // Lineage exclusions
+  // Lineage exclusions (session-specific — depends on this session's caseIds).
+  // Reuse the page's supabase client so the lineage walk doesn't re-read cookies.
   const allLineageIds: string[] = [];
   if (caseIds.length > 0) {
-    const ancestorBatch = await Promise.all(caseIds.map((id) => getAncestorCaseIds(id)));
+    const ancestorBatch = await Promise.all(caseIds.map((id) => getAncestorCaseIds(id, supabase)));
     const uniqueAncestorIds = Array.from(new Set(ancestorBatch.flat()));
-    const lineageIds = await getLineageParticipantIds(uniqueAncestorIds);
+    const lineageIds = await getLineageParticipantIds(uniqueAncestorIds, supabase);
     allLineageIds.push(...lineageIds);
   }
 
@@ -221,11 +215,36 @@ export default async function SessionsPage({
     .order("session_date", { ascending: false });
 
   /* =========================
-     ENRICH SESSIONS
+     PARTITION BY DATE (before enrichment)
+     Only the active tab's sessions need the per-session enrichment queries;
+     the other tab needs only its length for the badge count.
+  ========================= */
+
+  const todayStr = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  const allSessions = sessions ?? [];
+  const upcomingRaw = allSessions.filter((s) => s.session_date >= todayStr);
+  const pastRaw = allSessions.filter((s) => s.session_date < todayStr);
+  const sessionsToEnrich = activeTab === "past" ? pastRaw : upcomingRaw;
+
+  // Session-invariant inputs for fetchCandidates — computed once per request,
+  // and only when the upcoming tab (the only tab that shows candidates) is active.
+  let testTable: "jury_participants" | "oldData" = "jury_participants";
+  let blacklistedIds: string[] = [];
+  if (activeTab === "upcoming") {
+    const [{ count }, { data: blacklistedRoles }] = await Promise.all([
+      supabase.from("jury_participants").select("*", { count: "exact", head: true }),
+      supabase.from("roles").select("user_id").eq("role", "blacklisted"),
+    ]);
+    testTable = count === 0 || count === null ? "oldData" : "jury_participants";
+    blacklistedIds = (blacklistedRoles ?? []).map((r: { user_id: string }) => r.user_id);
+  }
+
+  /* =========================
+     ENRICH SESSIONS (active tab only)
   ========================= */
 
   const enrichedSessions = await Promise.all(
-    (sessions ?? []).map(async (s) => {
+    sessionsToEnrich.map(async (s) => {
       const { data: scases } = await supabase
         .from("session_cases")
         .select("case_id, start_time, end_time")
@@ -303,30 +322,30 @@ export default async function SessionsPage({
       const alreadyInvitedSet = new Set(participantIds);
       const candidates =
         activeTab === "upcoming"
-          ? await fetchCandidates(supabase, caseIds, alreadyInvitedSet)
+          ? await fetchCandidates(supabase, caseIds, alreadyInvitedSet, testTable, blacklistedIds)
           : [];
 
       return { s, scases, caseDetails, alreadySubmitted, canNotify, sParticipants, participantDetails, candidates };
     })
   );
 
-  // Split into upcoming and past based on today's date
-  const todayStr = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  // Badge counts come from the cheap date partition, unaffected by enrichment.
+  const upcomingCount = upcomingRaw.length;
+  const pastCount = pastRaw.length;
 
-  const upcomingSessions = enrichedSessions
-    .filter(({ s }) => s.session_date >= todayStr)
-    .sort((a, b) => {
-      // upcoming: sort by date ascending, unnotified first within same date
-      if (a.s.session_date !== b.s.session_date)
-        return a.s.session_date < b.s.session_date ? -1 : 1;
-      return Number(a.alreadySubmitted) - Number(b.alreadySubmitted);
-    });
-
-  const pastSessions = enrichedSessions
-    .filter(({ s }) => s.session_date < todayStr)
-    .sort((a, b) => (a.s.session_date < b.s.session_date ? 1 : -1)); // most recent first
-
-  const displayedSessions = activeTab === "past" ? pastSessions : upcomingSessions;
+  // enrichedSessions already holds only the active tab's sessions, in DB order
+  // (session_date desc); apply the same sort the page used before.
+  const displayedSessions =
+    activeTab === "past"
+      ? enrichedSessions.sort((a, b) =>
+          a.s.session_date < b.s.session_date ? 1 : -1
+        ) // most recent first
+      : enrichedSessions.sort((a, b) => {
+          // upcoming: sort by date ascending, unnotified first within same date
+          if (a.s.session_date !== b.s.session_date)
+            return a.s.session_date < b.s.session_date ? -1 : 1;
+          return Number(a.alreadySubmitted) - Number(b.alreadySubmitted);
+        });
 
   return (
     <div className="space-y-8">
@@ -361,9 +380,9 @@ export default async function SessionsPage({
           }`}
         >
           Upcoming Sessions
-          {upcomingSessions.length > 0 && (
+          {upcomingCount > 0 && (
             <span className="ml-2 text-xs bg-blue-100 text-blue-700 rounded-full px-1.5 py-0.5">
-              {upcomingSessions.length}
+              {upcomingCount}
             </span>
           )}
         </Link>
@@ -376,9 +395,9 @@ export default async function SessionsPage({
           }`}
         >
           Past Sessions
-          {pastSessions.length > 0 && (
+          {pastCount > 0 && (
             <span className="ml-2 text-xs bg-slate-100 text-slate-600 rounded-full px-1.5 py-0.5">
-              {pastSessions.length}
+              {pastCount}
             </span>
           )}
         </Link>
