@@ -19,6 +19,7 @@ export default function ParticipantSearch({ testTable, isOldData }: { testTable:
   const [results, setResults] = useState<SearchResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [showResults, setShowResults] = useState(false);
+  const [blacklistedIds, setBlacklistedIds] = useState<Set<string>>(new Set());
   const ref = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(null);
 
@@ -28,6 +29,19 @@ export default function ParticipantSearch({ testTable, isOldData }: { testTable:
     };
     document.addEventListener("mousedown", fn);
     return () => document.removeEventListener("mousedown", fn);
+  }, []);
+
+  // Load blacklisted user IDs once so we can grey them out in search results.
+  // Blacklisted participants can never be invited (enforced server-side too).
+  useEffect(() => {
+    (async () => {
+      const supabase = createClient();
+      const { data } = await supabase
+        .from("roles")
+        .select("user_id")
+        .eq("role", "blacklisted");
+      setBlacklistedIds(new Set((data ?? []).map((r: { user_id: string }) => r.user_id)));
+    })();
   }, []);
 
   function handleSearch(value: string) {
@@ -75,6 +89,8 @@ export default function ParticipantSearch({ testTable, isOldData }: { testTable:
 
   function selectParticipant(p: SearchResult) {
     const pId = p.user_id || p.id;
+    // Blacklisted participants can never be added — no-op (also enforced server-side).
+    if (pId && blacklistedIds.has(pId)) return;
     // Check if checkbox already exists for this participant
     const existing = document.querySelector<HTMLInputElement>(`input[name="participants"][value="${pId}"]`);
     if (existing) {
@@ -166,6 +182,28 @@ export default function ParticipantSearch({ testTable, isOldData }: { testTable:
           ) : (
             results.map((p) => {
               const pId = p.user_id || p.id;
+              const isBlacklisted = !!pId && blacklistedIds.has(pId);
+              if (isBlacklisted) {
+                return (
+                  <div
+                    key={pId}
+                    title="This participant is blacklisted and cannot be added."
+                    className="w-full text-left px-3 py-2 border-b last:border-b-0 bg-slate-50 opacity-60 cursor-not-allowed select-none"
+                  >
+                    <div className="font-medium text-sm text-slate-500 flex items-center gap-2">
+                      <span>{p.first_name} {p.last_name}</span>
+                      <span className="px-1.5 py-0.5 rounded border text-[10px] font-semibold bg-red-50 text-red-700 border-red-200">
+                        Blacklisted
+                      </span>
+                    </div>
+                    {p.email && <div className="text-xs text-slate-400">{p.email}</div>}
+                    <div className="text-xs text-slate-400">
+                      {p.date_of_birth ? `Age ${getAge(p.date_of_birth)} \u2022 ` : ""}
+                      {p.city || ""} {p.political_affiliation ? `\u2022 ${p.political_affiliation}` : ""}
+                    </div>
+                  </div>
+                );
+              }
               return (
                 <button
                   key={pId}

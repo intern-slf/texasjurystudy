@@ -355,7 +355,11 @@ describe("Sessions", () => {
 
     function queueInviteResponses(insertedIds: string[]) {
       state.responses = [
-        // 1. .from("session_participants").insert(rows).select() — returns inserted rows
+        // 1. blacklist guard — roles.select().eq("role","blacklisted").in(ids) → none
+        { data: [], error: null },
+        // 2. blacklist guard — jury_participants.select("user_id, blacklisted_at").in(ids) → none flagged
+        { data: [], error: null },
+        // 3. .from("session_participants").insert(rows).select() — returns inserted rows
         {
           data: insertedIds.map((pid, i) => ({
             id: `invite-${i + 1}`,
@@ -364,7 +368,7 @@ describe("Sessions", () => {
           })),
           error: null,
         },
-        // 2. .from("session_cases").select(...).eq() — used to format email time
+        // 4. .from("session_cases").select(...).eq() — used to format email time
         {
           data: [{ start_time: "14:00:00", end_time: "15:00:00" }],
           error: null,
@@ -441,6 +445,65 @@ describe("Sessions", () => {
         "p-2@example.com",
         "p-3@example.com",
       ]);
+    });
+
+    it("Drops blacklisted invitees (roles + blacklisted_at) and only invites the rest", async () => {
+      // bl-role is blacklisted via the roles table, bl-flag via jury_participants.blacklisted_at.
+      const invitees = ["p-1", "bl-role", "p-3", "bl-flag"];
+      state.responses = [
+        // 1. roles guard → bl-role is blacklisted
+        { data: [{ user_id: "bl-role" }], error: null },
+        // 2. jury_participants guard → bl-flag has a blacklisted_at timestamp
+        {
+          data: [
+            { user_id: "p-1", blacklisted_at: null },
+            { user_id: "bl-flag", blacklisted_at: "2026-01-01T00:00:00Z" },
+          ],
+          error: null,
+        },
+        // 3. insert().select() — returns only the allowed rows
+        {
+          data: [
+            { id: "invite-1", participant_id: "p-1", session_id: "session-1" },
+            { id: "invite-2", participant_id: "p-3", session_id: "session-1" },
+          ],
+          error: null,
+        },
+        // 4. session_cases select for email time
+        { data: [{ start_time: "14:00:00", end_time: "15:00:00" }], error: null },
+      ];
+      for (const id of ["p-1", "p-3"]) {
+        state.participantEmails.set(id, `${id}@example.com`);
+      }
+
+      await inviteParticipants("session-1", invitees, "2026-06-15");
+
+      const sp = state.captured.find(
+        (x) => x.table === "session_participants" && x.ops.some((o) => o.op === "insert")
+      )!;
+      const insert = sp.ops.find((o) => o.op === "insert") as {
+        op: "insert";
+        payload: Array<Record<string, unknown>>;
+      };
+      expect(insert.payload.map((r) => r.participant_id)).toEqual(["p-1", "p-3"]);
+      expect(sendEmailSpy).toHaveBeenCalledTimes(2);
+    });
+
+    it("Inserts nothing when every invitee is blacklisted", async () => {
+      state.responses = [
+        { data: [{ user_id: "bl-1" }], error: null }, // roles guard
+        { data: [], error: null }, // jury_participants guard
+      ];
+
+      await inviteParticipants("session-1", ["bl-1"], "2026-06-15");
+
+      const insertCall = state.captured.find(
+        (c) =>
+          c.table === "session_participants" &&
+          c.ops.some((o) => o.op === "insert")
+      );
+      expect(insertCall).toBeUndefined();
+      expect(sendEmailSpy).not.toHaveBeenCalled();
     });
   });
 
