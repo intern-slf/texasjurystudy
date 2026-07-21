@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { adminRespondOnBehalf } from "@/lib/actions/session";
+import { adminRespondOnBehalf, flagParticipant } from "@/lib/actions/session";
 
 interface Props {
   sessionId: string;
@@ -11,7 +11,7 @@ interface Props {
 
 export default function ParticipantActionsMenu({ sessionId, participantId, participantName }: Props) {
   const [open, setOpen] = useState(false);
-  const [modal, setModal] = useState<"accepted" | "rejected" | null>(null);
+  const [modal, setModal] = useState<"accepted" | "rejected" | "flag" | null>(null);
   const [loading, setLoading] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -29,7 +29,11 @@ export default function ParticipantActionsMenu({ sessionId, participantId, parti
     if (!modal) return;
     setLoading(true);
     try {
-      await adminRespondOnBehalf(sessionId, participantId, modal);
+      if (modal === "flag") {
+        await flagParticipant(participantId);
+      } else {
+        await adminRespondOnBehalf(sessionId, participantId, modal);
+      }
       setModal(null);
     } finally {
       setLoading(false);
@@ -61,6 +65,12 @@ export default function ParticipantActionsMenu({ sessionId, participantId, parti
             >
               Decline on behalf of participant
             </button>
+            <button
+              className="w-full text-left px-4 py-2.5 text-sm hover:bg-amber-50 text-amber-700 border-t border-slate-100"
+              onClick={() => { setModal("flag"); setOpen(false); }}
+            >
+              Strike participant
+            </button>
           </div>
         )}
       </div>
@@ -69,12 +79,18 @@ export default function ParticipantActionsMenu({ sessionId, participantId, parti
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4 p-6">
             <h3 className="text-lg font-semibold mb-2">
-              {modal === "accepted" ? "Accept & Send Confirmation Email" : "Decline on Behalf"}
+              {modal === "accepted"
+                ? "Accept & Send Confirmation Email"
+                : modal === "rejected"
+                ? "Decline on Behalf"
+                : "Strike Participant"}
             </h3>
             <p className="text-sm text-slate-600 mb-6">
               {modal === "accepted"
                 ? `This will mark ${participantName}'s attendance as accepted and send them a confirmation email with the session date and time.`
-                : `This will mark ${participantName}'s invitation as declined. Confirmation email will be sent.`}
+                : modal === "rejected"
+                ? `This will mark ${participantName}'s invitation as declined. Confirmation email will be sent.`
+                : `This adds a strike to ${participantName} for not attending / backing out. At 3 strikes they are automatically blacklisted and can no longer be invited to future sessions. No email is sent.`}
             </p>
             <div className="flex justify-end gap-3">
               <button
@@ -90,14 +106,18 @@ export default function ParticipantActionsMenu({ sessionId, participantId, parti
                 className={`px-4 py-2 text-sm text-white rounded ${
                   modal === "accepted"
                     ? "bg-green-600 hover:bg-green-700"
-                    : "bg-red-600 hover:bg-red-700"
+                    : modal === "rejected"
+                    ? "bg-red-600 hover:bg-red-700"
+                    : "bg-amber-600 hover:bg-amber-700"
                 }`}
               >
                 {loading
                   ? "Processing..."
                   : modal === "accepted"
                   ? "Accept & Send Mail"
-                  : "Decline"}
+                  : modal === "rejected"
+                  ? "Decline"
+                  : "Add Strike"}
               </button>
             </div>
           </div>

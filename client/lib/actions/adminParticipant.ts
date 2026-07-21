@@ -93,13 +93,16 @@ export async function unblacklistParticipant(userId: string) {
         .update({ role: "participant" })
         .eq("user_id", userId);
 
-    // 2. Clear blacklist fields — send back to new requests (not auto-approved)
+    // 2. Clear blacklist fields — send back to new requests (not auto-approved).
+    //    Also reset flag_count so a reinstated participant starts fresh (otherwise
+    //    the next single back-out would immediately re-blacklist them).
     await supabaseAdmin
         .from("jury_participants")
         .update({
             blacklist_reason: null,
             blacklisted_at: null,
             approved_by_admin: false,
+            flag_count: 0,
         })
         .eq("user_id", userId);
 
