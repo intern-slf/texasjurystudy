@@ -16,7 +16,9 @@
       "Bash(python -c \"import pandas; print\\('pandas OK'\\)\")",
       "Bash(python decode_csv.py)",
       "Bash(python cleanup.py)",
-      "Bash(npx vitest *)"
+      "Bash(npx vitest *)",
+      "Bash(ls \"C:/Users/HUSSAIN ABBAS ZAIDI/.claude/plans/\" 2>/dev/null)",
+      "Read(//c/Users/HUSSAIN ABBAS ZAIDI/.claude/plans/**)"
     ]
   }
 }
