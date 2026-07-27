@@ -2,6 +2,39 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { hasEnvVars } from "../utils";
 
+/**
+ * Routes a logged-out visitor may reach. Everything else redirects to /auth/login.
+ *
+ * Matching is exact or on a "/" boundary, so "/terms" allows "/terms" and "/terms/x"
+ * but never "/terms-of-something-else".
+ *
+ * "/participants" and "/requestee" are the two marketing landing pages the home-page
+ * CTAs point at, and they carry the sign-up buttons — gating them behind login made
+ * the top of the funnel unreachable for the people it is aimed at.
+ */
+const PUBLIC_ROUTES = [
+  "/",
+  "/participants",
+  "/requestee",
+  "/privacy",
+  "/terms",
+  "/contact",
+];
+
+/** Prefixes that are public for their entire subtree. */
+const PUBLIC_PREFIXES = ["/auth", "/login", "/api/"];
+
+function isPublicRoute(pathname: string): boolean {
+  if (PUBLIC_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
+    return true;
+  }
+
+  return PUBLIC_ROUTES.some(
+    (route) =>
+      pathname === route || (route !== "/" && pathname.startsWith(`${route}/`)),
+  );
+}
+
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
     request,
@@ -48,11 +81,8 @@ export async function updateSession(request: NextRequest) {
   const user = data?.claims;
 
   if (
-    request.nextUrl.pathname !== "/" &&
     !user &&
-    !request.nextUrl.pathname.startsWith("/login") &&
-    !request.nextUrl.pathname.startsWith("/auth") &&
-    !request.nextUrl.pathname.startsWith("/api/") &&
+    !isPublicRoute(request.nextUrl.pathname) &&
     // Allow invitation responses to hit the dashboard directly
     !(request.nextUrl.pathname === "/dashboard/participant" && request.nextUrl.searchParams.has("inviteId"))
   ) {

@@ -395,6 +395,39 @@ describe("Authentication", () => {
         expect(res.headers.get("location")).toBeNull();
       }
     });
+
+    it("Public legal pages are reachable logged out", async () => {
+      // The footer links /privacy, /terms and /contact on every page, including
+      // the logged-out marketing pages. If the auth wall catches them the links
+      // 307 to /auth/login and the policies are unreachable — which is also a
+      // compliance problem, not just a broken link.
+      for (const path of [
+        "/",
+        "/participants",
+        "/requestee",
+        "/privacy",
+        "/terms",
+        "/contact",
+      ]) {
+        middlewareState.claims = null;
+        const req = new NextRequest(`http://test.local${path}`);
+        const res = await updateSession(req);
+
+        expect(res.status).toBe(200);
+        expect(res.headers.get("location")).toBeNull();
+      }
+    });
+
+    it("Public allowlist matches on a path boundary, not a prefix", async () => {
+      // Guards against a lookalike route inheriting public access from the
+      // allowlist, e.g. a future /privacy-admin page.
+      middlewareState.claims = null;
+      const req = new NextRequest("http://test.local/privacy-internal");
+      const res = await updateSession(req);
+
+      expect(res.status).toBe(307);
+      expect(res.headers.get("location")).toContain("/auth/login");
+    });
   });
 
   // -------------------------------------------------------------------------
