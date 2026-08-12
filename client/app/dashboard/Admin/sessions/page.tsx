@@ -540,9 +540,15 @@ export default async function SessionsPage({
                             key={i}
                             className="text-sm flex justify-between border rounded px-3 py-2 items-center"
                           >
-                            <span>
-                              {detail?.first_name} {detail?.last_name}
-                            </span>
+                            <Link
+                              href={`/dashboard/participant/${p.participant_id}`}
+                              className="text-blue-600 hover:underline"
+                            >
+                              {detail
+                                ? `${detail.first_name ?? ""} ${detail.last_name ?? ""}`.trim() ||
+                                  "Unnamed participant"
+                                : "Unknown participant"}
+                            </Link>
 
                             <div className="flex items-center gap-2">
                               <span className="capitalize text-xs font-semibold">

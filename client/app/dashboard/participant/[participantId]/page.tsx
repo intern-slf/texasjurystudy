@@ -54,6 +54,21 @@ export default async function ParticipantProfilePage({
           <p className="text-slate-500 mt-1">
             {participant.city}, {participant.state}
           </p>
+          {/* Contact details are PII — requestees see the profile without them. */}
+          {role !== "requestee" && (
+            <p className="mt-2 text-sm text-slate-600">
+              {participant.email ? (
+                <a
+                  href={`mailto:${participant.email}`}
+                  className="text-blue-600 hover:underline"
+                >
+                  {participant.email}
+                </a>
+              ) : (
+                <span className="text-slate-400">No email on file</span>
+              )}
+            </p>
+          )}
         </div>
 
         {/* PARTICIPANT DASHBOARD BUTTON */}
