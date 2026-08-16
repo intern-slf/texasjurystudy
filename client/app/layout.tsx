@@ -4,6 +4,8 @@ import { Suspense } from "react";
 
 import Navbar from "@/components/Navbar-temp";
 import Footer from "@/components/Footer-temp";
+import { createClient } from "@/lib/supabase/server";
+import { readRole } from "@/lib/auth-role";
 
 export const metadata: Metadata = {
   title: "Texas Jury Study",
@@ -15,18 +17,29 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  // Resolved here rather than in the client so the very first paint already
+  // shows Login (signed out) or Logout (signed in) — no flash of the wrong one.
+  const supabase = await createClient();
+  const { data } = await supabase.auth.getClaims();
+  const claims = data?.claims as
+    | { user_metadata?: { role?: unknown } }
+    | undefined;
+
   return (
     <html lang="en" suppressHydrationWarning>
       <body className="flex min-h-screen flex-col bg-background text-foreground">
-        
+
         {/* ✅ Prevent blocking route */}
         <Suspense fallback={<div className="h-16 border-b bg-white" />}>
-          <Navbar />
+          <Navbar
+            initialSignedIn={Boolean(claims)}
+            initialRole={readRole(claims?.user_metadata?.role)}
+          />
         </Suspense>
 
         <main className="mx-auto w-full max-w-7xl flex-1 px-6 py-6">

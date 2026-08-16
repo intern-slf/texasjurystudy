@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { CaseFilters } from "@/lib/filter-utils";
 import ReceiptPricingPreview from "@/components/ReceiptPricingPreview";
 
+import BackButton from "@/components/BackButton";
 /* =========================
    DB ROW TYPES
    ========================= */
@@ -141,6 +142,8 @@ export default async function AdminCaseDetailPage({
 
   return (
     <div className="max-w-6xl mx-auto space-y-10 p-6">
+      <BackButton href="/dashboard/Admin" label="Back to Cases" />
+
       {/* CASE INFO */}
       <section className="bg-white p-8 rounded-xl border shadow-sm">
         <h1 className="text-3xl font-extrabold">{caseInfo.title}</h1>

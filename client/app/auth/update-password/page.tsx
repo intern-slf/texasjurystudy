@@ -5,6 +5,8 @@ import { KeyRound, ShieldCheck, LogIn } from "lucide-react";
 export default function Page() {
   return (
     <AuthShell
+      backHref="/auth/login"
+      backLabel="Back to Login"
       tagline="Almost done"
       title="Set a new"
       accent="password."

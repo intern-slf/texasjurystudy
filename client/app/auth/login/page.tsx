@@ -5,6 +5,8 @@ import { LayoutDashboard, FolderKanban, UserCog } from "lucide-react";
 export default function Page() {
   return (
     <AuthShell
+      backHref="/"
+      backLabel="Back to Home"
       tagline="Welcome back"
       title="Pick up right where"
       accent="you left off."

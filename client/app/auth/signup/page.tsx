@@ -6,6 +6,8 @@ import { ShieldCheck, Users, Zap } from "lucide-react";
 export default function Page() {
   return (
     <AuthShell
+      backHref="/"
+      backLabel="Back to Home"
       tagline="Join Texas Jury Study"
       title="Create your"
       accent="free account."

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import BackButton from "@/components/BackButton";
 import {
   ArrowRight,
   Briefcase,
@@ -75,6 +76,8 @@ function mailto(subject: string): string {
 export default function ContactPage() {
   return (
     <div className="mx-auto max-w-4xl py-8 md:py-12">
+      <BackButton href="/" label="Back to Home" className="mb-6" />
+
       <header className="mb-12">
         <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-primary">
           <Mail className="h-3.5 w-3.5" />
