@@ -55,8 +55,11 @@ export async function getAncestorCaseIds(
 /**
  * Fetches all descendant case IDs (children, grandchildren, etc.)
  */
-export async function getDescendantCaseIds(caseId: string): Promise<string[]> {
-  const supabase = await createClient();
+export async function getDescendantCaseIds(
+  caseId: string,
+  client?: Awaited<ReturnType<typeof createClient>>,
+): Promise<string[]> {
+  const supabase = client ?? (await createClient());
   const descendants: string[] = [];
   const queue: string[] = [caseId];
 
@@ -236,11 +239,43 @@ export async function getFullCaseChain(caseId: string): Promise<CaseChainNode[]>
  * Gets all participant IDs that are blocked from future follow-ups of this case.
  * This includes ALL participants across the entire follow-up chain (ancestors + descendants).
  */
-export async function getBlockedParticipantIds(caseId: string): Promise<string[]> {
-  const ancestors = await getAncestorCaseIds(caseId);
-  const descendants = await getDescendantCaseIds(caseId);
+export async function getBlockedParticipantIds(
+  caseId: string,
+  client?: Awaited<ReturnType<typeof createClient>>,
+): Promise<string[]> {
+  const ancestors = await getAncestorCaseIds(caseId, client);
+  const descendants = await getDescendantCaseIds(caseId, client);
   const allRelatedIds = [...ancestors, caseId, ...descendants];
-  return getLineageParticipantIds(allRelatedIds);
+  return getLineageParticipantIds(allRelatedIds, client);
+}
+
+/**
+ * Blocked participants across every case attached to a session — the union of
+ * each case's follow-up chain. Used by the invite-more paths so the recommended
+ * list and the search box agree on who is already "spent" on these matters.
+ */
+export async function getBlockedParticipantIdsForCases(
+  caseIds: string[],
+  client?: Awaited<ReturnType<typeof createClient>>,
+): Promise<string[]> {
+  if (!caseIds.length) return [];
+
+  // Collect every related case first, then resolve participants in ONE query.
+  // Calling getBlockedParticipantIds per case would issue a separate
+  // session_cases + session_participants round-trip for each one, and this runs
+  // per session on the admin sessions page.
+  const related = await Promise.all(
+    caseIds.map(async (id) => {
+      const [ancestors, descendants] = await Promise.all([
+        getAncestorCaseIds(id, client),
+        getDescendantCaseIds(id, client),
+      ]);
+      return [...ancestors, id, ...descendants];
+    })
+  );
+
+  const allRelatedIds = Array.from(new Set(related.flat()));
+  return getLineageParticipantIds(allRelatedIds, client);
 }
 
 /**

@@ -11,7 +11,7 @@ import {
   attachMultiCaseScores,
   sortParticipantsByMultiCaseMatch,
 } from "@/lib/filter-utils";
-import { getAncestorCaseIds, getLineageParticipantIds } from "@/lib/case-lineage";
+import { getBlockedParticipantIdsForCases } from "@/lib/case-lineage";
 import InviteMoreModal, { type Candidate } from "@/components/InviteMoreModal";
 import RescheduleModal from "@/components/RescheduleModal";
 import ReplaceCaseModal, { type ReplacementCandidate } from "@/components/ReplaceCaseModal";
@@ -88,14 +88,10 @@ async function fetchCandidates(
   const isOldData = testTable === "oldData";
 
   // Lineage exclusions (session-specific — depends on this session's caseIds).
+  // Same rule the Invite More search uses to grey people out, so the recommended
+  // list never offers someone the search box would flag as "Already used".
   // Reuse the page's supabase client so the lineage walk doesn't re-read cookies.
-  const allLineageIds: string[] = [];
-  if (caseIds.length > 0) {
-    const ancestorBatch = await Promise.all(caseIds.map((id) => getAncestorCaseIds(id, supabase)));
-    const uniqueAncestorIds = Array.from(new Set(ancestorBatch.flat()));
-    const lineageIds = await getLineageParticipantIds(uniqueAncestorIds, supabase);
-    allLineageIds.push(...lineageIds);
-  }
+  const allLineageIds = await getBlockedParticipantIdsForCases(caseIds, supabase);
 
   const nowIso = new Date().toISOString();
   const seenIds = new Set<string>(alreadyInvitedIds);

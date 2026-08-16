@@ -18,7 +18,8 @@
       "Bash(python cleanup.py)",
       "Bash(npx vitest *)",
       "Bash(ls \"C:/Users/HUSSAIN ABBAS ZAIDI/.claude/plans/\" 2>/dev/null)",
-      "Read(//c/Users/HUSSAIN ABBAS ZAIDI/.claude/plans/**)"
+      "Read(//c/Users/HUSSAIN ABBAS ZAIDI/.claude/plans/**)",
+      "Bash(node \"C:/Users/HUSSAI~1/AppData/Local/Temp/claude/c--Users-HUSSAIN-ABBAS-ZAIDI-OneDrive-Desktop-texasjurystudy/aade87ae-3610-4d53-98e4-2a2bf9bae510/scratchpad/lineage-impact.mjs\" .env.local)"
     ]
   }
 }

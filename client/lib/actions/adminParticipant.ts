@@ -259,6 +259,12 @@ export async function sendReactivationEmails(userIds: string[]): Promise<Reactiv
             const reason = outcome.reason;
             const message = reason instanceof Error ? reason.message : "unknown error";
             result.errors.push({ userId: row.user_id, error: message });
+            // The admin-facing banner says "check the server logs" — this is that
+            // log. SMTP rejections (Gmail 454-4.7.0 throttling, 550, daily cap)
+            // only ever surface here, so keep the raw provider message.
+            console.error(
+                `[sendReactivationEmails] send failed for ${row.user_id} <${row.email ?? "no email"}>: ${message}`
+            );
         }
     });
 
@@ -278,10 +284,22 @@ export async function sendReactivationEmails(userIds: string[]): Promise<Reactiv
             // so the admin knows the campaign state is inconsistent.
             result.failed += sentUserIds.length;
             result.errors.push({ userId: "(bulk update)", error: updateErr.message });
+            console.error(
+                `[sendReactivationEmails] ${sentUserIds.length} email(s) SENT but reactivation_email_sent_at was not recorded: ${updateErr.message}. ` +
+                `Affected user_ids: ${sentUserIds.join(",")}`
+            );
         } else {
             result.sent += sentUserIds.length;
         }
     }
+
+    // One summary line per run so the Vercel log explains any banner the admin
+    // sees — including the all-skipped case, which is otherwise indistinguishable
+    // from "nothing happened".
+    console.log(
+        `[sendReactivationEmails] requested=${ids.length} eligible=${rows?.length ?? 0} ` +
+        `attempted=${targets.length} sent=${result.sent} failed=${result.failed} skipped=${result.skipped}`
+    );
 
     revalidatePath("/dashboard/Admin/participants");
     return result;
