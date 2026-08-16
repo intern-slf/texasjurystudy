@@ -6,6 +6,7 @@ import RequesteeSidebar from "@/components/RequesteeSidebar";
 import { ChevronDown, ChevronUp, AlertCircle, ArrowRight, Play } from "lucide-react";
 import { FOCUS_GROUP_VIDEOS } from "@/lib/focus-group-videos";
 
+import BackButton from "@/components/BackButton";
 type FAQ = {
   question: string;
   answer: React.ReactNode;
@@ -259,6 +260,12 @@ export default function FAQsPage() {
 
       <main className="flex-1 overflow-y-auto">
         <div className="max-w-3xl mx-auto px-8 py-12">
+          <BackButton
+            href="/dashboard/requestee"
+            label="Back to Dashboard"
+            className="mb-6"
+          />
+
           <header className="mb-8">
             <h1 className="text-4xl font-extrabold tracking-tight">
               Frequently Asked Questions

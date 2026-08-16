@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import RequesteeSidebar from "@/components/RequesteeSidebar";
+import BackButton from "@/components/BackButton";
 import CaseDocumentUploader from "@/components/CaseDocumentUploader";
 import ReceiptPricingPreview from "@/components/ReceiptPricingPreview";
 import { TEXAS_COUNTIES } from "@/lib/constants/texas-counties";
@@ -741,9 +742,10 @@ export default function NewCasePage() {
                 </div>
               </div>
 
-              <button onClick={() => window.location.href = "/dashboard/requestee"} className="text-sm font-semibold text-muted-foreground hover:text-primary transition-colors underline decoration-2 underline-offset-8">
-                Back to Requestee Dashboard
-              </button>
+              <BackButton
+                href="/dashboard/requestee"
+                label="Back to Requestee Dashboard"
+              />
             </div>
 
             {/* Right — Focus Group Video Instructions */}

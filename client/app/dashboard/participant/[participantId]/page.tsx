@@ -1,6 +1,7 @@
 import { getParticipantProfile } from "@/lib/participant/getParticipantProfile";
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
+import BackButton from "@/components/BackButton";
 import AdminParticipantControls from "@/components/AdminParticipantControls";
 import ParticipantSessionHistory from "@/components/ParticipantSessionHistory";
 import { BACKOUT_FLAG_LIMIT } from "@/lib/actions/participantFlags";
@@ -45,16 +46,14 @@ export default async function ParticipantProfilePage({
       <div className="max-w-5xl mx-auto p-8 space-y-8">
         {/* BACK LINK */}
         {fromCase && role !== "participant" && (
-          <Link
+          <BackButton
             href={
               role === "requestee"
                 ? `/dashboard/requestee/${schParams?.caseId}`
                 : `/dashboard/Admin/${schParams?.caseId}${isOldData ? "?test_table=oldData" : ""}`
             }
-            className="text-blue-600 underline"
-          >
-            ← Back to Case
-          </Link>
+            label="Back to Case"
+          />
         )}
 
         {/* HEADER */}

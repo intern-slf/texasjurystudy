@@ -1,6 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
-import Link from "next/link";
 import RequesteeSidebar from "@/components/RequesteeSidebar";
 import CaseDocumentUploader from "@/components/CaseDocumentUploader";
 import DriveLinkEditor from "@/components/DriveLinkEditor";
@@ -10,14 +9,13 @@ import RequesteeParticipantHistory from "@/components/RequesteeParticipantHistor
 import AddParticipantRequestee from "@/components/AddParticipantRequestee";
 import ReceiptPricingPreview from "@/components/ReceiptPricingPreview";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import BackButton from "@/components/BackButton";
 import { CaseFilters } from "@/lib/filter-utils";
 import {
   Calendar,
   Clock,
   Users,
   FileText,
-  ChevronLeft,
   Upload,
   LinkIcon,
   AlertCircle,
@@ -112,12 +110,10 @@ export default async function RequesteeCaseDetailPage({
         <div className="max-w-4xl mx-auto px-8 py-10 space-y-6">
 
           {/* BACK */}
-          <Button asChild variant="ghost" size="sm" className="-ml-2 text-muted-foreground">
-            <Link href={`/dashboard/requestee?tab=${backTab}`}>
-              <ChevronLeft className="h-4 w-4 mr-1" />
-              Back to {backTab === "current" ? "Requested" : backTab === "approved" ? "Approved" : "Past"} Cases
-            </Link>
-          </Button>
+          <BackButton
+            href={`/dashboard/requestee?tab=${backTab}`}
+            label={`Back to ${backTab === "current" ? "Requested" : backTab === "approved" ? "Approved" : "Past"} Cases`}
+          />
 
           {/* TITLE + STATUS */}
           <div>

@@ -5,6 +5,8 @@ import { Mail, KeyRound, ShieldCheck } from "lucide-react";
 export default function Page() {
   return (
     <AuthShell
+      backHref="/auth/login"
+      backLabel="Back to Login"
       tagline="Account recovery"
       title="Forgot your"
       accent="password?"

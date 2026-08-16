@@ -22,7 +22,7 @@ import {
   sortParticipantsByMultiCaseMatch
 } from "@/lib/filter-utils";
 import { getAncestorCaseIds, getLineageParticipantIds } from "@/lib/case-lineage";
-import Link from "next/link";
+import BackButton from "@/components/BackButton";
 import SelectAllParticipants from "@/components/SelectAllParticipants";
 import ShowMoreButton from "@/components/ShowMoreButton";
 import CheckboxRestorer from "@/components/CheckboxRestorer";
@@ -309,9 +309,7 @@ export default async function NewSessionPage({
       <TimezoneInput />
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Create Session</h1>
-        <Link href="/dashboard/Admin" className="text-sm underline">
-          &larr; Back
-        </Link>
+        <BackButton href="/dashboard/Admin" label="Back to Cases" />
       </div>
 
       {/* DEBUG */}
