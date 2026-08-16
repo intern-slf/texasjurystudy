@@ -2,6 +2,17 @@ import { getParticipantProfile } from "@/lib/participant/getParticipantProfile";
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import AdminParticipantControls from "@/components/AdminParticipantControls";
+import ParticipantSessionHistory from "@/components/ParticipantSessionHistory";
+import { BACKOUT_FLAG_LIMIT } from "@/lib/actions/participantFlags";
+
+const fmtDate = (v: string | null | undefined) =>
+  v
+    ? new Date(v).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      })
+    : "—";
 
 export default async function ParticipantProfilePage({
   params,
@@ -171,6 +182,99 @@ export default async function ParticipantProfilePage({
             <p>PayPal: {participant.paypal_username ? `@${participant.paypal_username}` : "—"}</p>
           </section>
         )}
+
+        {/* SESSION HISTORY — admin only (crosses case boundaries) */}
+        {role === "admin" && (
+          <ParticipantSessionHistory
+            participantIds={[participant.user_id, participant.id].filter(Boolean)}
+          />
+        )}
+
+        {/* ACCOUNT & ACTIVITY — admin only */}
+        {role === "admin" && (() => {
+          const strikes = participant.flag_count ?? 0;
+          const cooldownUntil = participant.eligible_after_at
+            ? new Date(participant.eligible_after_at)
+            : null;
+          const onCooldown = !!cooldownUntil && cooldownUntil > new Date();
+
+          return (
+            <section className="bg-white border rounded-xl p-6 space-y-4">
+              <h2 className="font-bold text-lg">Account &amp; Activity</h2>
+
+              {/* Flags that change who can be invited */}
+              <div className="flex flex-wrap gap-2">
+                <span
+                  className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${
+                    strikes > 0
+                      ? "bg-orange-400/10 text-orange-600 ring-orange-400/20"
+                      : "bg-slate-400/10 text-slate-600 ring-slate-400/20"
+                  }`}
+                  title="Strikes for no-shows / back-outs. 3 strikes auto-blacklists."
+                >
+                  Strikes: {strikes} / {BACKOUT_FLAG_LIMIT}
+                </span>
+
+                {onCooldown && (
+                  <span
+                    className="inline-flex items-center rounded-full bg-blue-400/10 px-2.5 py-1 text-xs font-medium text-blue-600 ring-1 ring-inset ring-blue-400/20"
+                    title="Set after accepting a session — they are skipped by invite selection until this date."
+                  >
+                    On cooldown until {fmtDate(participant.eligible_after_at)}
+                  </span>
+                )}
+
+                {participant.profile_completed === false && (
+                  <span className="inline-flex items-center rounded-full bg-amber-400/10 px-2.5 py-1 text-xs font-medium text-amber-700 ring-1 ring-inset ring-amber-400/30">
+                    Profile incomplete
+                  </span>
+                )}
+
+                {participant.reactivation_status && (
+                  <span className="inline-flex items-center rounded-full bg-slate-400/10 px-2.5 py-1 text-xs font-medium text-slate-600 ring-1 ring-inset ring-slate-400/20">
+                    Reactivation: {participant.reactivation_status}
+                  </span>
+                )}
+              </div>
+
+              {participant.blacklisted_at && (
+                <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3">
+                  <p className="text-sm font-semibold text-red-700">
+                    Blacklisted {fmtDate(participant.blacklisted_at)}
+                  </p>
+                  <p className="text-sm text-red-600 mt-0.5">
+                    {participant.blacklist_reason || "No reason recorded"}
+                  </p>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                <p>Phone: {participant.phone || "—"}</p>
+                <p>County: {participant.county || "—"}</p>
+                <p>
+                  Address:{" "}
+                  {[
+                    participant.street_address,
+                    participant.address_line_2,
+                    participant.city,
+                    participant.state,
+                    participant.zip_code,
+                  ]
+                    .filter(Boolean)
+                    .join(", ") || "—"}
+                </p>
+                <p>
+                  Availability: Weekdays {participant.availability_weekdays || "—"} · Weekends{" "}
+                  {participant.availability_weekends || "—"}
+                </p>
+                <p>Industry: {participant.industry || "—"}</p>
+                <p>Heard About Us: {participant.heard_about_us || "—"}</p>
+                <p>Registered: {fmtDate(participant.entry_date)}</p>
+                <p>Profile Updated: {fmtDate(participant.date_updated)}</p>
+              </div>
+            </section>
+          );
+        })()}
 
         {/* ADMIN AREA */}
         {role === "admin" && (
