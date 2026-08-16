@@ -1,7 +1,19 @@
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { CaseFilters } from "@/lib/filter-utils";
 import ReceiptPricingPreview from "@/components/ReceiptPricingPreview";
+import CaseLineagePanel from "@/components/CaseLineagePanel";
+import CaseSessionsPanel from "@/components/CaseSessionsPanel";
+
+const fmtDate = (v: string | null | undefined) =>
+  v
+    ? new Date(v).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      })
+    : "—";
 
 /* =========================
    DB ROW TYPES
@@ -36,6 +48,23 @@ interface CaseInfo {
   admin_scheduled_at: string | null;
   requestee_id: string | null;
   user_id: string;
+  admin_status: string | null;
+  schedule_status: string | null;
+  created_at: string | null;
+  approved_at: string | null;
+  scheduled_at: string | null;
+  deadline_date: string | null;
+  rejection_reason: string | null;
+  parent_case_id: string | null;
+  case_type: string | null;
+  focus_group_type: string | null;
+  documentation_type: string | null;
+  county: string | null;
+  participants_from_county: string | null;
+  session_completion_timeframe: string | null;
+  preferred_day: string | null;
+  number_of_attendees: number | null;
+  hours_requested: number | null;
   case_documents: CaseDocument[];
   case_drive_links: DriveLinkRow[];
 }
@@ -69,6 +98,22 @@ export default async function AdminCaseDetailPage({
       admin_scheduled_at,
       requestee_id,
       user_id,
+      admin_status,
+      schedule_status,
+      created_at,
+      approved_at,
+      scheduled_at,
+      deadline_date,
+      rejection_reason,
+      parent_case_id,
+      case_type,
+      focus_group_type,
+      documentation_type,
+      county,
+      participants_from_county,
+      session_completion_timeframe,
+      preferred_day,
+      number_of_attendees,
       case_documents (
         id,
         original_name,
@@ -144,13 +189,93 @@ export default async function AdminCaseDetailPage({
       {/* CASE INFO */}
       <section className="bg-white p-8 rounded-xl border shadow-sm">
         <h1 className="text-3xl font-extrabold">{caseInfo.title}</h1>
-        <p className="text-sm font-bold text-blue-600 mt-1">
-          Status: {caseInfo.status}
-        </p>
+
+        {/* STATUS BADGES */}
+        <div className="flex flex-wrap items-center gap-2 mt-3">
+          <span className="inline-flex items-center rounded-full bg-blue-400/10 px-2.5 py-1 text-xs font-medium text-blue-600 ring-1 ring-inset ring-blue-400/20 capitalize">
+            {caseInfo.status}
+          </span>
+          {caseInfo.admin_status && (
+            <span
+              className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset capitalize ${
+                caseInfo.admin_status === "rejected"
+                  ? "bg-red-400/10 text-red-600 ring-red-400/20"
+                  : caseInfo.admin_status === "approved" || caseInfo.admin_status === "submitted"
+                    ? "bg-green-400/10 text-green-600 ring-green-400/20"
+                    : "bg-amber-400/10 text-amber-700 ring-amber-400/30"
+              }`}
+            >
+              Admin: {caseInfo.admin_status}
+            </span>
+          )}
+          {caseInfo.schedule_status && (
+            <span className="inline-flex items-center rounded-full bg-slate-400/10 px-2.5 py-1 text-xs font-medium text-slate-600 ring-1 ring-inset ring-slate-400/20 capitalize">
+              Schedule: {caseInfo.schedule_status}
+            </span>
+          )}
+          {caseInfo.parent_case_id && (
+            <Link
+              href={`/dashboard/Admin/${caseInfo.parent_case_id}`}
+              className="inline-flex items-center rounded-full bg-purple-400/10 px-2.5 py-1 text-xs font-medium text-purple-600 ring-1 ring-inset ring-purple-400/20 hover:bg-purple-400/20"
+            >
+              Follow-up case — view parent →
+            </Link>
+          )}
+        </div>
+
+        {/* REJECTION REASON */}
+        {caseInfo.admin_status === "rejected" && caseInfo.rejection_reason && (
+          <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3">
+            <p className="text-sm font-semibold text-red-700">Rejection reason</p>
+            <p className="text-sm text-red-600 mt-0.5">{caseInfo.rejection_reason}</p>
+          </div>
+        )}
 
         <p className="mt-6 bg-slate-50 p-4 rounded border italic">
           {caseInfo.description}
         </p>
+
+        {/* KEY DETAILS */}
+        <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-3">
+          {[
+            { label: "Case Type", value: caseInfo.case_type },
+            { label: "Focus Group", value: caseInfo.focus_group_type },
+            { label: "Documentation", value: caseInfo.documentation_type },
+            { label: "County", value: caseInfo.county },
+            {
+              label: "Participants from County",
+              value: caseInfo.participants_from_county,
+            },
+            {
+              label: "Attendees Requested",
+              value: caseInfo.number_of_attendees?.toString(),
+            },
+            { label: "Hours Requested", value: caseInfo.hours_requested?.toString() },
+            { label: "Preferred Day", value: caseInfo.preferred_day },
+            {
+              label: "Completion Timeframe",
+              value: caseInfo.session_completion_timeframe,
+            },
+            { label: "Deadline", value: caseInfo.deadline_date ? fmtDate(caseInfo.deadline_date) : null },
+            { label: "Created", value: fmtDate(caseInfo.created_at) },
+            { label: "Approved", value: caseInfo.approved_at ? fmtDate(caseInfo.approved_at) : null },
+            {
+              label: "Scheduled",
+              value: caseInfo.admin_scheduled_at || caseInfo.scheduled_at
+                ? fmtDate(caseInfo.admin_scheduled_at || caseInfo.scheduled_at)
+                : null,
+            },
+          ]
+            .filter((row) => row.value)
+            .map(({ label, value }) => (
+              <div key={label} className="bg-slate-50 border rounded-lg px-4 py-3">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-0.5">
+                  {label}
+                </p>
+                <p className="text-sm text-slate-800">{value}</p>
+              </div>
+            ))}
+        </div>
 
         {requesteeProfile && (
           <div className="mt-6 bg-slate-50 p-4 rounded border text-sm space-y-1">
@@ -164,6 +289,12 @@ export default async function AdminCaseDetailPage({
           </div>
         )}
       </section>
+
+      {/* SESSIONS & PARTICIPANTS */}
+      <CaseSessionsPanel caseId={caseInfo.id} />
+
+      {/* CASE HISTORY / FOLLOW-UP CHAIN */}
+      <CaseLineagePanel caseId={caseInfo.id} />
 
       {/* DOCUMENTS */}
       <section>
@@ -242,7 +373,7 @@ export default async function AdminCaseDetailPage({
         <h3 className="text-xl font-bold mb-4">Receipt</h3>
         <ReceiptPricingPreview
           filters={caseInfo.filters}
-          hoursRequested={(rawCase as { hours_requested?: number | null }).hours_requested}
+          hoursRequested={caseInfo.hours_requested}
         />
       </section>
 
