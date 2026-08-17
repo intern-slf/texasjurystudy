@@ -17,6 +17,8 @@ export interface CaseChainNode {
     last_name: string;
     email: string;
     invite_status: string;
+    /** Struck in any session this case ran in — outranks invite_status in the UI. */
+    struck: boolean;
   }[];
 }
 
@@ -116,11 +118,14 @@ export async function getFullCaseChain(caseId: string): Promise<CaseChainNode[]>
 
   const sessionIds = [...new Set((sessionCases ?? []).map((sc) => sc.session_id))];
 
-  const participantsBySession: Record<string, { participant_id: string; invite_status: string }[]> = {};
+  const participantsBySession: Record<
+    string,
+    { participant_id: string; invite_status: string; struck_at?: string | null }[]
+  > = {};
   if (sessionIds.length > 0) {
     const { data: sp } = await supabase
       .from("session_participants")
-      .select("session_id, participant_id, invite_status")
+      .select("session_id, participant_id, invite_status, struck_at")
       .in("session_id", sessionIds);
 
     for (const row of sp ?? []) {
@@ -178,7 +183,15 @@ export async function getFullCaseChain(caseId: string): Promise<CaseChainNode[]>
 
     for (const sid of caseSessions) {
       for (const sp of participantsBySession[sid] ?? []) {
-        if (seenPIds.has(sp.participant_id)) continue;
+        if (seenPIds.has(sp.participant_id)) {
+          // A case can span sessions. If they were struck in any of them, that
+          // wins — otherwise the first session seen would hide the strike.
+          if (sp.struck_at) {
+            const already = participants.find((p) => p.id === sp.participant_id);
+            if (already) already.struck = true;
+          }
+          continue;
+        }
         seenPIds.add(sp.participant_id);
         const details = juryDetailsMap[sp.participant_id];
         participants.push({
@@ -187,6 +200,7 @@ export async function getFullCaseChain(caseId: string): Promise<CaseChainNode[]>
           last_name: details?.last_name ?? "",
           email: details?.email ?? "",
           invite_status: sp.invite_status,
+          struck: Boolean(sp.struck_at),
         });
       }
     }
