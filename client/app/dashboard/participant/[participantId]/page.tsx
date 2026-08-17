@@ -197,6 +197,15 @@ export default async function ParticipantProfilePage({
             : null;
           const onCooldown = !!cooldownUntil && cooldownUntil > new Date();
 
+          // Mirror the gate `updateInviteStatus` actually enforces when a
+          // participant tries to accept. NOT `profile_completed` — nothing in the
+          // app ever writes that column, so it reads false for everyone.
+          const missingForInvite: string[] = [];
+          if (!participant.driver_license_number || !participant.driver_license_image_url) {
+            missingForInvite.push("ID");
+          }
+          if (!participant.paypal_username) missingForInvite.push("PayPal");
+
           return (
             <section className="bg-white border rounded-xl p-6 space-y-4">
               <h2 className="font-bold text-lg">Account &amp; Activity</h2>
@@ -223,9 +232,12 @@ export default async function ParticipantProfilePage({
                   </span>
                 )}
 
-                {participant.profile_completed === false && (
-                  <span className="inline-flex items-center rounded-full bg-amber-400/10 px-2.5 py-1 text-xs font-medium text-amber-700 ring-1 ring-inset ring-amber-400/30">
-                    Profile incomplete
+                {missingForInvite.length > 0 && (
+                  <span
+                    className="inline-flex items-center rounded-full bg-amber-400/10 px-2.5 py-1 text-xs font-medium text-amber-700 ring-1 ring-inset ring-amber-400/30"
+                    title="They can be invited, but cannot accept until these are on file — enforced in updateInviteStatus."
+                  >
+                    Can&apos;t accept invites — missing {missingForInvite.join(" + ")}
                   </span>
                 )}
 
