@@ -251,6 +251,7 @@ These aren't bugs but they're surprises a future reader will hit:
 3. **`jury_participants_pkey PRIMARY KEY (id, email)`** — composite PK on `(id, email)` instead of just `id`. Unusual; means email changes require special handling. Both columns are already `UNIQUE` individually, so the composite adds nothing.
 4. **`availability_weekdays`/`availability_weekends`** are `text` with `DEFAULT false` — a boolean default on a text column. Code stores `"Yes"`/`"No"`, so the default never matches what reads expect.
 5. **`oldData`** uses CamelCase — requires quoting (`"oldData"`) in every raw SQL query.
+6. **`jury_participants.profile_completed` is dead** — `DEFAULT false` and nothing in the app ever writes it, so it reads `false` for all 1411 rows (verified 2026-08-17). Don't render it; the real "profile complete" gate is `driver_license_number` + `driver_license_image_url` + `paypal_username`, enforced in `updateInviteStatus` before an accept is allowed. Candidate for dropping.
 
 ---
 
