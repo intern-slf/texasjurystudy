@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { adminUpdateParticipant, adminUpdateParticipantDob } from "@/lib/actions/adminParticipant";
 import { autoBlacklistIfIneligible } from "@/lib/actions/autoBlacklist";
 import EditProfileForm from "@/components/EditProfileForm";
-import Link from "next/link";
+import BackButton from "@/components/BackButton";
 import { redirect } from "next/navigation";
 
 export default async function AdminEditParticipantPage({
@@ -57,12 +57,7 @@ export default async function AdminEditParticipantPage({
 
   return (
     <div className="max-w-3xl mx-auto p-8">
-      <Link
-        href={backHref}
-        className="text-blue-600 underline text-sm mb-4 inline-block"
-      >
-        ← Back to Profile
-      </Link>
+      <BackButton href={backHref} label="Back to Profile" className="mb-4" />
       <EditProfileForm
         participant={participant}
         adminMode

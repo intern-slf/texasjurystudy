@@ -1,12 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-
-type Role = "requestee" | "participant" | null;
+import Logo from "@/components/Logo";
+import { LogoutButton } from "@/components/logout-button";
+import { readRole, type Role } from "@/lib/auth-role";
 
 function homeHrefForRole(role: Role): string {
   if (role === "requestee") return "/requestee";
@@ -14,37 +14,58 @@ function homeHrefForRole(role: Role): string {
   return "/";
 }
 
-export default function Navbar() {
+export default function Navbar({
+  initialSignedIn,
+  initialRole = null,
+}: {
+  /** Resolved on the server so the first paint already shows the right links. */
+  initialSignedIn: boolean;
+  initialRole?: Role;
+}) {
   const pathname = usePathname();
-  const [role, setRole] = useState<Role>(null);
+  const [role, setRole] = useState<Role>(initialRole);
+  const [signedIn, setSignedIn] = useState<boolean>(initialSignedIn);
 
   useEffect(() => {
     const supabase = createClient();
+    let active = true;
 
-    const readRole = (metadataRole: unknown): Role => {
-      if (metadataRole === "requestee" || metadataRole === "participant") {
-        return metadataRole;
-      }
-      return null;
+    // Both writers below read the same local session, so whichever settles last
+    // still writes the same answer. Mixing in getUser() (a network call) raced
+    // with onAuthStateChange's immediate INITIAL_SESSION event and could leave
+    // signedIn stuck at false for a signed-in user.
+    const apply = (user: { user_metadata?: { role?: unknown } } | null) => {
+      if (!active) return;
+      setRole(readRole(user?.user_metadata?.role));
+      setSignedIn(Boolean(user));
     };
 
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setRole(readRole(user?.user_metadata?.role));
-    });
+    supabase.auth
+      .getSession()
+      .then(({ data: { session } }) => apply(session?.user ?? null));
 
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      setRole(readRole(session?.user?.user_metadata?.role));
-    });
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) =>
+      apply(session?.user ?? null),
+    );
 
     return () => {
+      active = false;
       sub.subscription.unsubscribe();
     };
   }, []);
 
-  const navItems = [
-    { label: "Home", href: homeHrefForRole(role) },
-    { label: "Login", href: "/auth/login" },
-    { label: "Sign Up", href: "/auth/signup" },
+  // The middle slot is the only thing that changes: Login when signed out,
+  // Logout once signed in. Keeping it in the list preserves its position.
+  type NavEntry =
+    | { kind: "link"; label: string; href: string }
+    | { kind: "logout" };
+
+  const navItems: NavEntry[] = [
+    { kind: "link", label: "Home", href: homeHrefForRole(role) },
+    signedIn
+      ? { kind: "logout" }
+      : { kind: "link", label: "Login", href: "/auth/login" },
+    { kind: "link", label: "Sign Up", href: "/auth/signup" },
   ];
 
   return (
@@ -52,19 +73,24 @@ export default function Navbar() {
       <nav className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2">
-          <Image
-            src="/logo.png"
-            alt="Texas Jury Study logo"
-            width={140}
-            height={36}
-            priority
-            className="object-contain"
-          />
+          <Logo className="h-9 w-auto" />
         </Link>
 
         {/* Navigation */}
         <div className="flex items-center gap-8">
           {navItems.map((item) => {
+            if (item.kind === "logout") {
+              return (
+                <LogoutButton
+                  key="logout"
+                  variant="ghost"
+                  size="sm"
+                  // Stripped back to match the plain text links beside it.
+                  className="h-auto p-0 text-sm font-medium text-muted-foreground transition-colors hover:bg-transparent hover:text-primary"
+                />
+              );
+            }
+
             const isActive = pathname === item.href;
 
             return (

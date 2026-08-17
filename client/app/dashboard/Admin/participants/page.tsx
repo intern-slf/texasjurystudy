@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import Link from "next/link";
+import BackButton from "@/components/BackButton";
 import NewParticipantsList from "@/components/NewParticipantsList";
 import ParticipantsTable from "@/components/ParticipantsTable";
 
@@ -153,12 +153,7 @@ export default async function ParticipantsPage({
           </p>
         </div>
 
-        <Link
-          href="/dashboard/Admin"
-          className="text-sm underline text-muted-foreground hover:text-foreground"
-        >
-          &larr; Back to Cases
-        </Link>
+        <BackButton href="/dashboard/Admin" label="Back to Cases" />
       </div>
 
       {/* ================= CONTENT ================= */}

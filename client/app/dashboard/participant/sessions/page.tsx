@@ -2,6 +2,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import BackButton from "@/components/BackButton";
 import { unstable_noStore as noStore, revalidatePath } from "next/cache";
 import { getPendingInvites } from "@/lib/participant/getPendingInvites";
 import { updateInviteStatus } from "@/lib/participant/updateInviteStatus";
@@ -108,12 +109,7 @@ export default async function ParticipantSessionsPage({
       {/* HEADER */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">My Sessions</h1>
-        <Link
-          href="/dashboard/participant"
-          className="text-sm text-blue-600 hover:underline"
-        >
-          ← Back to Dashboard
-        </Link>
+        <BackButton href="/dashboard/participant" label="Back to Dashboard" />
       </div>
 
       {/* SESSION FULL BANNER */}

@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
+import BackButton from "@/components/BackButton";
 import {
   combineCaseFilters,
   applyCaseFilters,
@@ -360,9 +361,7 @@ export default async function SessionsPage({
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Sessions</h1>
 
-        <Link href="/dashboard/Admin" className="text-sm underline">
-          ← Back to Cases
-        </Link>
+        <BackButton href="/dashboard/Admin" label="Back to Cases" />
       </div>
 
       {/* TABS */}

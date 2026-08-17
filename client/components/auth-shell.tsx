@@ -1,4 +1,5 @@
 import { Sparkles, type LucideIcon } from "lucide-react";
+import BackButton from "@/components/BackButton";
 
 type Feature = { icon: LucideIcon; text: string };
 
@@ -10,6 +11,9 @@ interface AuthShellProps {
   features?: Feature[];
   children: React.ReactNode;
   variant?: "split" | "centered";
+  /** Renders a back link above the shell. Omit to hide it. */
+  backHref?: string;
+  backLabel?: string;
 }
 
 export function AuthShell({
@@ -20,6 +24,8 @@ export function AuthShell({
   features,
   children,
   variant = "split",
+  backHref,
+  backLabel = "Back",
 }: AuthShellProps) {
   return (
     <div className="relative overflow-hidden rounded-2xl">
@@ -34,6 +40,12 @@ export function AuthShell({
           backgroundSize: "48px 48px",
         }}
       />
+
+      {backHref && (
+        <div className="mx-auto max-w-6xl px-4 pt-6">
+          <BackButton href={backHref} label={backLabel} />
+        </div>
+      )}
 
       {variant === "centered" ? (
         <div className="flex min-h-[calc(100vh-12rem)] items-center justify-center px-4 py-12">

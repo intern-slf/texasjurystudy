@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import BackButton from "@/components/BackButton";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { sendReactivationEmails } from "@/lib/actions/adminParticipant";
 import SubmitButton from "./SubmitButton";
@@ -72,12 +73,10 @@ export default async function SendMailConfirmPage({
             Review the recipients and email preview before sending.
           </p>
         </div>
-        <Link
+        <BackButton
           href="/dashboard/Admin/participants"
-          className="text-sm underline text-muted-foreground hover:text-foreground"
-        >
-          &larr; Back to Participants
-        </Link>
+          label="Back to Participants"
+        />
       </div>
 
       {tooMany && (

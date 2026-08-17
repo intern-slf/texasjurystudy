@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import EditProfileForm from "@/components/EditProfileForm";
-import Link from "next/link";
+import BackButton from "@/components/BackButton";
 import { redirect } from "next/navigation";
 import { unstable_noStore as noStore } from "next/cache";
 
@@ -31,12 +31,11 @@ export default async function EditProfilePage({
 
   return (
     <div className="max-w-3xl mx-auto p-8">
-      <Link
+      <BackButton
         href="/dashboard/participant"
-        className="text-blue-600 underline text-sm mb-4 inline-block"
-      >
-        ← Back to Dashboard
-      </Link>
+        label="Back to Dashboard"
+        className="mb-4"
+      />
       {reactivated && (
         <div className="mb-6 rounded-lg border-2 border-green-300 bg-green-50 px-5 py-4">
           <p className="text-base font-semibold text-green-900">

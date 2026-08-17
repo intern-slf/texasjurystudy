@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Scale } from "lucide-react";
 
+import BackButton from "@/components/BackButton";
 import {
   EFFECTIVE_DATE,
   LAST_UPDATED,
@@ -477,6 +478,8 @@ const SECTIONS: Section[] = [
 export default function TermsOfServicePage() {
   return (
     <div className="mx-auto max-w-3xl py-8 md:py-12">
+      <BackButton href="/" label="Back to Home" className="mb-6" />
+
       <header className="mb-10">
         <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-primary">
           <Scale className="h-3.5 w-3.5" />
