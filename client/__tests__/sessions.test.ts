@@ -695,13 +695,85 @@ describe("Sessions", () => {
           )
       );
 
+    const strikeStamps = () =>
+      state.captured.filter(
+        (c) =>
+          c.table === "session_participants" &&
+          c.ops.some(
+            (o) =>
+              o.op === "update" &&
+              "struck_at" in (o as { op: "update"; payload: Record<string, unknown> }).payload
+          )
+      );
+
+    it("stamps struck_at on the session invite row", async () => {
+      state.responses = [
+        { data: { id: "sp-1", struck_at: null }, error: null }, // invite lookup
+        { error: null }, // struck_at stamp
+        { data: { flag_count: 0 }, error: null }, // read current count
+        { error: null }, // flag_count update
+      ];
+
+      await recordBackoutStrike("p-1", "s-1");
+
+      const stamps = strikeStamps();
+      expect(stamps).toHaveLength(1);
+      const stamp = stamps[0].ops.find((o) => o.op === "update") as {
+        op: "update";
+        payload: Record<string, unknown>;
+      };
+      expect(stamp.payload.struck_at).toEqual(expect.any(String));
+    });
+
+    it("records struck_by when the acting admin is known", async () => {
+      state.responses = [
+        { data: { id: "sp-1b", struck_at: null }, error: null },
+        { error: null },
+        { data: { flag_count: 0 }, error: null },
+        { error: null },
+      ];
+
+      await recordBackoutStrike("p-1b", "s-1", "admin-9");
+
+      const stamp = strikeStamps()[0].ops.find((o) => o.op === "update") as {
+        op: "update";
+        payload: Record<string, unknown>;
+      };
+      expect(stamp.payload.struck_by).toBe("admin-9");
+    });
+
+    it("is idempotent per session — an already-struck invite is a no-op", async () => {
+      state.responses = [
+        { data: { id: "sp-dup", struck_at: "2026-08-01T00:00:00.000Z" }, error: null },
+      ];
+
+      await recordBackoutStrike("p-dup", "s-1");
+
+      // No strike re-stamped and, crucially, no second increment of the counter.
+      expect(strikeStamps()).toHaveLength(0);
+      expect(juryUpdatesWith("flag_count")).toHaveLength(0);
+    });
+
+    it("no-ops when the participant has no invite for that session", async () => {
+      state.responses = [{ data: null, error: null }]; // invite lookup misses
+
+      await recordBackoutStrike("p-none", "s-nope");
+
+      const anyWrite = state.captured.find((c) =>
+        c.ops.some((o) => o.op === "update")
+      );
+      expect(anyWrite).toBeUndefined();
+    });
+
     it("increments flag_count and does NOT blacklist below the limit", async () => {
       state.responses = [
+        { data: { id: "sp-1", struck_at: null }, error: null }, // invite lookup
+        { error: null }, // struck_at stamp
         { data: { flag_count: 1 }, error: null }, // read current count
         { error: null }, // flag_count update
       ];
 
-      await recordBackoutStrike("p-1");
+      await recordBackoutStrike("p-1", "s-1");
 
       const flagUpdates = juryUpdatesWith("flag_count");
       expect(flagUpdates).toHaveLength(1);
@@ -720,13 +792,15 @@ describe("Sessions", () => {
 
     it("auto-blacklists when the third flag is reached", async () => {
       state.responses = [
+        { data: { id: "sp-2", struck_at: null }, error: null }, // invite lookup
+        { error: null }, // struck_at stamp
         { data: { flag_count: 2 }, error: null }, // read current count
         { error: null }, // flag_count update -> 3
         { error: null }, // roles -> blacklisted
         { error: null }, // jury_participants blacklist fields
       ];
 
-      await recordBackoutStrike("p-2");
+      await recordBackoutStrike("p-2", "s-2");
 
       // flag_count bumped to 3
       const flagUpdate = juryUpdatesWith("flag_count")[0].ops.find(
@@ -754,15 +828,23 @@ describe("Sessions", () => {
       expect(String(blWrite.payload.blacklist_reason)).toContain("3");
     });
 
-    it("no-ops when the participant is not in jury_participants (legacy id)", async () => {
-      state.responses = [{ data: null, error: null }]; // read returns no row
+    it("records the session strike but counts no flag for a legacy (oldData) id", async () => {
+      state.responses = [
+        { data: { id: "sp-old", struck_at: null }, error: null }, // invite lookup
+        { error: null }, // struck_at stamp
+        { data: null, error: null }, // no jury_participants row
+      ];
 
-      await recordBackoutStrike("old-1");
+      await recordBackoutStrike("old-1", "s-3");
 
-      const anyWrite = state.captured.find((c) =>
-        c.ops.some((o) => o.op === "update")
+      // The per-session strike is still recorded, so the case page can show it...
+      expect(strikeStamps()).toHaveLength(1);
+      // ...but there is no counter to bump and no auto-blacklist.
+      expect(juryUpdatesWith("flag_count")).toHaveLength(0);
+      const rolesWrite = state.captured.find(
+        (c) => c.table === "roles" && c.ops.some((o) => o.op === "update")
       );
-      expect(anyWrite).toBeUndefined();
+      expect(rolesWrite).toBeUndefined();
     });
   });
 });

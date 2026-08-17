@@ -16,6 +16,8 @@ export type RosterParticipant = {
   name: string;
   email?: string;
   inviteStatus: string;
+  /** Struck for this session — badges as "Striked" and leaves the accepted group. */
+  struck?: boolean;
 };
 
 const DEFAULT_VISIBLE = 3;
@@ -40,13 +42,16 @@ export default function ParticipantRoster({
   }
 
   const byName = (a: RosterParticipant, b: RosterParticipant) => a.name.localeCompare(b.name);
-  const accepted = participants.filter((p) => p.inviteStatus === "accepted").sort(byName);
-  const others = participants.filter((p) => p.inviteStatus !== "accepted").sort(byName);
+  // A struck participant accepted and then backed out, so they don't belong under
+  // an "Accepted" heading — the heading is meant to read "these people are coming".
+  const isAccepted = (p: RosterParticipant) => p.inviteStatus === "accepted" && !p.struck;
+  const accepted = participants.filter(isAccepted).sort(byName);
+  const others = participants.filter((p) => !isAccepted(p)).sort(byName);
 
   const ordered = [...accepted, ...others];
   const visible = expanded ? ordered : ordered.slice(0, initialVisible);
-  const visibleAccepted = visible.filter((p) => p.inviteStatus === "accepted");
-  const visibleOthers = visible.filter((p) => p.inviteStatus !== "accepted");
+  const visibleAccepted = visible.filter(isAccepted);
+  const visibleOthers = visible.filter((p) => !isAccepted(p));
 
   // Headings only earn their space when there's actually a split to show.
   const showHeadings = accepted.length > 0 && others.length > 0;
@@ -83,7 +88,7 @@ export default function ParticipantRoster({
             className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white pl-3 pr-1.5 py-1 hover:bg-slate-50 transition-colors"
           >
             <span className="text-xs font-medium text-slate-700">{p.name}</span>
-            <InviteStatusBadge status={p.inviteStatus} isPast={isPast} />
+            <InviteStatusBadge status={p.inviteStatus} isPast={isPast} struck={p.struck} />
           </Link>
         ))}
       </div>
@@ -127,7 +132,7 @@ export default function ParticipantRoster({
             </Link>
             {p.email && <p className="text-xs text-slate-400 truncate">{p.email}</p>}
           </div>
-          <InviteStatusBadge status={p.inviteStatus} isPast={isPast} />
+          <InviteStatusBadge status={p.inviteStatus} isPast={isPast} struck={p.struck} />
         </div>
       ))}
     </div>

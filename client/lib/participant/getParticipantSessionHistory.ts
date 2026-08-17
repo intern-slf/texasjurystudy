@@ -24,6 +24,8 @@ export type ParticipantSessionRow = {
   /** Raw `session_participants.invite_status` — "accepted" | "declined" | "pending" | null. */
   inviteStatus: string;
   respondedAt: string | null;
+  /** Struck for this session — this is which session earned one of their flag_count strikes. */
+  struckAt: string | null;
   isPast: boolean;
   cases: ParticipantSessionCase[];
 };
@@ -34,6 +36,8 @@ export type ParticipantSessionStats = {
   upcoming: number;
   declined: number;
   noResponse: number;
+  /** Sessions they were struck for — the per-session breakdown of flag_count. */
+  struck: number;
   lastAttendedDate: string | null;
 };
 
@@ -58,6 +62,7 @@ type InviteRow = {
   session_id: string | null;
   invite_status: string | null;
   responded_at: string | null;
+  struck_at: string | null;
   sessions?: SessionRow | SessionRow[] | null;
 };
 
@@ -110,7 +115,7 @@ export async function getParticipantSessionHistory(
   const { data: invites, error } = await supabaseAdmin
     .from("session_participants")
     .select(
-      "session_id, invite_status, responded_at, sessions(session_date, session_cases(start_time, end_time, cases(id, title)))"
+      "session_id, invite_status, responded_at, struck_at, sessions(session_date, session_cases(start_time, end_time, cases(id, title)))"
     )
     .in("participant_id", ids);
 
@@ -163,13 +168,18 @@ export async function getParticipantSessionHistory(
           : "Time TBD",
       inviteStatus: inv.invite_status ?? "pending",
       respondedAt: inv.responded_at ?? null,
+      struckAt: inv.struck_at ?? null,
       isPast: new Date(date) < today,
       cases,
     };
 
     const existing = bySession.get(sessionId);
     if (!existing || statusRank(row.inviteStatus) > statusRank(existing.inviteStatus)) {
+      // Don't lose a strike recorded on the row we're replacing.
+      if (existing?.struckAt && !row.struckAt) row.struckAt = existing.struckAt;
       bySession.set(sessionId, row);
+    } else if (row.struckAt && !existing.struckAt) {
+      existing.struckAt = row.struckAt;
     }
   }
 
@@ -182,7 +192,9 @@ export async function getParticipantSessionHistory(
     .filter((s) => !s.isPast)
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-  const attendedRows = past.filter((s) => s.inviteStatus === "accepted");
+  // Struck = accepted then backed out, so they did NOT attend. Excluding them keeps
+  // this count honest now that strikes are recorded per session.
+  const attendedRows = past.filter((s) => s.inviteStatus === "accepted" && !s.struckAt);
 
   return {
     past,
@@ -195,6 +207,7 @@ export async function getParticipantSessionHistory(
       noResponse: past.filter(
         (s) => s.inviteStatus !== "accepted" && s.inviteStatus !== "declined"
       ).length,
+      struck: all.filter((s) => s.struckAt).length,
       lastAttendedDate: attendedRows[0]?.displayDate ?? null,
     },
   };

@@ -58,6 +58,14 @@ export default async function CaseSessionsPanel({ caseId }: { caseId: string }) 
                 >
                   Accepted {s.acceptedCount} / {s.participantCap}
                 </span>
+                {s.struckCount > 0 && (
+                  <span
+                    className="inline-flex items-center rounded-full bg-orange-400/10 px-2.5 py-1 text-xs font-medium text-orange-600 ring-1 ring-inset ring-orange-400/30"
+                    title="Struck for not attending / backing out. A strike does not free up a seat against the cap."
+                  >
+                    {s.struckCount} striked
+                  </span>
+                )}
                 <span
                   className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${
                     s.isPast
@@ -89,6 +97,7 @@ export default async function CaseSessionsPanel({ caseId }: { caseId: string }) 
                 name: p.name,
                 email: p.email,
                 inviteStatus: p.inviteStatus,
+                struck: Boolean(p.struckAt),
               }))}
               caseId={caseId}
               isPast={s.isPast}
