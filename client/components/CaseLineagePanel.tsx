@@ -120,6 +120,7 @@ export default async function CaseLineagePanel({ caseId }: { caseId: string }) {
                         name:
                           `${p.first_name} ${p.last_name}`.trim() || "Unnamed participant",
                         inviteStatus: p.invite_status,
+                        struck: p.struck,
                       }))}
                     />
                   )}
