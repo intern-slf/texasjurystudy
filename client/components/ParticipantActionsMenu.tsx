@@ -30,7 +30,7 @@ export default function ParticipantActionsMenu({ sessionId, participantId, parti
     setLoading(true);
     try {
       if (modal === "flag") {
-        await flagParticipant(participantId);
+        await flagParticipant(participantId, sessionId);
       } else {
         await adminRespondOnBehalf(sessionId, participantId, modal);
       }
@@ -90,7 +90,7 @@ export default function ParticipantActionsMenu({ sessionId, participantId, parti
                 ? `This will mark ${participantName}'s attendance as accepted and send them a confirmation email with the session date and time.`
                 : modal === "rejected"
                 ? `This will mark ${participantName}'s invitation as declined. Confirmation email will be sent.`
-                : `This adds a strike to ${participantName} for not attending / backing out. At 3 strikes they are automatically blacklisted and can no longer be invited to future sessions. No email is sent.`}
+                : `This adds a strike to ${participantName} for not attending / backing out of this session. They will show as "Striked" on this session and on any case that ran in it. At 3 strikes they are automatically blacklisted and can no longer be invited to future sessions. No email is sent.`}
             </p>
             <div className="flex justify-end gap-3">
               <button

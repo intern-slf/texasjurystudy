@@ -214,7 +214,10 @@ CREATE TABLE public.session_participants (
   participant_id uuid,
   invite_status text,
   responded_at timestamp with time zone,
+  struck_at timestamp with time zone,
+  struck_by uuid,
   CONSTRAINT session_participants_pkey PRIMARY KEY (id),
+  CONSTRAINT session_participants_struck_by_fkey FOREIGN KEY (struck_by) REFERENCES auth.users(id),
   CONSTRAINT session_participants_session_id_fkey FOREIGN KEY (session_id) REFERENCES public.sessions(id),
   CONSTRAINT session_participants_participant_id_fkey FOREIGN KEY (participant_id) REFERENCES auth.users(id),
   CONSTRAINT session_participants_jury_participants_fkey FOREIGN KEY (participant_id) REFERENCES public.jury_participants(user_id),
@@ -255,6 +258,7 @@ These aren't bugs but they're surprises a future reader will hit:
 
 | Date | Change |
 |------|--------|
+| 2026-08-17 | Added `session_participants.struck_at` / `struck_by` — no-show strikes are now tied to the session they happened in (`20260817_session_strikes.sql`). `jury_participants.flag_count` stays as the counter driving the 3-strike auto-blacklist. Historical strikes (5 accounts, all 1/3) are attributed by `20260817_session_strikes_backfill.sql`, which only touches participants with exactly one invite so the attribution is forced rather than guessed. |
 | 2026-05-22 | Dropped `profiles` table — unused (empty, no trigger); reads refactored to `auth.users` via `supabaseAdmin` |
 | 2026-05-22 | Dropped `case_audit_logs` table — writes never read |
 | 2026-05-22 | Dropped `profiles.role`, `profiles.provider` columns (before full table drop) |

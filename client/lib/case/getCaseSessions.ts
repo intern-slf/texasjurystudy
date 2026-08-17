@@ -15,6 +15,8 @@ export type CaseSessionParticipant = {
   email: string;
   inviteStatus: string;
   respondedAt: string | null;
+  /** Struck for THIS session (no-show / backed out) — outranks inviteStatus in the UI. */
+  struckAt: string | null;
 };
 
 export type CaseSessionRow = {
@@ -29,6 +31,7 @@ export type CaseSessionRow = {
   isPast: boolean;
   participants: CaseSessionParticipant[];
   acceptedCount: number;
+  struckCount: number;
 };
 
 /** A real response beats a stale pending row when a participant appears twice on one session. */
@@ -59,7 +62,7 @@ export async function getCaseSessions(caseId: string): Promise<CaseSessionRow[]>
       .in("id", sessionIds),
     supabase
       .from("session_participants")
-      .select("session_id, participant_id, invite_status, responded_at")
+      .select("session_id, participant_id, invite_status, responded_at, struck_at")
       .in("session_id", sessionIds),
   ]);
 
@@ -115,7 +118,11 @@ export async function getCaseSessions(caseId: string): Promise<CaseSessionRow[]>
     }
 
     const existing = roster.get(inv.participant_id);
-    if (existing && statusRank(existing.inviteStatus) >= statusRank(inv.invite_status)) continue;
+    if (existing && statusRank(existing.inviteStatus) >= statusRank(inv.invite_status)) {
+      // Keep the stronger response, but never lose a strike to a duplicate row.
+      if (inv.struck_at && !existing.struckAt) existing.struckAt = inv.struck_at;
+      continue;
+    }
 
     roster.set(inv.participant_id, {
       id: inv.participant_id,
@@ -123,6 +130,7 @@ export async function getCaseSessions(caseId: string): Promise<CaseSessionRow[]>
       email: details[inv.participant_id]?.email ?? "",
       inviteStatus: inv.invite_status ?? "pending",
       respondedAt: inv.responded_at ?? null,
+      struckAt: inv.struck_at ?? null,
     });
   }
 
@@ -158,7 +166,10 @@ export async function getCaseSessions(caseId: string): Promise<CaseSessionRow[]>
         participantCap: s.participant_cap ?? 10,
         isPast: new Date(s.session_date) < today,
         participants: roster,
+        // Counted off invite_status, matching `isSessionFull` — a strike does not
+        // free up a seat, so display and capacity logic stay in agreement.
         acceptedCount: roster.filter((p) => p.inviteStatus === "accepted").length,
+        struckCount: roster.filter((p) => p.struckAt).length,
       };
     })
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());

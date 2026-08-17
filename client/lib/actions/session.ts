@@ -604,13 +604,22 @@ export async function adminRespondOnBehalf(
 /* =========================
    FLAG PARTICIPANT (no-show / back-out strike)
    Standalone manual admin action — completely independent of Accept/Decline on
-   behalf and their email logic. Records one strike; recordBackoutStrike
-   auto-blacklists the participant once they reach the flag limit.
+   behalf and their email logic. Records one strike against THIS session;
+   recordBackoutStrike stamps the session's invite row, bumps the running
+   counter, and auto-blacklists the participant once they reach the flag limit.
 ========================= */
-export async function flagParticipant(participantId: string) {
-  await recordBackoutStrike(participantId);
+export async function flagParticipant(participantId: string, sessionId: string) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  await recordBackoutStrike(participantId, sessionId, user?.id);
+
   revalidatePath("/dashboard/Admin/sessions");
   revalidatePath("/dashboard/Admin/participants");
+  // The case page shows "Striked" on its session roster, so it has to re-render too.
+  revalidatePath("/dashboard/Admin", "layout");
 }
 
 /* =========================

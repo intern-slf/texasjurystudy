@@ -106,9 +106,25 @@ export async function unblacklistParticipant(userId: string) {
         })
         .eq("user_id", userId);
 
+    // 3. Clear the per-session strikes that produced that count. Without this the
+    //    counter reads 0 while their sessions still render "Striked", and the two
+    //    disagree permanently.
+    const { error: strikeClearErr } = await supabaseAdmin
+        .from("session_participants")
+        .update({ struck_at: null, struck_by: null })
+        .eq("participant_id", userId)
+        .not("struck_at", "is", null);
+
+    if (strikeClearErr) {
+        console.error(
+            `[unblacklistParticipant] flag_count reset but per-session strikes remain for ${userId}: ${strikeClearErr.message}`
+        );
+    }
+
     console.log(`[unblacklistParticipant] Unblacklisted user ${userId} — moved back to requests.`);
 
     revalidatePath("/dashboard/Admin/participants");
+    revalidatePath("/dashboard/Admin", "layout");
 }
 
 /* =========================

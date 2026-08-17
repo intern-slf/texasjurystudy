@@ -32,12 +32,13 @@ export default async function ParticipantSessionHistory({
       </div>
 
       {/* SUMMARY */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         <Stat label="Invited" value={stats.invited} />
         <Stat label="Attended" value={stats.attended} tone="green" />
         <Stat label="Upcoming" value={stats.upcoming} tone="blue" />
         <Stat label="Declined" value={stats.declined} tone="amber" />
         <Stat label="No response" value={stats.noResponse} tone="red" />
+        <Stat label="Striked" value={stats.struck} tone="orange" />
       </div>
 
       {stats.invited === 0 && (
@@ -80,7 +81,7 @@ function Stat({
 }: {
   label: string;
   value: number;
-  tone?: "slate" | "green" | "blue" | "amber" | "red";
+  tone?: "slate" | "green" | "blue" | "amber" | "red" | "orange";
 }) {
   const toneClass =
     value === 0
@@ -91,6 +92,7 @@ function Stat({
           blue: "text-blue-600",
           amber: "text-amber-600",
           red: "text-red-600",
+          orange: "text-orange-600",
         }[tone];
 
   return (
@@ -142,7 +144,11 @@ function SessionRow({
       </div>
 
       <div className="flex flex-col items-end gap-1 shrink-0">
-        <InviteStatusBadge status={session.inviteStatus} isPast={isPast} />
+        <InviteStatusBadge
+          status={session.inviteStatus}
+          isPast={isPast}
+          struck={Boolean(session.struckAt)}
+        />
         {session.respondedAt && (
           <span className="text-[11px] text-slate-400">
             Responded{" "}
