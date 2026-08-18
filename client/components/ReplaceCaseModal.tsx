@@ -52,8 +52,8 @@ export default function ReplaceCaseModal({
       </button>
 
       {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6 space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md max-h-[85vh] overflow-y-auto p-6 space-y-4">
             <h2 className="text-lg font-bold text-slate-900">Replace Case</h2>
             <p className="text-sm text-slate-500">
               Replacing: <span className="font-medium text-slate-700">{oldCaseTitle}</span>

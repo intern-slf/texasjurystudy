@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { CircleUserRound } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { clearLastVisited, readLastVisited } from "@/lib/last-visited";
+import { cn } from "@/lib/utils";
 
 /**
  * Takes the place of "Sign Up" once signed in, and sends the user back to the
@@ -43,11 +44,16 @@ export default function AccountButton({ className }: { className?: string }) {
     <button
       type="button"
       onClick={goToAccount}
+      disabled={checking}
       aria-label="Account"
+      aria-busy={checking}
       title="Account"
-      className={className}
+      className={cn(
+        "inline-flex h-9 w-9 items-center justify-center rounded-full border border-input bg-background text-muted-foreground shadow-sm transition-colors hover:bg-secondary hover:text-primary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-60",
+        className,
+      )}
     >
-      <CircleUserRound className="h-6 w-6" aria-hidden="true" />
+      <CircleUserRound className="h-[18px] w-[18px]" aria-hidden="true" />
     </button>
   );
 }

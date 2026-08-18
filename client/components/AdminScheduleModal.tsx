@@ -55,8 +55,8 @@ export function AdminScheduleModal({ caseId, currentTitle }: ScheduleProps) {
 
       {/* Custom Modal Overlay */}
       {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-          <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-md border border-slate-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
+          <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-md max-h-[85vh] overflow-y-auto border border-slate-200">
             <h2 className="text-xl font-bold mb-1 text-slate-900">Set Meeting Time</h2>
             <p className="text-sm text-slate-500 mb-6 italic">Case: {currentTitle}</p>
             

@@ -71,13 +71,14 @@ export default function AdminSidebar({
   const items = activeMode === "cases" ? caseItems : participantItems;
 
   return (
-    <aside className="w-64 border-r bg-slate-50 p-6 flex flex-col min-h-screen">
+    /* Full-width band above the content on phones, fixed rail from lg up. */
+    <aside className="w-full shrink-0 border-b bg-slate-50 p-4 flex flex-col sm:p-6 lg:w-64 lg:min-h-screen lg:border-b-0 lg:border-r">
       <h2 className="text-xs font-semibold uppercase text-slate-500 mb-4 tracking-wider">
         Admin Panel
       </h2>
 
       {/* ====== MODE TOGGLE ====== */}
-      <div className="flex bg-slate-200/70 p-1 rounded-lg mb-6">
+      <div className="flex bg-slate-200/70 p-1 rounded-lg mb-4 lg:mb-6">
         <Link
           href="/dashboard/Admin?tab=requested"
           className={`flex-1 text-center py-1.5 text-xs font-semibold rounded-md transition-all ${
@@ -100,8 +101,9 @@ export default function AdminSidebar({
         </Link>
       </div>
 
-      {/* ====== NAV ITEMS ====== */}
-      <nav className="space-y-2 flex-1">
+      {/* ====== NAV ITEMS ======
+          Wraps as a row of chips on phones, stacks from lg up. */}
+      <nav className="flex flex-wrap gap-2 lg:flex-1 lg:flex-col lg:flex-nowrap">
         {items.map((i) => {
           const count = counts[i.countKey];
           const active = isActive(i.id, pathname, currentTab);
@@ -110,7 +112,7 @@ export default function AdminSidebar({
             <Link
               key={i.id}
               href={getHref(i.id)}
-              className={`flex justify-between items-center px-3 py-2 rounded-lg text-sm transition-all ${
+              className={`flex justify-between items-center gap-3 whitespace-nowrap px-3 py-2 rounded-lg text-sm transition-all ${
                 active
                   ? "bg-white text-blue-600 border border-slate-200 shadow-sm font-medium"
                   : "text-slate-600 hover:bg-slate-200/50 hover:text-slate-900"
@@ -122,7 +124,7 @@ export default function AdminSidebar({
                 className={`text-[10px] px-2 py-0.5 rounded-full ${
                   active
                     ? "bg-blue-50 text-blue-600"
-                    : "bg-slate-200 text-slate-500"
+                    : "bg-slate-200 text-slate-700"
                 }`}
               >
                 {count}
@@ -132,7 +134,7 @@ export default function AdminSidebar({
         })}
       </nav>
 
-      <div className="mt-auto pt-4 border-t border-slate-200">
+      <div className="mt-4 pt-4 border-t border-slate-200 lg:mt-auto">
         <p className="text-[10px] text-center text-slate-400">
           Administrator Access Only
         </p>

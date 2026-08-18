@@ -73,14 +73,14 @@ export default function RescheduleModal({ sessionId, sessionDate, cases }: Props
     <>
       <button
         onClick={handleOpen}
-        className="px-3 py-1.5 rounded text-sm font-medium text-white bg-amber-500 hover:bg-amber-600"
+        className="px-3 py-1.5 rounded text-sm font-medium text-white bg-amber-600 hover:bg-amber-700"
       >
         Reschedule
       </button>
 
       {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-5">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[85vh] overflow-y-auto p-6 space-y-5">
             <h2 className="text-lg font-bold text-slate-800">Reschedule Session</h2>
 
             {/* Date picker */}
@@ -149,7 +149,7 @@ export default function RescheduleModal({ sessionId, sessionDate, cases }: Props
               <button
                 onClick={handleSubmit}
                 disabled={isPending || !date}
-                className="px-4 py-2 rounded text-sm text-white bg-amber-500 hover:bg-amber-600 disabled:opacity-50"
+                className="px-4 py-2 rounded text-sm text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-50"
               >
                 {isPending ? "Saving…" : "Reschedule & Notify"}
               </button>

@@ -444,7 +444,7 @@ export default function EditProfileForm({ participant, adminMode, onUpdate, onUp
 
   return (
     <form onSubmit={handleSubmit} className="max-w-2xl mx-auto space-y-8 p-4">
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <Pencil className="h-6 w-6 text-blue-600" />
         <h2 className="text-2xl font-bold">
           {adminMode ? "Edit Participant Profile" : "Edit Profile"}
@@ -848,7 +848,7 @@ export default function EditProfileForm({ participant, adminMode, onUpdate, onUp
       </div>
 
       {/* SUBMIT */}
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <Button type="submit" disabled={loading || uploadProgress} className="h-12 px-8 text-lg">
           {uploadProgress ? "Uploading ID..." : loading ? "Saving..." : "Save Changes"}
         </Button>

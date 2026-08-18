@@ -186,11 +186,11 @@ export default async function AdminCaseDetailPage({
      ========================= */
 
   return (
-    <div className="max-w-6xl mx-auto space-y-10 p-6">
+    <div className="max-w-6xl mx-auto space-y-8 px-4 py-6 sm:space-y-10 sm:p-6">
       <BackButton href="/dashboard/Admin" label="Back to Cases" />
 
       {/* CASE INFO */}
-      <section className="bg-white p-8 rounded-xl border shadow-sm">
+      <section className="bg-white p-5 rounded-xl border shadow-sm sm:p-8">
         <h1 className="text-3xl font-extrabold">{caseInfo.title}</h1>
 
         {/* STATUS BADGES */}
@@ -239,7 +239,7 @@ export default async function AdminCaseDetailPage({
         </p>
 
         {/* KEY DETAILS */}
-        <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-4">
           {[
             { label: "Case Type", value: caseInfo.case_type },
             { label: "Focus Group", value: caseInfo.focus_group_type },
@@ -381,8 +381,8 @@ export default async function AdminCaseDetailPage({
       </section>
 
       {/* PARTICIPANT FILTERS */}
-      <section className="bg-white p-8 rounded-xl border shadow-sm">
-        <div className="flex items-center justify-between mb-4">
+      <section className="bg-white p-5 rounded-xl border shadow-sm sm:p-8">
+        <div className="flex flex-col gap-2 mb-4 sm:flex-row sm:items-center sm:justify-between">
           <h3 className="text-xl font-bold">Participant Filters</h3>
           {caseInfo.admin_scheduled_at ? (
             <span className="text-xs bg-slate-100 border border-slate-300 text-slate-600 px-2 py-0.5 rounded-full">

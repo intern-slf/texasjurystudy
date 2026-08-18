@@ -299,12 +299,12 @@ export default async function RequesteeDashboard({
       =========================== */
 
   return (
-    <div className="flex min-h-screen bg-muted/10 font-sans">
+    <div className="flex min-h-screen flex-col bg-muted/10 font-sans lg:flex-row">
       <RequesteeSidebar activeTab={tab} />
 
-      <main className="flex-1 overflow-y-auto">
-        <div className="max-w-5xl mx-auto px-8 py-12">
-          <div className="flex items-center justify-between mb-8">
+      <main className="min-w-0 flex-1 overflow-y-auto">
+        <div className="max-w-5xl mx-auto px-4 py-8 sm:px-6 sm:py-12 lg:px-8">
+          <div className="flex flex-col gap-4 mb-8 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <h1 className="text-3xl font-bold tracking-tight capitalize">
                 {tab === "current" ? "Requested Cases" : tab} Focus Groups
@@ -749,7 +749,7 @@ export default async function RequesteeDashboard({
                     </div>
                   )}
                   
-                  <div className="mt-6 pt-6 border-t flex justify-between items-center">
+                  <div className="mt-6 pt-6 border-t flex flex-wrap items-center justify-between gap-3">
                     <div className="flex items-center gap-2">
                        <CaseActions
                         tab={tab}

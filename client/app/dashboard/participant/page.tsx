@@ -72,7 +72,7 @@ export default async function ParticipantDashboard({
      ========================= */
   if (!participant) {
     return (
-      <div className="max-w-3xl mx-auto p-8">
+      <div className="max-w-3xl mx-auto px-4 py-6 sm:p-8">
         <ParticipantForm userId={user.id} email={user.email!} />
       </div>
     );
@@ -87,7 +87,7 @@ export default async function ParticipantDashboard({
      DASHBOARD VIEW
      ========================= */
   return (
-    <div className="max-w-5xl mx-auto p-8 space-y-8">
+    <div className="max-w-5xl mx-auto px-4 py-6 space-y-6 sm:p-8 sm:space-y-8">
       {/* SESSION FULL BANNER */}
       {sessionFull === "1" && (
         <div className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 text-amber-800 shadow-sm">

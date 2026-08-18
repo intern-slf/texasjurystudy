@@ -204,7 +204,7 @@ export default async function AdminDashboardPage({
   return (
     <div className="space-y-6">
       {/* ================= HEADER ================= */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-3xl font-bold tracking-tight">
             {tab === "requested" && "Requested Cases"}
@@ -215,12 +215,12 @@ export default async function AdminDashboardPage({
           </p>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-4">
           <div className="flex bg-slate-100 p-1 rounded-lg border text-xs font-medium">
             <Link
               href={`/dashboard/Admin?tab=${tab}`}
               className={`px-3 py-1.5 rounded-md transition-colors ${!isOldData
-                ? "bg-white shadow text-black"
+                ? "bg-white shadow text-slate-900"
                 : "text-slate-500 hover:text-slate-700"
                 }`}
             >
@@ -229,7 +229,7 @@ export default async function AdminDashboardPage({
             <Link
               href={`/dashboard/Admin?tab=${tab}&test_table=oldData`}
               className={`px-3 py-1.5 rounded-md transition-colors ${isOldData
-                ? "bg-white shadow text-black"
+                ? "bg-white shadow text-slate-900"
                 : "text-slate-500 hover:text-slate-700"
                 }`}
             >
@@ -246,7 +246,7 @@ export default async function AdminDashboardPage({
               <input type="hidden" name="test_table" value={isOldData ? "oldData" : "jury_participants"} />
               <button
                 type="submit"
-                className="bg-black text-white px-4 py-2 rounded"
+                className="bg-slate-900 text-white px-4 py-2 rounded hover:bg-slate-800"
               >
                 Build Session
               </button>
@@ -348,15 +348,15 @@ export default async function AdminDashboardPage({
                     {/* STATUS */}
                     <TableCell className="py-4">
                       {!c.schedule_status || c.schedule_status === "pending" ? (
-                        <span className="inline-flex items-center rounded-full bg-yellow-400/10 px-2 py-1 text-xs font-medium text-yellow-500 ring-1 ring-inset ring-yellow-400/20">
+                        <span className="inline-flex items-center rounded-full bg-yellow-400/10 px-2 py-1 text-xs font-medium text-yellow-700 ring-1 ring-inset ring-yellow-400/20">
                           Pending
                         </span>
                       ) : c.schedule_status === "accepted" ? (
-                        <span className="inline-flex items-center rounded-full bg-green-400/10 px-2 py-1 text-xs font-medium text-green-500 ring-1 ring-inset ring-green-400/20">
+                        <span className="inline-flex items-center rounded-full bg-green-400/10 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-400/20">
                           Accepted
                         </span>
                       ) : (
-                        <span className="inline-flex items-center rounded-full bg-red-400/10 px-2 py-1 text-xs font-medium text-red-500 ring-1 ring-inset ring-red-400/20">
+                        <span className="inline-flex items-center rounded-full bg-red-400/10 px-2 py-1 text-xs font-medium text-red-700 ring-1 ring-inset ring-red-400/20">
                           Declined
                         </span>
                       )}

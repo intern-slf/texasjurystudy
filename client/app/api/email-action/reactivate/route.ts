@@ -153,24 +153,24 @@ function page(title: string, content: string): string {
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>${title} | Texas Jury Study</title>
 </head>
-<body style="margin:0;padding:0;background-color:#f4f6f9;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">
+<body style="margin:0;padding:0;background-color:#F7F4EE;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
     <tr>
       <td align="center" style="padding:48px 16px;">
         <table role="presentation" width="100%" style="max-width:520px;" cellpadding="0" cellspacing="0">
           <tr>
-            <td style="background-color:#1e3a8a;border-radius:8px 8px 0 0;padding:28px 36px;text-align:center;">
+            <td style="background-color:#012A68;border-radius:8px 8px 0 0;padding:28px 36px;text-align:center;">
               <p style="margin:0;font-size:22px;font-weight:700;color:#ffffff;letter-spacing:-0.3px;">Texas Jury Study</p>
             </td>
           </tr>
           <tr>
-            <td style="background-color:#ffffff;padding:40px 36px;border-left:1px solid #e2e8f0;border-right:1px solid #e2e8f0;text-align:center;">
+            <td style="background-color:#ffffff;padding:40px 36px;border-left:1px solid #DAD5C8;border-right:1px solid #DAD5C8;text-align:center;">
               ${content}
             </td>
           </tr>
           <tr>
-            <td style="background-color:#f8fafc;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 8px 8px;padding:20px 36px;text-align:center;">
-              <p style="margin:0;font-size:11px;color:#cbd5e1;">© ${year} Texas Jury Study. All rights reserved.</p>
+            <td style="background-color:#F7F4EE;border:1px solid #DAD5C8;border-top:none;border-radius:0 0 8px 8px;padding:20px 36px;text-align:center;">
+              <p style="margin:0;font-size:11px;color:#6B6960;">© ${year} Texas Jury Study. All rights reserved.</p>
             </td>
           </tr>
         </table>
@@ -183,19 +183,19 @@ function page(title: string, content: string): string {
 
 function submittedPage(choice: "yes" | "no", repeatClick: boolean): string {
   const isYes = choice === "yes";
-  const color = isYes ? "#16a34a" : "#dc2626";
-  const bg = isYes ? "#f0fdf4" : "#fef2f2";
+  const color = isYes ? "#2D6A3E" : "#C32130";
+  const bg = isYes ? "#E3EFE6" : "#F9E9EA";
   const subtitle = isYes
     ? "Thanks for confirming. You&rsquo;ll continue to receive invitations to Texas Jury Study focus groups."
     : "Thanks for letting us know. You have been removed from active invitations.";
   const repeatNote = repeatClick
-    ? `<p style="margin:16px 0 0;font-size:13px;color:#94a3b8;">We already had your response on file &mdash; no changes were made.</p>`
+    ? `<p style="margin:16px 0 0;font-size:13px;color:#6B6960;">We already had your response on file &mdash; no changes were made.</p>`
     : "";
 
   return page("Response submitted", `
     <div style="width:64px;height:64px;border-radius:50%;background-color:${bg};border:2px solid ${color};margin:0 auto 20px;font-size:32px;line-height:60px;color:${color};">✓</div>
     <h1 style="margin:0 0 12px;font-size:24px;font-weight:700;color:${color};">Successfully submitted your response</h1>
-    <p style="margin:0;font-size:15px;color:#475569;line-height:1.6;">${subtitle}</p>
+    <p style="margin:0;font-size:15px;color:#3F3E38;line-height:1.6;">${subtitle}</p>
     ${repeatNote}
   `);
 }
@@ -209,19 +209,19 @@ function missingProfilePage(missing: string[], dashboardUrl: string): string {
   ].filter(Boolean).join(" and ");
 
   return page("Profile Incomplete", `
-    <div style="width:64px;height:64px;border-radius:50%;background-color:#fff7ed;border:2px solid #f97316;margin:0 auto 20px;font-size:28px;line-height:60px;color:#c2410c;">⚠</div>
-    <h1 style="margin:0 0 12px;font-size:24px;font-weight:700;color:#c2410c;">Profile Incomplete</h1>
-    <p style="margin:0 0 8px;font-size:15px;color:#475569;line-height:1.6;">Before we can confirm your reactivation, please update your profile with the following missing information:</p>
-    <p style="margin:0 0 20px;font-size:15px;font-weight:600;color:#c2410c;">${items}</p>
-    <p style="margin:0 0 24px;padding:12px 16px;background-color:#fef9c3;border-radius:6px;font-size:13px;color:#64748b;line-height:1.6;">Once your profile is complete, click the <strong>Yes, I&rsquo;m still interested</strong> button in the email again to finish reactivating your account.</p>
-    <a href="${dashboardUrl}" style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;background-color:#2563eb;text-decoration:none;border-radius:6px;">Update Profile</a>
+    <div style="width:64px;height:64px;border-radius:50%;background-color:#FBF0DD;border:2px solid #AD8A37;margin:0 auto 20px;font-size:28px;line-height:60px;color:#6E5418;">⚠</div>
+    <h1 style="margin:0 0 12px;font-size:24px;font-weight:700;color:#6E5418;">Profile Incomplete</h1>
+    <p style="margin:0 0 8px;font-size:15px;color:#3F3E38;line-height:1.6;">Before we can confirm your reactivation, please update your profile with the following missing information:</p>
+    <p style="margin:0 0 20px;font-size:15px;font-weight:600;color:#6E5418;">${items}</p>
+    <p style="margin:0 0 24px;padding:12px 16px;background-color:#FBF0DD;border-radius:6px;font-size:13px;color:#54524A;line-height:1.6;">Once your profile is complete, click the <strong>Yes, I&rsquo;m still interested</strong> button in the email again to finish reactivating your account.</p>
+    <a href="${dashboardUrl}" style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;background-color:#012A68;text-decoration:none;border-radius:6px;">Update Profile</a>
   `);
 }
 
 function errorPage(title: string, message: string): string {
   return page(title, `
-    <div style="width:64px;height:64px;border-radius:50%;background-color:#fef2f2;border:2px solid #dc2626;margin:0 auto 20px;font-size:28px;line-height:60px;color:#dc2626;">!</div>
-    <h1 style="margin:0 0 12px;font-size:24px;font-weight:700;color:#dc2626;">${title}</h1>
-    <p style="margin:0 0 4px;font-size:15px;color:#475569;line-height:1.6;">${message}</p>
+    <div style="width:64px;height:64px;border-radius:50%;background-color:#F9E9EA;border:2px solid #C32130;margin:0 auto 20px;font-size:28px;line-height:60px;color:#C32130;">!</div>
+    <h1 style="margin:0 0 12px;font-size:24px;font-weight:700;color:#C32130;">${title}</h1>
+    <p style="margin:0 0 4px;font-size:15px;color:#3F3E38;line-height:1.6;">${message}</p>
   `);
 }

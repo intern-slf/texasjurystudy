@@ -30,7 +30,7 @@ export default function ParticipantsLanding() {
           }}
         />
 
-        <div className="container mx-auto px-6 py-20 md:py-32">
+        <div className="container mx-auto px-0 sm:px-6 py-20 md:py-32">
           <div className="mx-auto max-w-4xl text-center space-y-6">
             <div className="inline-flex items-center rounded-full border border-primary/20 bg-primary/5 px-4 py-1.5 text-sm font-medium text-primary">
               <Sparkles className="h-3.5 w-3.5 mr-2" />
@@ -100,7 +100,7 @@ export default function ParticipantsLanding() {
       </section>
 
       {/* Benefits */}
-      <section className="container mx-auto px-6 py-24">
+      <section className="container mx-auto px-0 sm:px-6 py-24">
         <div className="mb-16 text-center max-w-3xl mx-auto">
           <span className="inline-block text-sm font-semibold text-primary uppercase tracking-widest">
             Why participants love this
@@ -160,7 +160,7 @@ export default function ParticipantsLanding() {
           }}
         />
 
-        <div className="container mx-auto px-6">
+        <div className="container mx-auto px-0 sm:px-6">
           <div className="mb-16 text-center max-w-3xl mx-auto">
             <span className="inline-block text-sm font-semibold text-primary uppercase tracking-widest">
               How it works
@@ -199,7 +199,7 @@ export default function ParticipantsLanding() {
       </section>
 
       {/* FAQ */}
-      <section className="container mx-auto px-6 py-24">
+      <section className="container mx-auto px-0 sm:px-6 py-24">
         <div className="mb-16 text-center max-w-3xl mx-auto">
           <span className="inline-block text-sm font-semibold text-primary uppercase tracking-widest">
             Questions answered
@@ -253,7 +253,7 @@ export default function ParticipantsLanding() {
       </section>
 
       {/* CTA */}
-      <section className="container mx-auto px-6 pb-24">
+      <section className="container mx-auto px-0 sm:px-6 pb-24">
         <div className="relative overflow-hidden rounded-3xl bg-primary px-6 py-16 text-center text-primary-foreground shadow-2xl shadow-primary/20 sm:px-16 md:py-20">
           <div
             className="absolute inset-0 opacity-[0.08]"
