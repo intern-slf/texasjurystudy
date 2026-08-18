@@ -42,12 +42,17 @@ const state: {
   rlsBlock: boolean;
   // participantId → email (for supabaseAdmin.auth.admin.getUserById)
   participantEmails: Map<string, string>;
+  // Participants with no auth.users row, as jury_participants_without_login()
+  // would report them. Answered outside the response queue so a test only has to
+  // opt in when the no-login guard is what it is testing.
+  noLoginIds: string[];
 } = {
   user: null,
   responses: [],
   captured: [],
   rlsBlock: false,
   participantEmails: new Map(),
+  noLoginIds: [],
 };
 
 function nextResponse(): Record<string, unknown> {
@@ -114,6 +119,11 @@ function makeClient() {
       },
     },
     from: vi.fn((table: string) => makeChainBuilder(table)),
+    rpc: vi.fn(async (fn: string) =>
+      fn === "jury_participants_without_login"
+        ? { data: [...state.noLoginIds], error: null }
+        : { data: null, error: { message: `unknown function ${fn}` } }
+    ),
   };
 }
 
@@ -177,6 +187,7 @@ describe("Sessions", () => {
     state.captured = [];
     state.rlsBlock = false;
     state.participantEmails = new Map();
+    state.noLoginIds = [];
     sendEmailSpy.mockClear();
     sendInviteAcceptedConfirmationEmailSpy.mockClear();
     sendInviteDeclinedConfirmationEmailSpy.mockClear();
@@ -523,6 +534,159 @@ describe("Sessions", () => {
           c.ops.some((o) => o.op === "insert")
       );
       expect(insertCall).toBeUndefined();
+      expect(sendEmailSpy).not.toHaveBeenCalled();
+    });
+
+    it("One FK-rejected participant does not block the rest of the batch", async () => {
+      // participant_id has an FK onto auth.users(id). A jury_participants row
+      // whose user never signed up fails with 23503, and that used to take the
+      // whole batch down: ten selected, zero invited, opaque 500.
+      state.responses = [
+        { data: [], error: null }, // roles guard
+        {
+          data: [
+            { user_id: "p-good", blacklisted_at: null, reactivation_status: "yes", email: "good@example.com", first_name: "Good", last_name: "Person" },
+            { user_id: "p-noauth", blacklisted_at: null, reactivation_status: "yes", email: "noauth@example.com", first_name: "No", last_name: "Account" },
+          ],
+          error: null,
+        },
+        // batch insert rejected
+        { data: null, error: { message: 'violates foreign key constraint "session_participants_participant_id_fkey"', code: "23503" } },
+        // retry: p-good succeeds
+        { data: [{ id: "invite-1", participant_id: "p-good", session_id: "session-1" }], error: null },
+        // retry: p-noauth rejected
+        { data: null, error: { message: 'violates foreign key constraint "session_participants_participant_id_fkey"', code: "23503" } },
+        // session_cases select for the email time
+        { data: [{ start_time: "14:00:00", end_time: "15:00:00" }], error: null },
+      ];
+
+      const result = await inviteParticipants("session-1", ["p-good", "p-noauth"], "2026-06-15");
+
+      // The good one still got in, and still got an email.
+      expect(result.invited).toBe(1);
+      expect(sendEmailSpy).toHaveBeenCalledTimes(1);
+      expect(sendEmailSpy.mock.calls[0][0].to).toBe("good@example.com");
+
+      // The bad one is named, with a human reason rather than a raw FK error.
+      expect(result.ok).toBe(false);
+      expect(result.rejected).toEqual(
+        expect.arrayContaining([expect.objectContaining({ name: "No Account" })])
+      );
+      expect(result.error).toMatch(/never created a login/i);
+    });
+
+    it("Never inserts a participant who has no login account", async () => {
+      // The FK failure this used to produce is the whole reason the batch died:
+      // participant_id references auth.users(id), so a profile that never became
+      // a login can never be invited. It is now dropped before the insert, and
+      // the rest of the selection goes out untouched.
+      state.noLoginIds = ["p-nologin"];
+      state.responses = [
+        { data: [], error: null }, // roles guard
+        {
+          data: [
+            { user_id: "p-good", blacklisted_at: null, reactivation_status: "yes", email: "good@example.com", first_name: "Good", last_name: "Person" },
+            { user_id: "p-nologin", blacklisted_at: null, reactivation_status: "yes", email: "nologin@example.com", first_name: "No", last_name: "Login" },
+          ],
+          error: null,
+        },
+        // insert().select() — only the invitable row is offered to the database
+        { data: [{ id: "invite-1", participant_id: "p-good", session_id: "session-1" }], error: null },
+        { data: [{ start_time: "14:00:00", end_time: "15:00:00" }], error: null },
+      ];
+
+      const result = await inviteParticipants("session-1", ["p-good", "p-nologin"], "2026-06-15");
+
+      const sp = state.captured.find(
+        (x) => x.table === "session_participants" && x.ops.some((o) => o.op === "insert")
+      )!;
+      const insert = sp.ops.find((o) => o.op === "insert") as {
+        op: "insert";
+        payload: Array<Record<string, unknown>>;
+      };
+      // The un-invitable id never reaches the database — no failed statement, no FK error.
+      expect(insert.payload.map((r) => r.participant_id)).toEqual(["p-good"]);
+
+      expect(result.invited).toBe(1);
+      expect(result.skipped.noAccount).toBe(1);
+      expect(result.ok).toBe(false);
+      expect(result.rejected).toEqual(
+        expect.arrayContaining([expect.objectContaining({ name: "No Login" })])
+      );
+      expect(result.error).toMatch(/never created a login/i);
+
+      // The healthy invitee still gets their email.
+      expect(sendEmailSpy).toHaveBeenCalledTimes(1);
+      expect(sendEmailSpy.mock.calls[0][0].to).toBe("good@example.com");
+    });
+
+    it("Inserts nothing when no selected participant has a login account", async () => {
+      state.noLoginIds = ["p-nologin"];
+      state.responses = [
+        { data: [], error: null }, // roles guard
+        {
+          data: [
+            { user_id: "p-nologin", blacklisted_at: null, reactivation_status: "yes", email: "nologin@example.com", first_name: "No", last_name: "Login" },
+          ],
+          error: null,
+        },
+      ];
+
+      const result = await inviteParticipants("session-1", ["p-nologin"], "2026-06-15");
+
+      const insertCall = state.captured.find(
+        (c) => c.table === "session_participants" && c.ops.some((o) => o.op === "insert")
+      );
+      expect(insertCall).toBeUndefined();
+      expect(result.ok).toBe(false);
+      expect(result.invited).toBe(0);
+      expect(result.skipped.noAccount).toBe(1);
+      expect(result.error).toMatch(/no login account/i);
+      expect(result.error).toMatch(/No Login/);
+      expect(sendEmailSpy).not.toHaveBeenCalled();
+    });
+
+    it("Resolves the invite email from jury_participants, not the auth admin API", async () => {
+      // An unreadable auth row ("Database error loading user") used to silently
+      // skip that person's invite email: row created, no mail, only a log line.
+      // participantEmails is left empty, so a getUserById fallback would find none.
+      state.responses = [
+        { data: [], error: null },
+        {
+          data: [
+            { user_id: "p-1", blacklisted_at: null, reactivation_status: "yes", email: "from-jury@example.com", first_name: "Jury", last_name: "Row" },
+          ],
+          error: null,
+        },
+        { data: [{ id: "invite-1", participant_id: "p-1", session_id: "session-1" }], error: null },
+        { data: [{ start_time: "14:00:00", end_time: "15:00:00" }], error: null },
+      ];
+
+      const result = await inviteParticipants("session-1", ["p-1"], "2026-06-15");
+
+      expect(result.ok).toBe(true);
+      expect(result.invited).toBe(1);
+      expect(sendEmailSpy).toHaveBeenCalledTimes(1);
+      expect(sendEmailSpy.mock.calls[0][0].to).toBe("from-jury@example.com");
+    });
+
+    it("Reports the all-skipped case as a failure, not a silent success", async () => {
+      state.responses = [
+        { data: [], error: null },
+        {
+          data: [
+            { user_id: "pending-1", blacklisted_at: null, reactivation_status: "pending", email: "p@example.com", first_name: "P", last_name: "One" },
+          ],
+          error: null,
+        },
+      ];
+
+      const result = await inviteParticipants("session-1", ["pending-1"], "2026-06-15");
+
+      expect(result.ok).toBe(false);
+      expect(result.invited).toBe(0);
+      expect(result.skipped.inactive).toBe(1);
+      expect(result.error).toMatch(/nobody was invited/i);
       expect(sendEmailSpy).not.toHaveBeenCalled();
     });
 
