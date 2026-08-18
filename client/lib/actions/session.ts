@@ -104,11 +104,49 @@ export async function addCasesToSession(
 /* =========================
    INVITE PARTICIPANTS
 ========================= */
+/**
+ * Outcome of an invite attempt. Returned rather than thrown so the caller can
+ * tell the admin what actually happened. Previously this function threw on
+ * failure — which in production surfaces as a bare 500 with an opaque digest —
+ * and returned `undefined` when every invitee was filtered out, so a session
+ * could be created with zero invites while the UI reported success.
+ */
+export type InviteResult = {
+  ok: boolean;
+  invited: number;
+  /** Dropped by the hard guards, by reason. */
+  skipped: { blacklisted: number; inactive: number };
+  /** Set when ok is false. Safe to show to an admin. */
+  error?: string;
+};
+
 export async function inviteParticipants(
   sessionId: string,
   participantIds: string[],
   sessionDate?: string
-) {
+): Promise<InviteResult> {
+  try {
+    return await inviteParticipantsInner(sessionId, participantIds, sessionDate);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(
+      `[inviteParticipants] FAILED for session ${sessionId} with ${participantIds.length} id(s): ${message}`,
+      err
+    );
+    return {
+      ok: false,
+      invited: 0,
+      skipped: { blacklisted: 0, inactive: 0 },
+      error: message,
+    };
+  }
+}
+
+async function inviteParticipantsInner(
+  sessionId: string,
+  participantIds: string[],
+  sessionDate?: string
+): Promise<InviteResult> {
   const supabase = await createClient();
 
   // ── Hard guard: blacklisted and non-active participants must NEVER be
@@ -157,9 +195,27 @@ export async function inviteParticipants(
       Array.from(inactiveSet)
     );
   }
+  const skipped = {
+    blacklisted: blacklistedSet.size,
+    inactive: inactiveSet.size,
+  };
+
   if (allowedIds.length === 0) {
     revalidatePath("/dashboard/Admin/sessions");
-    return;
+    // Not an error, but absolutely not a success either — say so, or the admin
+    // is told the invites went out when nobody was invited.
+    const reasons = [
+      skipped.inactive > 0 ? `${skipped.inactive} not active` : null,
+      skipped.blacklisted > 0 ? `${skipped.blacklisted} blacklisted` : null,
+    ].filter(Boolean).join(", ");
+    return {
+      ok: false,
+      invited: 0,
+      skipped,
+      error: reasons
+        ? `Nobody was invited — every selected participant was skipped (${reasons}).`
+        : "Nobody was invited — no valid participants were selected.",
+    };
   }
 
   const rows = allowedIds.map((id) => ({
@@ -168,12 +224,22 @@ export async function inviteParticipants(
     invite_status: "pending",
   }));
 
+  // Note this insert uses the caller-scoped client, not supabaseAdmin, so it is
+  // subject to RLS on session_participants. Name that in the message: a bare
+  // Postgres error here is indistinguishable from a bug, and "new row violates
+  // row-level security policy" is the single most likely failure.
   const { data: insertedRows, error } = await supabase
     .from("session_participants")
     .insert(rows)
     .select();
 
-  if (error) throw error;
+  if (error) {
+    throw new Error(
+      `Could not create invite rows for session ${sessionId} ` +
+      `(${rows.length} participant(s)): ${error.message}` +
+      (error.code ? ` [${error.code}]` : "")
+    );
+  }
 
   // Fetch case times for this session to include in emails
   const { data: sessionCaseRows } = await supabase
@@ -330,6 +396,12 @@ export async function inviteParticipants(
   }
 
   revalidatePath("/dashboard/Admin/sessions");
+
+  return {
+    ok: true,
+    invited: (insertedRows ?? []).length,
+    skipped,
+  };
 }
 
 /* =========================
