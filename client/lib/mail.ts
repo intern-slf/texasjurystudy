@@ -67,8 +67,14 @@ const transporter = nodemailer.createTransport({
   rateDelta: 1000,
   rateLimit: 5,
   auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
+    user: process.env.SMTP_USER?.trim(),
+    // A Gmail app password wrapped in quotes makes Gmail reject every send with
+    // "535-5.7.8 Username and Password not accepted", which reads like a revoked
+    // password rather than a formatting problem. .env files strip the quotes for
+    // us; dashboard env vars (Vercel) keep them verbatim, so strip them here.
+    // Whitespace is normalised too — harmless, since Google already ignores the
+    // spaces it displays app passwords with ("abcd efgh ijkl mnop").
+    pass: process.env.SMTP_PASS?.trim().replace(/^["']|["']$/g, '').replace(/\s+/g, ''),
   },
 });
 
