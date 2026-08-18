@@ -119,9 +119,51 @@ async function fetchCandidates(
   };
   let rawParticipants: RawParticipant[] = [];
   const minRequired = 350;
+  const idField = isOldData ? "id" : "user_id";
+
+  /* Ceiling on what this session can possibly yield.
+   *
+   * The loop below tops up towards `minRequired` by relaxing filters one level
+   * at a time, and breaks as soon as it has enough. When the eligible pool is
+   * smaller than minRequired that break is unreachable, so it ran every
+   * relaxation level for every session on the page — 8 full-table selects
+   * instead of 1, each with a growing NOT IN list. Adding the
+   * `reactivation_status` gate cut the pool to ~119 against a minRequired of
+   * 350 and made that the normal case rather than the edge case.
+   *
+   * Relaxing filters only ever widens the result set, so the count with the
+   * never-relaxed exclusions applied and no case filters is a true upper bound.
+   * One HEAD count replaces up to seven wasted selects.
+   *
+   * Keep these exclusions in step with the ones inside the loop.
+   */
+  let target = minRequired;
+  if (!isOldData) {
+    let countQuery = supabase
+      .from(testTable)
+      .select("*", { count: "exact", head: true })
+      .or(`eligible_after_at.is.null,eligible_after_at.lte.${nowIso}`)
+      .eq("approved_by_admin", true)
+      .is("blacklisted_at", null)
+      .eq("reactivation_status", ACTIVE_STATUS);
+
+    const ceilingExclusions = Array.from(
+      new Set([...blacklistedIds, ...allLineageIds, ...seenIds])
+    );
+    if (ceilingExclusions.length > 0) {
+      countQuery = countQuery.not(
+        idField,
+        "in",
+        `(${ceilingExclusions.map((id) => `"${id}"`).join(",")})`
+      );
+    }
+
+    const { count: poolCount } = await countQuery;
+    if (typeof poolCount === "number") target = Math.min(minRequired, poolCount);
+  }
 
   for (let level = 0; level <= FILTER_PRIORITY.length; level++) {
-    if (rawParticipants.length >= minRequired) break;
+    if (rawParticipants.length >= target) break;
 
     const currentFilters = relaxFilters(combinedFilters, level);
     let query = supabase.from(testTable).select("*");
@@ -140,11 +182,10 @@ async function fetchCandidates(
     }
 
     if (seenIds.size > 0) {
-      const idField = isOldData ? "id" : "user_id";
       query = query.not(idField, "in", `(${Array.from(seenIds).map((id) => `"${id}"`).join(",")})`);
     }
 
-    const { data: batch } = await query.limit(minRequired - rawParticipants.length + 20);
+    const { data: batch } = await query.limit(target - rawParticipants.length + 20);
 
     if (batch && batch.length > 0) {
       const shuffled = (batch as RawParticipant[]).sort(() => Math.random() - 0.5);
