@@ -69,6 +69,7 @@ export interface ParticipantRow {
   multiScore?: number;
   multiTotal?: number;
   casePassCount?: number;
+  eligible_after_at?: string | null;
   __score?: number;
   [key: string]: unknown;
 }
@@ -792,6 +793,21 @@ export function attachMultiCaseScores<P extends ParticipantRow>(
 
 
 /**
+ * Rank key for the cooldown tie-break, as a sortable number (ascending).
+ *
+ * A NULL / empty `eligible_after_at` means the participant has never been put on
+ * cooldown, so they get top priority (-Infinity). Everyone else is ordered by
+ * their cooldown timestamp ascending — the one whose cooldown lapsed longest ago
+ * comes first. An unparseable value is treated the same as empty.
+ */
+function eligibleAfterRank(p: ParticipantRow): number {
+  const raw = p.eligible_after_at;
+  if (raw === null || raw === undefined || raw === "") return -Infinity;
+  const ms = new Date(raw).getTime();
+  return Number.isNaN(ms) ? -Infinity : ms;
+}
+
+/**
  * Sort by multi-case score.
  */
 export function sortParticipantsByMultiCaseMatch<P extends ParticipantRow>(
@@ -804,7 +820,18 @@ export function sortParticipantsByMultiCaseMatch<P extends ParticipantRow>(
     }
 
     // 2️⃣ who has better overall score
-    return (b.multiScore ?? 0) - (a.multiScore ?? 0);
+    if ((a.multiScore ?? 0) !== (b.multiScore ?? 0)) {
+      return (b.multiScore ?? 0) - (a.multiScore ?? 0);
+    }
+
+    // 3️⃣ equal match quality — fall back to cooldown, oldest first,
+    //    never-on-cooldown (NULL / empty) ahead of everyone
+    const aRank = eligibleAfterRank(a);
+    const bRank = eligibleAfterRank(b);
+    // Both -Infinity compares equal, so the subtraction never yields NaN here.
+    if (aRank !== bRank) return aRank - bRank;
+
+    return 0;
   });
 }
 

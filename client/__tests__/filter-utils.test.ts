@@ -3,6 +3,7 @@ import {
   applyCaseFilters,
   combineCaseFilters,
   relaxFilters,
+  sortParticipantsByMultiCaseMatch,
   type CaseFilters,
 } from "@/lib/filter-utils";
 
@@ -212,5 +213,53 @@ describe("relaxFilters", () => {
   it("level beyond the priority list drops political_affiliation too", () => {
     const relaxed = relaxFilters(fullFilters, 10);
     expect(relaxed.political_affiliation).toBeUndefined();
+  });
+});
+
+describe("sortParticipantsByMultiCaseMatch", () => {
+  // Every row below is an equal-priority tie on the first two keys, so the
+  // ordering is decided entirely by the eligible_after_at tie-break.
+  const tied = (id: string, eligible_after_at: string | null | undefined) => ({
+    id,
+    casePassCount: 1,
+    multiScore: 5,
+    eligible_after_at,
+  });
+
+  it("breaks ties on eligible_after_at ascending, oldest cooldown first", () => {
+    const sorted = sortParticipantsByMultiCaseMatch([
+      tied("recent", "2026-08-01T00:00:00Z"),
+      tied("oldest", "2026-01-01T00:00:00Z"),
+      tied("middle", "2026-04-01T00:00:00Z"),
+    ]);
+    expect(sorted.map((p) => p.id)).toEqual(["oldest", "middle", "recent"]);
+  });
+
+  it("ranks NULL / empty / missing eligible_after_at above any timestamp", () => {
+    const sorted = sortParticipantsByMultiCaseMatch([
+      tied("dated", "2026-01-01T00:00:00Z"),
+      tied("null", null),
+      tied("empty", ""),
+      tied("missing", undefined),
+    ]);
+    expect(sorted[sorted.length - 1].id).toBe("dated");
+    expect(sorted.slice(0, 3).map((p) => p.id).sort()).toEqual([
+      "empty",
+      "missing",
+      "null",
+    ]);
+  });
+
+  it("still ranks case pass count and score above the cooldown tie-break", () => {
+    const sorted = sortParticipantsByMultiCaseMatch([
+      { id: "never-on-cooldown", casePassCount: 0, multiScore: 1, eligible_after_at: null },
+      { id: "best-match", casePassCount: 2, multiScore: 9, eligible_after_at: "2026-08-01T00:00:00Z" },
+      { id: "mid-match", casePassCount: 1, multiScore: 9, eligible_after_at: "2026-08-01T00:00:00Z" },
+    ]);
+    expect(sorted.map((p) => p.id)).toEqual([
+      "best-match",
+      "mid-match",
+      "never-on-cooldown",
+    ]);
   });
 });
