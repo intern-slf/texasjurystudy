@@ -959,6 +959,10 @@ export async function sendReactivationEmail(opts: {
             <li><strong>PayPal username</strong> &mdash; we pay exclusively via PayPal</li>
             <li><strong>Driver&rsquo;s License number and photo</strong> &mdash; to verify Texas residency</li>
           </ul>
+          <p style="margin:0 0 12px;font-size:14px;color:#7c2d12;line-height:1.7;">
+            Please note: there is a 2&ndash;3 dollar deduction for payments processed
+            through PayPal as the payment is categorized as a &ldquo;service&rdquo;.
+          </p>
           <p style="margin:0;font-size:14px;color:#7c2d12;line-height:1.7;">
             After clicking <em>Yes</em>, please log in and
             <a href="${profileEditUrl}" style="color:#c2410c;font-weight:700;text-decoration:underline;">update your profile</a>
