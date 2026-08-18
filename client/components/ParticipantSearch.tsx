@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { getUninvitableParticipantIds } from "@/lib/actions/session";
 
 interface SearchResult {
   id: string;
@@ -12,6 +13,45 @@ interface SearchResult {
   city?: string;
   date_of_birth?: string;
   political_affiliation?: string;
+  /** Only an explicit "yes" is an active panel member — see lib/participant/activeStatus. */
+  reactivation_status?: string | null;
+}
+
+/** Why a search hit cannot be added, or null if it can. */
+function blockedReason(
+  p: SearchResult,
+  blacklistedIds: Set<string>,
+  noLoginIds: Set<string>,
+  isOldData: boolean
+): { label: string; title: string; badgeClass: string } | null {
+  const pId = p.user_id || p.id;
+  if (pId && blacklistedIds.has(pId)) {
+    return {
+      label: "Blacklisted",
+      title: "This participant is blacklisted and cannot be added.",
+      badgeClass: "bg-red-50 text-red-700 border-red-200",
+    };
+  }
+  // No auth.users row: the invite insert would fail on the FK, so there is
+  // nothing to add. See lib/participant/loginAccount.
+  if (pId && noLoginIds.has(pId)) {
+    return {
+      label: "No login",
+      title:
+        "This person has a participant profile but never created a login, so there is no account to invite — they could not open the invitation, complete their profile, or be paid.",
+      badgeClass: "bg-slate-100 text-slate-600 border-slate-300",
+    };
+  }
+  // `oldData` has no reactivation_status column, so there is nothing to test there.
+  if (!isOldData && p.reactivation_status !== "yes") {
+    return {
+      label: "Not active",
+      title:
+        "Not an active panel member — they have not confirmed they are still interested in participating, so they cannot attend a session and cannot be invited.",
+      badgeClass: "bg-orange-50 text-orange-700 border-orange-200",
+    };
+  }
+  return null;
 }
 
 export default function ParticipantSearch({ testTable, isOldData }: { testTable: string; isOldData: boolean }) {
@@ -20,6 +60,7 @@ export default function ParticipantSearch({ testTable, isOldData }: { testTable:
   const [searching, setSearching] = useState(false);
   const [showResults, setShowResults] = useState(false);
   const [blacklistedIds, setBlacklistedIds] = useState<Set<string>>(new Set());
+  const [noLoginIds, setNoLoginIds] = useState<Set<string>>(new Set());
   const ref = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(null);
 
@@ -41,6 +82,18 @@ export default function ParticipantSearch({ testTable, isOldData }: { testTable:
         .select("user_id")
         .eq("role", "blacklisted");
       setBlacklistedIds(new Set((data ?? []).map((r: { user_id: string }) => r.user_id)));
+    })();
+  }, []);
+
+  // Same for participants with no login account. This one has to come from the
+  // server: auth.users is not readable with the browser's anon key.
+  useEffect(() => {
+    (async () => {
+      try {
+        setNoLoginIds(new Set(await getUninvitableParticipantIds()));
+      } catch (e) {
+        console.error("Could not load participants without a login:", e);
+      }
     })();
   }, []);
 
@@ -66,13 +119,19 @@ export default function ParticipantSearch({ testTable, isOldData }: { testTable:
       const supabase = createClient();
       const q = value.trim();
 
+      // reactivation_status comes back so non-active hits can be shown greyed out
+      // with a reason rather than silently offered and then dropped on invite.
+      const columns = isOldData
+        ? "id, user_id, first_name, last_name, email, city, date_of_birth, political_affiliation"
+        : "id, user_id, first_name, last_name, email, city, date_of_birth, political_affiliation, reactivation_status";
+
       const { data } = await supabase
         .from(testTable)
-        .select("id, user_id, first_name, last_name, email, city, date_of_birth, political_affiliation")
+        .select(columns)
         .or(`first_name.ilike.%${q}%,last_name.ilike.%${q}%,email.ilike.%${q}%`)
         .limit(50);
 
-      setResults(data ?? []);
+      setResults((data ?? []) as unknown as SearchResult[]);
       setSearching(false);
       setShowResults(true);
     }, 300);
@@ -89,8 +148,10 @@ export default function ParticipantSearch({ testTable, isOldData }: { testTable:
 
   function selectParticipant(p: SearchResult) {
     const pId = p.user_id || p.id;
-    // Blacklisted participants can never be added — no-op (also enforced server-side).
-    if (pId && blacklistedIds.has(pId)) return;
+    // Blacklisted, non-active and login-less participants can never be added —
+    // no-op. All three are also enforced server-side in inviteParticipants, which
+    // drops them; selecting one here would just produce an invite that never happens.
+    if (blockedReason(p, blacklistedIds, noLoginIds, isOldData)) return;
     // Check if checkbox already exists for this participant
     const existing = document.querySelector<HTMLInputElement>(`input[name="participants"][value="${pId}"]`);
     if (existing) {
@@ -182,18 +243,18 @@ export default function ParticipantSearch({ testTable, isOldData }: { testTable:
           ) : (
             results.map((p) => {
               const pId = p.user_id || p.id;
-              const isBlacklisted = !!pId && blacklistedIds.has(pId);
-              if (isBlacklisted) {
+              const blocked = blockedReason(p, blacklistedIds, noLoginIds, isOldData);
+              if (blocked) {
                 return (
                   <div
                     key={pId}
-                    title="This participant is blacklisted and cannot be added."
+                    title={blocked.title}
                     className="w-full text-left px-3 py-2 border-b last:border-b-0 bg-slate-50 opacity-60 cursor-not-allowed select-none"
                   >
                     <div className="font-medium text-sm text-slate-500 flex items-center gap-2">
                       <span>{p.first_name} {p.last_name}</span>
-                      <span className="px-1.5 py-0.5 rounded border text-[10px] font-semibold bg-red-50 text-red-700 border-red-200">
-                        Blacklisted
+                      <span className={`px-1.5 py-0.5 rounded border text-[10px] font-semibold ${blocked.badgeClass}`}>
+                        {blocked.label}
                       </span>
                     </div>
                     {p.email && <div className="text-xs text-slate-400">{p.email}</div>}
