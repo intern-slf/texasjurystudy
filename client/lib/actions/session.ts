@@ -248,6 +248,16 @@ export async function inviteParticipants(
             </tr>
           </table>
 
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f8fafc;border-left:4px solid #94a3b8;border-radius:6px;margin:0 0 24px;">
+            <tr>
+              <td style="padding:14px 20px;">
+                <p style="margin:0;font-size:14px;color:#475569;">
+                  <strong>About your payment:</strong> payment for this session is sent to the PayPal username on your profile. PayPal treats it as a &ldquo;service&rdquo; payment and takes a processing fee out of it, so the amount that reaches you is about <strong>$2 to $3 less</strong> than the session amount. That fee is PayPal&rsquo;s, not ours.
+                </p>
+              </td>
+            </tr>
+          </table>
+
           <p style="margin:0 0 16px;font-size:14px;color:#475569;font-weight:600;">Please respond to this invitation:</p>
 
           <table role="presentation" cellpadding="0" cellspacing="0">
