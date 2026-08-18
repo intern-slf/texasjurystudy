@@ -6,6 +6,7 @@ import {
   notifyRequesteesSessionCreated,
 } from "@/lib/actions/session";
 import { redirect } from "next/navigation";
+import { ACTIVE_STATUS } from "@/lib/participant/activeStatus";
 import CreateSessionButton from "@/components/CreateSessionButton";
 import CaseTimeInputs from "@/components/CaseTimeInputs";
 import TimezoneInput from "@/components/TimezoneInput";
@@ -202,6 +203,9 @@ export default async function NewSessionPage({
       query = query.or(`eligible_after_at.is.null,eligible_after_at.lte.${nowIso}`);
       // 3. Only show verified (approved) participants — exclude new/unapproved and blacklisted
       query = query.eq("approved_by_admin", true).is("blacklisted_at", null);
+      // 4. Only active panel members may attend, so never recommend anyone else.
+      //    Enforced for real in inviteParticipants.
+      query = query.eq("reactivation_status", ACTIVE_STATUS);
     }
     // ─────────────────────────────────────────────────────────────────
 
