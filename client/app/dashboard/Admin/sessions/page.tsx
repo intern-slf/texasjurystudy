@@ -14,6 +14,7 @@ import {
 } from "@/lib/filter-utils";
 import { getBlockedParticipantIdsForCases } from "@/lib/case-lineage";
 import { ACTIVE_STATUS } from "@/lib/participant/activeStatus";
+import { getAllIdsWithoutLogin } from "@/lib/participant/loginAccount";
 import InviteMoreModal, { type Candidate } from "@/components/InviteMoreModal";
 import RescheduleModal from "@/components/RescheduleModal";
 import ReplaceCaseModal, { type ReplacementCandidate } from "@/components/ReplaceCaseModal";
@@ -34,7 +35,9 @@ async function fetchCandidates(
   caseIds: string[],
   alreadyInvitedIds: Set<string>,
   testTable: "jury_participants" | "oldData",
-  blacklistedIds: string[]
+  blacklistedIds: string[],
+  /** Profiles with no login — invites for them fail FK 23503, so never offer them. */
+  noLoginIds: string[]
 ): Promise<Candidate[]> {
   if (!caseIds.length) return [];
 
@@ -148,7 +151,7 @@ async function fetchCandidates(
       .eq("reactivation_status", ACTIVE_STATUS);
 
     const ceilingExclusions = Array.from(
-      new Set([...blacklistedIds, ...allLineageIds, ...seenIds])
+      new Set([...blacklistedIds, ...noLoginIds, ...allLineageIds, ...seenIds])
     );
     if (ceilingExclusions.length > 0) {
       countQuery = countQuery.not(
@@ -170,7 +173,7 @@ async function fetchCandidates(
     query = applyCaseFilters(query, currentFilters);
 
     if (!isOldData) {
-      const exclusions = Array.from(new Set([...blacklistedIds, ...allLineageIds]));
+      const exclusions = Array.from(new Set([...blacklistedIds, ...noLoginIds, ...allLineageIds]));
       if (exclusions.length > 0) {
         query = query.not("user_id", "in", `(${exclusions.map((id) => `"${id}"`).join(",")})`);
       }
@@ -272,13 +275,19 @@ export default async function SessionsPage({
   // and only when the upcoming tab (the only tab that shows candidates) is active.
   let testTable: "jury_participants" | "oldData" = "jury_participants";
   let blacklistedIds: string[] = [];
+  let noLoginIds: string[] = [];
   if (activeTab === "upcoming") {
-    const [{ count }, { data: blacklistedRoles }] = await Promise.all([
+    const [{ count }, { data: blacklistedRoles }, noLoginSet] = await Promise.all([
       supabase.from("jury_participants").select("*", { count: "exact", head: true }),
       supabase.from("roles").select("user_id").eq("role", "blacklisted"),
+      // Profiles with no auth.users row can never be invited — see
+      // lib/participant/loginAccount. Excluded here so the recommended list
+      // never offers someone whose invite would fail on the FK.
+      getAllIdsWithoutLogin(),
     ]);
     testTable = count === 0 || count === null ? "oldData" : "jury_participants";
     blacklistedIds = (blacklistedRoles ?? []).map((r: { user_id: string }) => r.user_id);
+    noLoginIds = Array.from(noLoginSet);
   }
 
   /* =========================
@@ -364,7 +373,7 @@ export default async function SessionsPage({
       const alreadyInvitedSet = new Set(participantIds);
       const candidates =
         activeTab === "upcoming"
-          ? await fetchCandidates(supabase, caseIds, alreadyInvitedSet, testTable, blacklistedIds)
+          ? await fetchCandidates(supabase, caseIds, alreadyInvitedSet, testTable, blacklistedIds, noLoginIds)
           : [];
 
       return { s, scases, caseDetails, alreadySubmitted, canNotify, sParticipants, participantDetails, candidates };
