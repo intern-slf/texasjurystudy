@@ -23,6 +23,8 @@ export interface Candidate {
   blacklisted?: boolean;
   /** Already used on one of this session's cases or its follow-up chain. */
   lineageBlocked?: boolean;
+  /** Not an active panel member — `reactivation_status` is not "yes". */
+  inactive?: boolean;
   matchLevel?: number;
   filterChecks?: {
     key: string;
@@ -125,9 +127,9 @@ function FilterChecks({ filterChecks, matchLevel }: { filterChecks: Candidate["f
 
 const INITIAL_VISIBLE = 20;
 
-/** Blacklisted and lineage-blocked participants are listed but never selectable. */
+/** Blacklisted, lineage-blocked and non-active participants are listed but never selectable. */
 function isBlocked(p: Candidate): boolean {
-  return Boolean(p.blacklisted || p.lineageBlocked);
+  return Boolean(p.blacklisted || p.lineageBlocked || p.inactive);
 }
 
 function blockReason(p: Candidate): { label: string; title: string; badgeClass: string } {
@@ -136,6 +138,14 @@ function blockReason(p: Candidate): { label: string; title: string; badgeClass: 
       label: "Blacklisted",
       title: "This participant is blacklisted and cannot be invited.",
       badgeClass: "bg-red-50 text-red-700 border-red-200",
+    };
+  }
+  if (p.inactive) {
+    return {
+      label: "Not active",
+      title:
+        "Not an active panel member — they have not confirmed they are still interested in participating, so they cannot attend a session.",
+      badgeClass: "bg-orange-50 text-orange-700 border-orange-200",
     };
   }
   return {
