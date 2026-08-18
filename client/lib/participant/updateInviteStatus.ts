@@ -2,6 +2,7 @@
 
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { sendInviteAcceptedConfirmationEmail, sendInviteDeclinedConfirmationEmail, sendSessionFullEmail, sendZoomLinkEmail } from "@/lib/mail";
+import { isActiveStatus } from "@/lib/participant/activeStatus";
 
 /* =========================
    CHECK IF SESSION HAS REACHED ITS PARTICIPANT CAP
@@ -30,7 +31,8 @@ export async function updateInviteStatus(
 ) {
   console.log(`[updateInviteStatus] Updating ${sessionParticipantId} to ${status}`);
 
-  // 0. If accepting, check session capacity and required profile fields
+  // 0. If accepting, check active panel status, session capacity and required
+  //    profile fields
   if (status === "accepted") {
     const { data: inviteRow } = await supabaseAdmin
       .from("session_participants")
@@ -46,9 +48,16 @@ export async function updateInviteStatus(
 
       const { data: profile } = await supabaseAdmin
         .from("jury_participants")
-        .select("paypal_username, driver_license_number, driver_license_image_url")
+        .select("paypal_username, driver_license_number, driver_license_image_url, reactivation_status")
         .eq("user_id", inviteRow.participant_id)
         .single();
+
+      // Only active panel members may attend. Checked before the profile gate so
+      // someone who is no longer active isn't sent off to fill in a DL and PayPal
+      // for a session they still can't join.
+      if (profile && !isActiveStatus(profile.reactivation_status)) {
+        return { blocked: true, reason: "inactive" } as const;
+      }
 
       const missing: string[] = [];
       if (!profile?.driver_license_number || !profile?.driver_license_image_url) missing.push("dl");

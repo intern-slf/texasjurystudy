@@ -8,6 +8,7 @@ import { checkAndNotifySessionFull } from "@/lib/participant/updateInviteStatus"
 import { recordBackoutStrike } from "@/lib/actions/participantFlags";
 import { generateEmailActionToken } from "@/lib/emailActionToken";
 import { getBlockedParticipantIdsForCases } from "@/lib/case-lineage";
+import { ACTIVE_STATUS, isActiveStatus, isParticipantActive } from "@/lib/participant/activeStatus";
 import { revalidatePath } from "next/cache";
 import { localToUTC, localToUTCTime } from "@/lib/timezone";
 
@@ -110,15 +111,19 @@ export async function inviteParticipants(
 ) {
   const supabase = await createClient();
 
-  // ── Hard guard: blacklisted participants must NEVER be invited/added, no matter
-  //    which caller reaches here (admin new-session, invite-more, requestee-add,
-  //    or a tampered/stale client). Checked with the service role so RLS can't make
-  //    the guard silently pass. Both markers (roles + jury_participants) are checked
-  //    in case they ever drift out of sync.
+  // ── Hard guard: blacklisted and non-active participants must NEVER be
+  //    invited/added, no matter which caller reaches here (admin new-session,
+  //    invite-more, requestee-add, or a tampered/stale client). Checked with the
+  //    service role so RLS can't make the guard silently pass. For blacklist,
+  //    both markers (roles + jury_participants) are checked in case they ever
+  //    drift out of sync.
   const uniqueIds = Array.from(new Set(participantIds));
   const [{ data: blByRole }, { data: jpRows }] = await Promise.all([
     supabaseAdmin.from("roles").select("user_id").eq("role", "blacklisted").in("user_id", uniqueIds),
-    supabaseAdmin.from("jury_participants").select("user_id, blacklisted_at").in("user_id", uniqueIds),
+    supabaseAdmin
+      .from("jury_participants")
+      .select("user_id, blacklisted_at, reactivation_status")
+      .in("user_id", uniqueIds),
   ]);
   const blacklistedSet = new Set<string>([
     ...((blByRole ?? []).map((r: { user_id: string }) => r.user_id)),
@@ -126,12 +131,30 @@ export async function inviteParticipants(
       .filter((r: { blacklisted_at: string | null }) => r.blacklisted_at != null)
       .map((r: { user_id: string }) => r.user_id)),
   ]);
-  const allowedIds = uniqueIds.filter((id) => !blacklistedSet.has(id));
+
+  // Only an explicit reactivation_status of "yes" may attend. Judged off the rows
+  // we could actually read, for the reason documented in lib/participant/activeStatus.
+  const inactiveSet = new Set<string>(
+    (jpRows ?? [])
+      .filter((r: { reactivation_status: string | null }) => !isActiveStatus(r.reactivation_status))
+      .map((r: { user_id: string }) => r.user_id)
+  );
+
+  const allowedIds = uniqueIds.filter(
+    (id) => !blacklistedSet.has(id) && !inactiveSet.has(id)
+  );
 
   if (blacklistedSet.size > 0) {
     console.warn(
       `[inviteParticipants] Blocked ${blacklistedSet.size} blacklisted participant(s) from session ${sessionId}:`,
       Array.from(blacklistedSet)
+    );
+  }
+  if (inactiveSet.size > 0) {
+    console.warn(
+      `[inviteParticipants] Blocked ${inactiveSet.size} non-active participant(s) from session ${sessionId} ` +
+      `(reactivation_status must be "${ACTIVE_STATUS}"):`,
+      Array.from(inactiveSet)
     );
   }
   if (allowedIds.length === 0) {
@@ -503,6 +526,17 @@ export async function adminRespondOnBehalf(
   action: "accepted" | "rejected"
 ) {
   const supabase = await createClient();
+
+  // Accepting on someone's behalf still puts them in the session, so it obeys the
+  // same active-panel rule as a self-accept. Rejecting is always allowed.
+  // Reachable for invites that predate the rule — new ones can't be created for a
+  // non-active participant at all (see inviteParticipants).
+  if (action === "accepted" && !(await isParticipantActive(participantId))) {
+    throw new Error(
+      "This participant is not active (they have not confirmed they are still " +
+      `interested), so they cannot attend. Set their Active status to "${ACTIVE_STATUS}" first.`
+    );
+  }
 
   const { error } = await supabase
     .from("session_participants")
@@ -965,7 +999,7 @@ export async function searchEligibleParticipants(
   };
   const mapRow = (
     p: SearchResultRow,
-    flags: { blacklisted?: boolean; lineageBlocked?: boolean } = {}
+    flags: { blacklisted?: boolean; lineageBlocked?: boolean; inactive?: boolean } = {}
   ) => ({
     id: p.user_id || p.id,
     first_name: p.first_name,
@@ -975,9 +1009,10 @@ export async function searchEligibleParticipants(
     political_affiliation: p.political_affiliation,
     blacklisted: flags.blacklisted ?? false,
     lineageBlocked: flags.lineageBlocked ?? false,
+    inactive: flags.inactive ?? false,
   });
 
-  // ── Eligible participants (approved, not blacklisted, not in lineage, not already invited) ──
+  // ── Eligible participants (active, approved, not blacklisted, not in lineage, not already invited) ──
   const eligibleExcludeIds = Array.from(
     new Set([...alreadyInvitedIds, ...blacklistedIds, ...lineageBlockedIds])
   );
@@ -986,7 +1021,8 @@ export async function searchEligibleParticipants(
     q = q
       .or(`eligible_after_at.is.null,eligible_after_at.lte.${nowIso}`)
       .eq("approved_by_admin", true)
-      .is("blacklisted_at", null);
+      .is("blacklisted_at", null)
+      .eq("reactivation_status", ACTIVE_STATUS);
   }
   if (eligibleExcludeIds.length > 0) {
     q = q.not(idField, "in", `(${eligibleExcludeIds.map((id) => `"${id}"`).join(",")})`);
@@ -1022,13 +1058,41 @@ export async function searchEligibleParticipants(
   // ── Blacklisted matches (surfaced greyed-out, never invitable) ──
   const blacklistedToShow = blacklistedIds.filter((id) => !alreadyInvitedSet.has(id));
 
-  const [lineageBlocked, blacklisted] = await Promise.all([
+  // ── Non-active matches (reactivation_status not "yes") ──
+  //    Surfaced greyed-out so an admin searching a known name sees *why* they
+  //    aren't offered, rather than an empty result. Unlike the other two groups
+  //    there is no id list to fetch by, so this queries on the status directly.
+  const fetchInactive = async () => {
+    if (isOldData) return [];
+    let iq = supabase
+      .from(testTable)
+      .select("*")
+      .eq("approved_by_admin", true)
+      .is("blacklisted_at", null)
+      .or(`reactivation_status.neq.${ACTIVE_STATUS},reactivation_status.is.null`);
+
+    const excludeIds = Array.from(
+      new Set([...alreadyInvitedIds, ...blacklistedIds, ...lineageBlockedIds])
+    );
+    if (excludeIds.length > 0) {
+      iq = iq.not(idField, "in", `(${excludeIds.map((id) => `"${id}"`).join(",")})`);
+    }
+    if (query.trim()) {
+      const term = query.trim().toLowerCase();
+      iq = iq.or(`first_name.ilike.%${term}%,last_name.ilike.%${term}%`);
+    }
+    const { data } = await iq.limit(50);
+    return ((data ?? []) as SearchResultRow[]).map((p) => mapRow(p, { inactive: true }));
+  };
+
+  const [lineageBlocked, blacklisted, inactive] = await Promise.all([
     fetchFlagged(lineageToShow, { lineageBlocked: true }),
     fetchFlagged(blacklistedToShow, { blacklisted: true }),
+    fetchInactive(),
   ]);
 
   // Eligible first, then the greyed-out groups
-  return [...eligible, ...lineageBlocked, ...blacklisted];
+  return [...eligible, ...lineageBlocked, ...blacklisted, ...inactive];
 }
 
 /* =========================

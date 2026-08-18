@@ -13,6 +13,7 @@ import {
   sortParticipantsByMultiCaseMatch,
 } from "@/lib/filter-utils";
 import { getBlockedParticipantIdsForCases } from "@/lib/case-lineage";
+import { ACTIVE_STATUS } from "@/lib/participant/activeStatus";
 import InviteMoreModal, { type Candidate } from "@/components/InviteMoreModal";
 import RescheduleModal from "@/components/RescheduleModal";
 import ReplaceCaseModal, { type ReplacementCandidate } from "@/components/ReplaceCaseModal";
@@ -133,6 +134,9 @@ async function fetchCandidates(
       }
       query = query.or(`eligible_after_at.is.null,eligible_after_at.lte.${nowIso}`);
       query = query.eq("approved_by_admin", true).is("blacklisted_at", null);
+      // Only active panel members may attend (enforced in inviteParticipants), so
+      // the recommended list never offers anyone else.
+      query = query.eq("reactivation_status", ACTIVE_STATUS);
     }
 
     if (seenIds.size > 0) {
