@@ -29,7 +29,7 @@ export const MAILING_ADDRESS: string | null = null;
 export const EFFECTIVE_DATE = "2026-07-28";
 
 /** ISO yyyy-mm-dd. */
-export const LAST_UPDATED = "2026-07-28";
+export const LAST_UPDATED = "2026-08-18";
 
 const MONTH_NAMES = [
   "January",

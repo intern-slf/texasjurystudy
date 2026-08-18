@@ -184,6 +184,13 @@ const SECTIONS: Section[] = [
           you if it is wrong.
         </p>
         <p>
+          Payment is sent as a PayPal &ldquo;service&rdquo; payment, and PayPal
+          takes a processing fee out of it &mdash; in practice about $2 to $3.
+          That fee is PayPal&rsquo;s, not ours, and it comes off the amount
+          stated in your invitation, so what lands in your account is that
+          amount less the fee.
+        </p>
+        <p>
           Payments are made to you as an independent participant, not as an
           employee. You are responsible for any tax you owe on them, and we may
           need tax information from you before paying if your total payments

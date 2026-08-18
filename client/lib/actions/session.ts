@@ -7,6 +7,8 @@ import type { PresenterParticipantInfo, PresenterCaseInfo } from "@/lib/mail";
 import { checkAndNotifySessionFull } from "@/lib/participant/updateInviteStatus";
 import { recordBackoutStrike } from "@/lib/actions/participantFlags";
 import { generateEmailActionToken } from "@/lib/emailActionToken";
+import { getBlockedParticipantIdsForCases } from "@/lib/case-lineage";
+import { ACTIVE_STATUS, isActiveStatus, isParticipantActive } from "@/lib/participant/activeStatus";
 import { revalidatePath } from "next/cache";
 import { localToUTC, localToUTCTime } from "@/lib/timezone";
 
@@ -109,15 +111,19 @@ export async function inviteParticipants(
 ) {
   const supabase = await createClient();
 
-  // ── Hard guard: blacklisted participants must NEVER be invited/added, no matter
-  //    which caller reaches here (admin new-session, invite-more, requestee-add,
-  //    or a tampered/stale client). Checked with the service role so RLS can't make
-  //    the guard silently pass. Both markers (roles + jury_participants) are checked
-  //    in case they ever drift out of sync.
+  // ── Hard guard: blacklisted and non-active participants must NEVER be
+  //    invited/added, no matter which caller reaches here (admin new-session,
+  //    invite-more, requestee-add, or a tampered/stale client). Checked with the
+  //    service role so RLS can't make the guard silently pass. For blacklist,
+  //    both markers (roles + jury_participants) are checked in case they ever
+  //    drift out of sync.
   const uniqueIds = Array.from(new Set(participantIds));
   const [{ data: blByRole }, { data: jpRows }] = await Promise.all([
     supabaseAdmin.from("roles").select("user_id").eq("role", "blacklisted").in("user_id", uniqueIds),
-    supabaseAdmin.from("jury_participants").select("user_id, blacklisted_at").in("user_id", uniqueIds),
+    supabaseAdmin
+      .from("jury_participants")
+      .select("user_id, blacklisted_at, reactivation_status")
+      .in("user_id", uniqueIds),
   ]);
   const blacklistedSet = new Set<string>([
     ...((blByRole ?? []).map((r: { user_id: string }) => r.user_id)),
@@ -125,12 +131,30 @@ export async function inviteParticipants(
       .filter((r: { blacklisted_at: string | null }) => r.blacklisted_at != null)
       .map((r: { user_id: string }) => r.user_id)),
   ]);
-  const allowedIds = uniqueIds.filter((id) => !blacklistedSet.has(id));
+
+  // Only an explicit reactivation_status of "yes" may attend. Judged off the rows
+  // we could actually read, for the reason documented in lib/participant/activeStatus.
+  const inactiveSet = new Set<string>(
+    (jpRows ?? [])
+      .filter((r: { reactivation_status: string | null }) => !isActiveStatus(r.reactivation_status))
+      .map((r: { user_id: string }) => r.user_id)
+  );
+
+  const allowedIds = uniqueIds.filter(
+    (id) => !blacklistedSet.has(id) && !inactiveSet.has(id)
+  );
 
   if (blacklistedSet.size > 0) {
     console.warn(
       `[inviteParticipants] Blocked ${blacklistedSet.size} blacklisted participant(s) from session ${sessionId}:`,
       Array.from(blacklistedSet)
+    );
+  }
+  if (inactiveSet.size > 0) {
+    console.warn(
+      `[inviteParticipants] Blocked ${inactiveSet.size} non-active participant(s) from session ${sessionId} ` +
+      `(reactivation_status must be "${ACTIVE_STATUS}"):`,
+      Array.from(inactiveSet)
     );
   }
   if (allowedIds.length === 0) {
@@ -243,6 +267,16 @@ export async function inviteParticipants(
               <td style="padding:12px 20px;">
                 <p style="margin:0 0 2px;font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.08em;">Session Time</p>
                 <p style="margin:0;font-size:16px;font-weight:600;color:#1e293b;">${timeStr}</p>
+              </td>
+            </tr>
+          </table>
+
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f8fafc;border-left:4px solid #94a3b8;border-radius:6px;margin:0 0 24px;">
+            <tr>
+              <td style="padding:14px 20px;">
+                <p style="margin:0;font-size:14px;color:#475569;">
+                  <strong>About your payment:</strong> payment for this session is sent to the PayPal username on your profile. PayPal treats it as a &ldquo;service&rdquo; payment and takes a processing fee out of it, so the amount that reaches you is about <strong>$2 to $3 less</strong> than the session amount. That fee is PayPal&rsquo;s, not ours.
+                </p>
               </td>
             </tr>
           </table>
@@ -503,6 +537,17 @@ export async function adminRespondOnBehalf(
 ) {
   const supabase = await createClient();
 
+  // Accepting on someone's behalf still puts them in the session, so it obeys the
+  // same active-panel rule as a self-accept. Rejecting is always allowed.
+  // Reachable for invites that predate the rule — new ones can't be created for a
+  // non-active participant at all (see inviteParticipants).
+  if (action === "accepted" && !(await isParticipantActive(participantId))) {
+    throw new Error(
+      "This participant is not active (they have not confirmed they are still " +
+      `interested), so they cannot attend. Set their Active status to "${ACTIVE_STATUS}" first.`
+    );
+  }
+
   const { error } = await supabase
     .from("session_participants")
     .update({ invite_status: action, responded_at: new Date().toISOString() })
@@ -603,13 +648,22 @@ export async function adminRespondOnBehalf(
 /* =========================
    FLAG PARTICIPANT (no-show / back-out strike)
    Standalone manual admin action — completely independent of Accept/Decline on
-   behalf and their email logic. Records one strike; recordBackoutStrike
-   auto-blacklists the participant once they reach the flag limit.
+   behalf and their email logic. Records one strike against THIS session;
+   recordBackoutStrike stamps the session's invite row, bumps the running
+   counter, and auto-blacklists the participant once they reach the flag limit.
 ========================= */
-export async function flagParticipant(participantId: string) {
-  await recordBackoutStrike(participantId);
+export async function flagParticipant(participantId: string, sessionId: string) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  await recordBackoutStrike(participantId, sessionId, user?.id);
+
   revalidatePath("/dashboard/Admin/sessions");
   revalidatePath("/dashboard/Admin/participants");
+  // The case page shows "Striked" on its session roster, so it has to re-render too.
+  revalidatePath("/dashboard/Admin", "layout");
 }
 
 /* =========================
@@ -844,17 +898,76 @@ export async function replaceCaseInSession(
 }
 
 /* =========================
+   SESSION LINEAGE BLOCK LIST (cached)
+   A lineage walk is several sequential round-trips (ancestors are chased one
+   level at a time), and the Invite More search fires one per debounced
+   keystroke. Cache the per-session result briefly so a burst of typing costs one
+   walk instead of one per query.
+
+   Instance-local and short-lived on purpose: a stale entry only affects which
+   rows are greyed out as "Already used". It can never let someone be invited who
+   shouldn't be — the recommended list recomputes the same set on every page
+   render, and blacklist is enforced server-side in inviteParticipants.
+========================= */
+const BLOCKED_IDS_TTL_MS = 30_000;
+const blockedIdsCache = new Map<string, { ids: string[]; at: number }>();
+
+async function getSessionBlockedParticipantIds(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  sessionId: string,
+): Promise<string[]> {
+  const now = Date.now();
+  const hit = blockedIdsCache.get(sessionId);
+  if (hit && now - hit.at < BLOCKED_IDS_TTL_MS) return hit.ids;
+
+  // Drop expired entries so a long-lived instance doesn't accumulate sessions.
+  for (const [key, entry] of blockedIdsCache) {
+    if (now - entry.at >= BLOCKED_IDS_TTL_MS) blockedIdsCache.delete(key);
+  }
+
+  const { data: sessionCaseRows } = await supabase
+    .from("session_cases")
+    .select("case_id")
+    .eq("session_id", sessionId);
+
+  const caseIds = (sessionCaseRows ?? [])
+    .map((r: { case_id: string | null }) => r.case_id)
+    .filter((id): id is string => Boolean(id));
+
+  const ids = await getBlockedParticipantIdsForCases(caseIds, supabase);
+  blockedIdsCache.set(sessionId, { ids, at: now });
+  return ids;
+}
+
+/* =========================
    SEARCH ELIGIBLE PARTICIPANTS
    Excludes: ineligible (eligible_after_at), already invited to this session.
-   Blacklisted participants are NOT hidden — they are returned with `blacklisted: true`
-   so the UI can grey them out (they can never actually be invited; inviteParticipants
-   enforces that server-side).
+   Blacklisted and lineage-blocked participants are NOT hidden — they come back
+   flagged (`blacklisted` / `lineageBlocked`) so the UI can grey them out and say
+   why. Neither can actually be invited: blacklist is enforced server-side by
+   inviteParticipants, and lineage-blocked rows carry no selectable checkbox.
 ========================= */
 export async function searchEligibleParticipants(
   sessionId: string,
   query: string,
 ) {
   const supabase = await createClient();
+
+  // 0. Admin-only. This is a server action, so it is reachable by any signed-in
+  //    user who knows a session id — and its lineage result is cached per
+  //    session, so every caller must have the same read scope or a narrower
+  //    (RLS-filtered) caller could seed a short-lived under-filled block list.
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const { data: roleRow } = await supabase
+    .from("roles")
+    .select("role")
+    .eq("user_id", user.id)
+    .single();
+  if (roleRow?.role !== "admin") throw new Error("Not authorized");
 
   // 1. Get already-invited participant IDs for this session
   const { data: sessionParts } = await supabase
@@ -870,6 +983,11 @@ export async function searchEligibleParticipants(
     .select("user_id")
     .eq("role", "blacklisted");
   const blacklistedIds = (blacklistedRoles ?? []).map((r: { user_id: string }) => r.user_id);
+  const blacklistedSet = new Set(blacklistedIds);
+
+  // 3. Participants already spent on this session's cases or their follow-up
+  //    chains. Same rule the recommended list uses, so the two agree.
+  const lineageBlockedIds = await getSessionBlockedParticipantIds(supabase, sessionId);
 
   const { count } = await supabase
     .from("jury_participants")
@@ -889,24 +1007,32 @@ export async function searchEligibleParticipants(
     date_of_birth?: string | null;
     political_affiliation?: string | null;
   };
-  const mapRow = (p: SearchResultRow, blacklisted: boolean) => ({
+  const mapRow = (
+    p: SearchResultRow,
+    flags: { blacklisted?: boolean; lineageBlocked?: boolean; inactive?: boolean } = {}
+  ) => ({
     id: p.user_id || p.id,
     first_name: p.first_name,
     last_name: p.last_name,
     city: p.city,
     date_of_birth: p.date_of_birth,
     political_affiliation: p.political_affiliation,
-    blacklisted,
+    blacklisted: flags.blacklisted ?? false,
+    lineageBlocked: flags.lineageBlocked ?? false,
+    inactive: flags.inactive ?? false,
   });
 
-  // ── Eligible participants (approved, not blacklisted, not already invited) ──
-  const eligibleExcludeIds = Array.from(new Set([...alreadyInvitedIds, ...blacklistedIds]));
+  // ── Eligible participants (active, approved, not blacklisted, not in lineage, not already invited) ──
+  const eligibleExcludeIds = Array.from(
+    new Set([...alreadyInvitedIds, ...blacklistedIds, ...lineageBlockedIds])
+  );
   let q = supabase.from(testTable).select("*");
   if (!isOldData) {
     q = q
       .or(`eligible_after_at.is.null,eligible_after_at.lte.${nowIso}`)
       .eq("approved_by_admin", true)
-      .is("blacklisted_at", null);
+      .is("blacklisted_at", null)
+      .eq("reactivation_status", ACTIVE_STATUS);
   }
   if (eligibleExcludeIds.length > 0) {
     q = q.not(idField, "in", `(${eligibleExcludeIds.map((id) => `"${id}"`).join(",")})`);
@@ -917,26 +1043,66 @@ export async function searchEligibleParticipants(
   }
   const { data: eligibleData, error } = await q.limit(50);
   if (error) throw error;
-  const eligible = ((eligibleData ?? []) as SearchResultRow[]).map((p) => mapRow(p, false));
+  const eligible = ((eligibleData ?? []) as SearchResultRow[]).map((p) => mapRow(p));
+
+  // Fetch a flagged group by id, honouring the same name search.
+  const fetchFlagged = async (
+    ids: string[],
+    flags: { blacklisted?: boolean; lineageBlocked?: boolean }
+  ) => {
+    if (!ids.length) return [];
+    let fq = supabase.from(testTable).select("*").in(idField, ids);
+    if (query.trim()) {
+      const term = query.trim().toLowerCase();
+      fq = fq.or(`first_name.ilike.%${term}%,last_name.ilike.%${term}%`);
+    }
+    const { data } = await fq.limit(50);
+    return ((data ?? []) as SearchResultRow[]).map((p) => mapRow(p, flags));
+  };
+
+  // ── Lineage-blocked (already used on these cases or their follow-ups) ──
+  const lineageToShow = lineageBlockedIds.filter(
+    (id) => !alreadyInvitedSet.has(id) && !blacklistedSet.has(id)
+  );
 
   // ── Blacklisted matches (surfaced greyed-out, never invitable) ──
   const blacklistedToShow = blacklistedIds.filter((id) => !alreadyInvitedSet.has(id));
-  let blacklisted: ReturnType<typeof mapRow>[] = [];
-  if (blacklistedToShow.length > 0) {
-    let bq = supabase
+
+  // ── Non-active matches (reactivation_status not "yes") ──
+  //    Surfaced greyed-out so an admin searching a known name sees *why* they
+  //    aren't offered, rather than an empty result. Unlike the other two groups
+  //    there is no id list to fetch by, so this queries on the status directly.
+  const fetchInactive = async () => {
+    if (isOldData) return [];
+    let iq = supabase
       .from(testTable)
       .select("*")
-      .in(idField, blacklistedToShow);
+      .eq("approved_by_admin", true)
+      .is("blacklisted_at", null)
+      .or(`reactivation_status.neq.${ACTIVE_STATUS},reactivation_status.is.null`);
+
+    const excludeIds = Array.from(
+      new Set([...alreadyInvitedIds, ...blacklistedIds, ...lineageBlockedIds])
+    );
+    if (excludeIds.length > 0) {
+      iq = iq.not(idField, "in", `(${excludeIds.map((id) => `"${id}"`).join(",")})`);
+    }
     if (query.trim()) {
       const term = query.trim().toLowerCase();
-      bq = bq.or(`first_name.ilike.%${term}%,last_name.ilike.%${term}%`);
+      iq = iq.or(`first_name.ilike.%${term}%,last_name.ilike.%${term}%`);
     }
-    const { data: blData } = await bq.limit(50);
-    blacklisted = ((blData ?? []) as SearchResultRow[]).map((p) => mapRow(p, true));
-  }
+    const { data } = await iq.limit(50);
+    return ((data ?? []) as SearchResultRow[]).map((p) => mapRow(p, { inactive: true }));
+  };
 
-  // Eligible first, blacklisted (greyed) after
-  return [...eligible, ...blacklisted];
+  const [lineageBlocked, blacklisted, inactive] = await Promise.all([
+    fetchFlagged(lineageToShow, { lineageBlocked: true }),
+    fetchFlagged(blacklistedToShow, { blacklisted: true }),
+    fetchInactive(),
+  ]);
+
+  // Eligible first, then the greyed-out groups
+  return [...eligible, ...lineageBlocked, ...blacklisted, ...inactive];
 }
 
 /* =========================

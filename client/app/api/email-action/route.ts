@@ -54,6 +54,9 @@ export async function GET(req: NextRequest) {
       if (result.reason === "missing_profile") {
         return html(missingProfilePage((result as { missing?: string[] }).missing ?? [], magicLink));
       }
+      if (result.reason === "inactive") {
+        return html(inactivePage(magicLink));
+      }
       return html(sessionFullPage(magicLink));
     }
     return html(successPage(action, magicLink));
@@ -173,6 +176,16 @@ function sessionFullPage(dashboardUrl: string): string {
     <h1 style="margin:0 0 12px;font-size:24px;font-weight:700;color:#1e3a8a;">Session Is Full</h1>
     <p style="margin:0 0 8px;font-size:16px;color:#475569;line-height:1.6;">Thank you for your interest, but this session has already reached its participant capacity.</p>
     <p style="margin:0 0 28px;font-size:14px;color:#64748b;">Don't worry — you will be considered for the next available session that matches your profile.</p>
+    <a href="${dashboardUrl}" style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;background-color:#2563eb;text-decoration:none;border-radius:6px;">Go to Dashboard</a>
+  `);
+}
+
+function inactivePage(dashboardUrl: string): string {
+  return page("Account Not Active", `
+    <div style="width:64px;height:64px;border-radius:50%;background-color:#fff7ed;border:2px solid #f97316;margin:0 auto 20px;font-size:28px;line-height:64px;">⚠</div>
+    <h1 style="margin:0 0 12px;font-size:24px;font-weight:700;color:#c2410c;">Your Account Is Not Active</h1>
+    <p style="margin:0 0 8px;font-size:16px;color:#475569;line-height:1.6;">Only active panel members can attend a session, and we do not have a current confirmation that you are still interested in participating.</p>
+    <p style="margin:0 0 28px;font-size:14px;color:#64748b;line-height:1.6;">If you would like to take part, please confirm using the <strong>&ldquo;Yes, I&rsquo;m still interested&rdquo;</strong> button in our reactivation email, or contact Texas Jury Study.</p>
     <a href="${dashboardUrl}" style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;background-color:#2563eb;text-decoration:none;border-radius:6px;">Go to Dashboard</a>
   `);
 }

@@ -21,6 +21,10 @@ export interface Candidate {
   date_of_birth?: string;
   political_affiliation?: string;
   blacklisted?: boolean;
+  /** Already used on one of this session's cases or its follow-up chain. */
+  lineageBlocked?: boolean;
+  /** Not an active panel member — `reactivation_status` is not "yes". */
+  inactive?: boolean;
   matchLevel?: number;
   filterChecks?: {
     key: string;
@@ -123,6 +127,35 @@ function FilterChecks({ filterChecks, matchLevel }: { filterChecks: Candidate["f
 
 const INITIAL_VISIBLE = 20;
 
+/** Blacklisted, lineage-blocked and non-active participants are listed but never selectable. */
+function isBlocked(p: Candidate): boolean {
+  return Boolean(p.blacklisted || p.lineageBlocked || p.inactive);
+}
+
+function blockReason(p: Candidate): { label: string; title: string; badgeClass: string } {
+  if (p.blacklisted) {
+    return {
+      label: "Blacklisted",
+      title: "This participant is blacklisted and cannot be invited.",
+      badgeClass: "bg-red-50 text-red-700 border-red-200",
+    };
+  }
+  if (p.inactive) {
+    return {
+      label: "Not active",
+      title:
+        "Not an active panel member — they have not confirmed they are still interested in participating, so they cannot attend a session.",
+      badgeClass: "bg-orange-50 text-orange-700 border-orange-200",
+    };
+  }
+  return {
+    label: "Already used",
+    title:
+      "Already participated in one of this session's cases or an earlier case in the same follow-up chain — follow-ups must draw fresh participants.",
+    badgeClass: "bg-amber-50 text-amber-700 border-amber-200",
+  };
+}
+
 export default function InviteMoreModal({ sessionId, sessionDate, candidates }: Props) {
   const [isOpen, setIsOpen] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -153,10 +186,17 @@ export default function InviteMoreModal({ sessionId, sessionDate, candidates }: 
     setShowConfirm(true);
   }
 
+  /** Everything rendered so far, so a stale selection can be re-checked against fresh flags. */
+  function allKnownCandidates(): Candidate[] {
+    return searchResults !== null ? [...candidates, ...searchResults] : candidates;
+  }
+
   function handleConfirmSend() {
-    if (!selected.size) return;
+    const blocked = new Set(allKnownCandidates().filter(isBlocked).map((c) => c.id));
+    const sendIds = Array.from(selected).filter((id) => !blocked.has(id));
+    if (!sendIds.length) return;
     startTransition(async () => {
-      await inviteParticipants(sessionId, Array.from(selected), sessionDate ?? undefined);
+      await inviteParticipants(sessionId, sendIds, sessionDate ?? undefined);
       setIsOpen(false);
       setSelected(new Set());
       setSearchQuery("");
@@ -169,14 +209,11 @@ export default function InviteMoreModal({ sessionId, sessionDate, candidates }: 
 
   // Gather selected candidate details for confirmation view
   function getSelectedCandidates(): Candidate[] {
-    const allCandidates = searchResults !== null
-      ? [...candidates, ...searchResults]
-      : candidates;
     const uniqueMap = new Map<string, Candidate>();
-    for (const c of allCandidates) uniqueMap.set(c.id, c);
+    for (const c of allKnownCandidates()) uniqueMap.set(c.id, c);
     return Array.from(selected)
       .map((id) => uniqueMap.get(id))
-      .filter(Boolean) as Candidate[];
+      .filter((c): c is Candidate => Boolean(c) && !isBlocked(c!));
   }
 
   const handleSearch = useCallback(async (query: string) => {
@@ -333,10 +370,10 @@ export default function InviteMoreModal({ sessionId, sessionDate, candidates }: 
                   ) : (
                     <>
                       {visibleList.map((p) =>
-                        p.blacklisted ? (
+                        isBlocked(p) ? (
                           <div
                             key={p.id}
-                            title="This participant is blacklisted and cannot be invited."
+                            title={blockReason(p).title}
                             className="flex items-center gap-3 px-4 py-3 bg-slate-50 opacity-60 cursor-not-allowed select-none"
                           >
                             <input
@@ -349,8 +386,10 @@ export default function InviteMoreModal({ sessionId, sessionDate, candidates }: 
                             <div className="flex-1 min-w-0">
                               <div className="font-medium text-sm text-slate-500 flex items-center gap-2">
                                 <span>{p.first_name} {p.last_name}</span>
-                                <span className="px-1.5 py-0.5 rounded border text-[10px] font-semibold bg-red-50 text-red-700 border-red-200">
-                                  Blacklisted
+                                <span
+                                  className={`px-1.5 py-0.5 rounded border text-[10px] font-semibold ${blockReason(p).badgeClass}`}
+                                >
+                                  {blockReason(p).label}
                                 </span>
                               </div>
                               <div className="text-xs text-slate-400">

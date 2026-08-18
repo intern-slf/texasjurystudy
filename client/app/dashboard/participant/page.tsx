@@ -10,10 +10,10 @@ import { unstable_noStore as noStore } from "next/cache";
 export default async function ParticipantDashboard({
   searchParams,
 }: {
-  searchParams: Promise<{ inviteId?: string; status?: string; sessionFull?: string; missingProfile?: string }>;
+  searchParams: Promise<{ inviteId?: string; status?: string; sessionFull?: string; missingProfile?: string; inactive?: string }>;
 }) {
   noStore();
-  const { inviteId, status, sessionFull, missingProfile } = await searchParams;
+  const { inviteId, status, sessionFull, missingProfile, inactive } = await searchParams;
   const supabase = await createClient();
 
   /* =========================
@@ -39,6 +39,8 @@ export default async function ParticipantDashboard({
         if (result.reason === "missing_profile") {
           const missing = (result as { missing?: string[] }).missing ?? [];
           redirectTo = `/dashboard/participant?missingProfile=${missing.join(",")}`;
+        } else if (result.reason === "inactive") {
+          redirectTo = "/dashboard/participant?inactive=1";
         } else {
           redirectTo = "/dashboard/participant?sessionFull=1";
         }
@@ -93,6 +95,21 @@ export default async function ParticipantDashboard({
           <div>
             <p className="font-semibold text-sm">This session is already full.</p>
             <p className="text-xs text-amber-600 mt-0.5">Don&apos;t worry — you will be considered for the next available session.</p>
+          </div>
+        </div>
+      )}
+
+      {/* NOT AN ACTIVE PANEL MEMBER */}
+      {inactive === "1" && (
+        <div className="flex items-start gap-3 rounded-xl border border-orange-200 bg-orange-50 px-5 py-4 text-orange-800 shadow-sm">
+          <span className="text-xl">⚠️</span>
+          <div>
+            <p className="font-semibold text-sm">Your account is not active, so you cannot attend a session.</p>
+            <p className="text-xs text-orange-600 mt-0.5">
+              We do not have a current confirmation that you are still interested in
+              participating. Please confirm using the &ldquo;Yes, I&rsquo;m still
+              interested&rdquo; button in our reactivation email, or contact us.
+            </p>
           </div>
         </div>
       )}
@@ -181,6 +198,9 @@ export default async function ParticipantDashboard({
                         if (result.reason === "missing_profile") {
                           const missing = (result as { missing?: string[] }).missing ?? [];
                           redirect(`/dashboard/participant?missingProfile=${missing.join(",")}`);
+                        }
+                        if (result.reason === "inactive") {
+                          redirect("/dashboard/participant?inactive=1");
                         }
                         redirect("/dashboard/participant?sessionFull=1");
                       }

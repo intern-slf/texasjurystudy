@@ -361,8 +361,17 @@ describe("Sessions", () => {
       state.responses = [
         // 1. blacklist guard — roles.select().eq("role","blacklisted").in(ids) → none
         { data: [], error: null },
-        // 2. blacklist guard — jury_participants.select("user_id, blacklisted_at").in(ids) → none flagged
-        { data: [], error: null },
+        // 2. blacklist + active-status guard —
+        //    jury_participants.select("user_id, blacklisted_at, reactivation_status").in(ids)
+        //    → nobody blacklisted, everybody an active panel member
+        {
+          data: insertedIds.map((pid) => ({
+            user_id: pid,
+            blacklisted_at: null,
+            reactivation_status: "yes",
+          })),
+          error: null,
+        },
         // 3. .from("session_participants").insert(rows).select() — returns inserted rows
         {
           data: insertedIds.map((pid, i) => ({
@@ -457,11 +466,18 @@ describe("Sessions", () => {
       state.responses = [
         // 1. roles guard → bl-role is blacklisted
         { data: [{ user_id: "bl-role" }], error: null },
-        // 2. jury_participants guard → bl-flag has a blacklisted_at timestamp
+        // 2. jury_participants guard → bl-flag has a blacklisted_at timestamp.
+        //    Everyone here is an active panel member so blacklist is the only
+        //    thing under test.
         {
           data: [
-            { user_id: "p-1", blacklisted_at: null },
-            { user_id: "bl-flag", blacklisted_at: "2026-01-01T00:00:00Z" },
+            { user_id: "p-1", blacklisted_at: null, reactivation_status: "yes" },
+            { user_id: "p-3", blacklisted_at: null, reactivation_status: "yes" },
+            {
+              user_id: "bl-flag",
+              blacklisted_at: "2026-01-01T00:00:00Z",
+              reactivation_status: "yes",
+            },
           ],
           error: null,
         },
@@ -509,6 +525,77 @@ describe("Sessions", () => {
       expect(insertCall).toBeUndefined();
       expect(sendEmailSpy).not.toHaveBeenCalled();
     });
+
+    it("Drops invitees who are not active panel members", async () => {
+      // Only reactivation_status "yes" may attend. "pending" and "no" are both
+      // "we have no current confirmation they still participate".
+      const invitees = ["active-1", "pending-1", "no-1", "active-2"];
+      state.responses = [
+        // 1. roles guard → nobody blacklisted
+        { data: [], error: null },
+        // 2. blacklist + active-status guard
+        {
+          data: [
+            { user_id: "active-1", blacklisted_at: null, reactivation_status: "yes" },
+            { user_id: "pending-1", blacklisted_at: null, reactivation_status: "pending" },
+            { user_id: "no-1", blacklisted_at: null, reactivation_status: "no" },
+            { user_id: "active-2", blacklisted_at: null, reactivation_status: "yes" },
+          ],
+          error: null,
+        },
+        // 3. insert().select() — only the two active ones
+        {
+          data: [
+            { id: "invite-1", participant_id: "active-1", session_id: "session-1" },
+            { id: "invite-2", participant_id: "active-2", session_id: "session-1" },
+          ],
+          error: null,
+        },
+        // 4. session_cases select for email time
+        { data: [{ start_time: "14:00:00", end_time: "15:00:00" }], error: null },
+      ];
+      for (const id of ["active-1", "active-2"]) {
+        state.participantEmails.set(id, `${id}@example.com`);
+      }
+
+      await inviteParticipants("session-1", invitees, "2026-06-15");
+
+      const sp = state.captured.find(
+        (x) => x.table === "session_participants" && x.ops.some((o) => o.op === "insert")
+      )!;
+      const insert = sp.ops.find((o) => o.op === "insert") as {
+        op: "insert";
+        payload: Array<Record<string, unknown>>;
+      };
+      expect(insert.payload.map((r) => r.participant_id)).toEqual([
+        "active-1",
+        "active-2",
+      ]);
+      expect(sendEmailSpy).toHaveBeenCalledTimes(2);
+    });
+
+    it("Inserts nothing when no invitee is an active panel member", async () => {
+      state.responses = [
+        { data: [], error: null }, // roles guard
+        {
+          data: [
+            { user_id: "pending-1", blacklisted_at: null, reactivation_status: "pending" },
+            { user_id: "null-1", blacklisted_at: null, reactivation_status: null },
+          ],
+          error: null,
+        },
+      ];
+
+      await inviteParticipants("session-1", ["pending-1", "null-1"], "2026-06-15");
+
+      const insertCall = state.captured.find(
+        (c) =>
+          c.table === "session_participants" &&
+          c.ops.some((o) => o.op === "insert")
+      );
+      expect(insertCall).toBeUndefined();
+      expect(sendEmailSpy).not.toHaveBeenCalled();
+    });
   });
 
   // -------------------------------------------------------------------------
@@ -533,12 +620,13 @@ describe("Sessions", () => {
         { data: { participant_cap: 10 }, error: null },
         // 3. isSessionFull → count
         { count: 0, error: null },
-        // 4. profile fetch
+        // 4. profile fetch (active panel member, profile complete)
         {
           data: {
             paypal_username: "p1",
             driver_license_number: "DL123",
             driver_license_image_url: "http://img/dl",
+            reactivation_status: "yes",
           },
           error: null,
         },
@@ -604,12 +692,13 @@ describe("Sessions", () => {
         { data: { session_id: "s-1", participant_id: "p-1" }, error: null },
         { data: { participant_cap: 10 }, error: null },
         { count: 0, error: null },
-        // Profile missing both DL and PayPal
+        // Active panel member, but profile missing both DL and PayPal
         {
           data: {
             paypal_username: null,
             driver_license_number: null,
             driver_license_image_url: null,
+            reactivation_status: "yes",
           },
           error: null,
         },
@@ -631,6 +720,76 @@ describe("Sessions", () => {
           c.ops.some((o) => o.op === "update")
       );
       expect(update).toBeUndefined();
+    });
+
+    it("Non-active participant blocked from accepting", async () => {
+      state.responses = [
+        { data: { session_id: "s-1", participant_id: "p-1" }, error: null },
+        { data: { participant_cap: 10 }, error: null },
+        { count: 0, error: null },
+        // Profile is complete, but they never confirmed they are still interested
+        {
+          data: {
+            paypal_username: "p1",
+            driver_license_number: "DL123",
+            driver_license_image_url: "http://img/dl",
+            reactivation_status: "pending",
+          },
+          error: null,
+        },
+      ];
+
+      const result = await updateInviteStatus("invite-5", "accepted");
+
+      expect(result).toEqual({ blocked: true, reason: "inactive" });
+      // Must not have run the main update
+      const update = state.captured.find(
+        (c) =>
+          c.table === "session_participants" &&
+          c.ops.some((o) => o.op === "update")
+      );
+      expect(update).toBeUndefined();
+    });
+
+    it("Active status is checked before the profile gate", async () => {
+      // A non-active participant should be told they cannot attend, not sent off
+      // to fill in a DL and PayPal for a session they still could not join.
+      state.responses = [
+        { data: { session_id: "s-1", participant_id: "p-1" }, error: null },
+        { data: { participant_cap: 10 }, error: null },
+        { count: 0, error: null },
+        {
+          data: {
+            paypal_username: null,
+            driver_license_number: null,
+            driver_license_image_url: null,
+            reactivation_status: "no",
+          },
+          error: null,
+        },
+      ];
+
+      const result = await updateInviteStatus("invite-6", "accepted");
+
+      expect(result).toEqual({ blocked: true, reason: "inactive" });
+    });
+
+    it("A non-active participant can still decline", async () => {
+      // The gate is on attending, not on responding — declining needs no checks.
+      state.responses = [{ data: [], error: null }];
+
+      await updateInviteStatus("invite-7", "declined");
+
+      const updateCall = state.captured.find(
+        (c) =>
+          c.table === "session_participants" &&
+          c.ops.some((o) => o.op === "update")
+      )!;
+      const upd = updateCall.ops.find((o) => o.op === "update") as {
+        op: "update";
+        payload: Record<string, unknown>;
+      };
+      expect(upd.payload.invite_status).toBe("declined");
     });
 
     it("Double response blocked", async () => {
@@ -695,13 +854,85 @@ describe("Sessions", () => {
           )
       );
 
+    const strikeStamps = () =>
+      state.captured.filter(
+        (c) =>
+          c.table === "session_participants" &&
+          c.ops.some(
+            (o) =>
+              o.op === "update" &&
+              "struck_at" in (o as { op: "update"; payload: Record<string, unknown> }).payload
+          )
+      );
+
+    it("stamps struck_at on the session invite row", async () => {
+      state.responses = [
+        { data: { id: "sp-1", struck_at: null }, error: null }, // invite lookup
+        { error: null }, // struck_at stamp
+        { data: { flag_count: 0 }, error: null }, // read current count
+        { error: null }, // flag_count update
+      ];
+
+      await recordBackoutStrike("p-1", "s-1");
+
+      const stamps = strikeStamps();
+      expect(stamps).toHaveLength(1);
+      const stamp = stamps[0].ops.find((o) => o.op === "update") as {
+        op: "update";
+        payload: Record<string, unknown>;
+      };
+      expect(stamp.payload.struck_at).toEqual(expect.any(String));
+    });
+
+    it("records struck_by when the acting admin is known", async () => {
+      state.responses = [
+        { data: { id: "sp-1b", struck_at: null }, error: null },
+        { error: null },
+        { data: { flag_count: 0 }, error: null },
+        { error: null },
+      ];
+
+      await recordBackoutStrike("p-1b", "s-1", "admin-9");
+
+      const stamp = strikeStamps()[0].ops.find((o) => o.op === "update") as {
+        op: "update";
+        payload: Record<string, unknown>;
+      };
+      expect(stamp.payload.struck_by).toBe("admin-9");
+    });
+
+    it("is idempotent per session — an already-struck invite is a no-op", async () => {
+      state.responses = [
+        { data: { id: "sp-dup", struck_at: "2026-08-01T00:00:00.000Z" }, error: null },
+      ];
+
+      await recordBackoutStrike("p-dup", "s-1");
+
+      // No strike re-stamped and, crucially, no second increment of the counter.
+      expect(strikeStamps()).toHaveLength(0);
+      expect(juryUpdatesWith("flag_count")).toHaveLength(0);
+    });
+
+    it("no-ops when the participant has no invite for that session", async () => {
+      state.responses = [{ data: null, error: null }]; // invite lookup misses
+
+      await recordBackoutStrike("p-none", "s-nope");
+
+      const anyWrite = state.captured.find((c) =>
+        c.ops.some((o) => o.op === "update")
+      );
+      expect(anyWrite).toBeUndefined();
+    });
+
     it("increments flag_count and does NOT blacklist below the limit", async () => {
       state.responses = [
+        { data: { id: "sp-1", struck_at: null }, error: null }, // invite lookup
+        { error: null }, // struck_at stamp
         { data: { flag_count: 1 }, error: null }, // read current count
         { error: null }, // flag_count update
       ];
 
-      await recordBackoutStrike("p-1");
+      await recordBackoutStrike("p-1", "s-1");
 
       const flagUpdates = juryUpdatesWith("flag_count");
       expect(flagUpdates).toHaveLength(1);
@@ -720,13 +951,15 @@ describe("Sessions", () => {
 
     it("auto-blacklists when the third flag is reached", async () => {
       state.responses = [
+        { data: { id: "sp-2", struck_at: null }, error: null }, // invite lookup
+        { error: null }, // struck_at stamp
         { data: { flag_count: 2 }, error: null }, // read current count
         { error: null }, // flag_count update -> 3
         { error: null }, // roles -> blacklisted
         { error: null }, // jury_participants blacklist fields
       ];
 
-      await recordBackoutStrike("p-2");
+      await recordBackoutStrike("p-2", "s-2");
 
       // flag_count bumped to 3
       const flagUpdate = juryUpdatesWith("flag_count")[0].ops.find(
@@ -754,15 +987,23 @@ describe("Sessions", () => {
       expect(String(blWrite.payload.blacklist_reason)).toContain("3");
     });
 
-    it("no-ops when the participant is not in jury_participants (legacy id)", async () => {
-      state.responses = [{ data: null, error: null }]; // read returns no row
+    it("records the session strike but counts no flag for a legacy (oldData) id", async () => {
+      state.responses = [
+        { data: { id: "sp-old", struck_at: null }, error: null }, // invite lookup
+        { error: null }, // struck_at stamp
+        { data: null, error: null }, // no jury_participants row
+      ];
 
-      await recordBackoutStrike("old-1");
+      await recordBackoutStrike("old-1", "s-3");
 
-      const anyWrite = state.captured.find((c) =>
-        c.ops.some((o) => o.op === "update")
+      // The per-session strike is still recorded, so the case page can show it...
+      expect(strikeStamps()).toHaveLength(1);
+      // ...but there is no counter to bump and no auto-blacklist.
+      expect(juryUpdatesWith("flag_count")).toHaveLength(0);
+      const rolesWrite = state.captured.find(
+        (c) => c.table === "roles" && c.ops.some((o) => o.op === "update")
       );
-      expect(anyWrite).toBeUndefined();
+      expect(rolesWrite).toBeUndefined();
     });
   });
 });

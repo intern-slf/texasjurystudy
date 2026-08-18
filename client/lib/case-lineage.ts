@@ -17,6 +17,8 @@ export interface CaseChainNode {
     last_name: string;
     email: string;
     invite_status: string;
+    /** Struck in any session this case ran in — outranks invite_status in the UI. */
+    struck: boolean;
   }[];
 }
 
@@ -55,8 +57,11 @@ export async function getAncestorCaseIds(
 /**
  * Fetches all descendant case IDs (children, grandchildren, etc.)
  */
-export async function getDescendantCaseIds(caseId: string): Promise<string[]> {
-  const supabase = await createClient();
+export async function getDescendantCaseIds(
+  caseId: string,
+  client?: Awaited<ReturnType<typeof createClient>>,
+): Promise<string[]> {
+  const supabase = client ?? (await createClient());
   const descendants: string[] = [];
   const queue: string[] = [caseId];
 
@@ -113,11 +118,14 @@ export async function getFullCaseChain(caseId: string): Promise<CaseChainNode[]>
 
   const sessionIds = [...new Set((sessionCases ?? []).map((sc) => sc.session_id))];
 
-  const participantsBySession: Record<string, { participant_id: string; invite_status: string }[]> = {};
+  const participantsBySession: Record<
+    string,
+    { participant_id: string; invite_status: string; struck_at?: string | null }[]
+  > = {};
   if (sessionIds.length > 0) {
     const { data: sp } = await supabase
       .from("session_participants")
-      .select("session_id, participant_id, invite_status")
+      .select("session_id, participant_id, invite_status, struck_at")
       .in("session_id", sessionIds);
 
     for (const row of sp ?? []) {
@@ -175,7 +183,15 @@ export async function getFullCaseChain(caseId: string): Promise<CaseChainNode[]>
 
     for (const sid of caseSessions) {
       for (const sp of participantsBySession[sid] ?? []) {
-        if (seenPIds.has(sp.participant_id)) continue;
+        if (seenPIds.has(sp.participant_id)) {
+          // A case can span sessions. If they were struck in any of them, that
+          // wins — otherwise the first session seen would hide the strike.
+          if (sp.struck_at) {
+            const already = participants.find((p) => p.id === sp.participant_id);
+            if (already) already.struck = true;
+          }
+          continue;
+        }
         seenPIds.add(sp.participant_id);
         const details = juryDetailsMap[sp.participant_id];
         participants.push({
@@ -184,6 +200,7 @@ export async function getFullCaseChain(caseId: string): Promise<CaseChainNode[]>
           last_name: details?.last_name ?? "",
           email: details?.email ?? "",
           invite_status: sp.invite_status,
+          struck: Boolean(sp.struck_at),
         });
       }
     }
@@ -236,11 +253,43 @@ export async function getFullCaseChain(caseId: string): Promise<CaseChainNode[]>
  * Gets all participant IDs that are blocked from future follow-ups of this case.
  * This includes ALL participants across the entire follow-up chain (ancestors + descendants).
  */
-export async function getBlockedParticipantIds(caseId: string): Promise<string[]> {
-  const ancestors = await getAncestorCaseIds(caseId);
-  const descendants = await getDescendantCaseIds(caseId);
+export async function getBlockedParticipantIds(
+  caseId: string,
+  client?: Awaited<ReturnType<typeof createClient>>,
+): Promise<string[]> {
+  const ancestors = await getAncestorCaseIds(caseId, client);
+  const descendants = await getDescendantCaseIds(caseId, client);
   const allRelatedIds = [...ancestors, caseId, ...descendants];
-  return getLineageParticipantIds(allRelatedIds);
+  return getLineageParticipantIds(allRelatedIds, client);
+}
+
+/**
+ * Blocked participants across every case attached to a session — the union of
+ * each case's follow-up chain. Used by the invite-more paths so the recommended
+ * list and the search box agree on who is already "spent" on these matters.
+ */
+export async function getBlockedParticipantIdsForCases(
+  caseIds: string[],
+  client?: Awaited<ReturnType<typeof createClient>>,
+): Promise<string[]> {
+  if (!caseIds.length) return [];
+
+  // Collect every related case first, then resolve participants in ONE query.
+  // Calling getBlockedParticipantIds per case would issue a separate
+  // session_cases + session_participants round-trip for each one, and this runs
+  // per session on the admin sessions page.
+  const related = await Promise.all(
+    caseIds.map(async (id) => {
+      const [ancestors, descendants] = await Promise.all([
+        getAncestorCaseIds(id, client),
+        getDescendantCaseIds(id, client),
+      ]);
+      return [...ancestors, id, ...descendants];
+    })
+  );
+
+  const allRelatedIds = Array.from(new Set(related.flat()));
+  return getLineageParticipantIds(allRelatedIds, client);
 }
 
 /**
