@@ -116,6 +116,12 @@ export type InviteResult = {
   invited: number;
   /** Dropped by the hard guards, by reason. */
   skipped: { blacklisted: number; inactive: number };
+  /**
+   * Rows the database refused. Almost always FK 23503 on
+   * session_participants_participant_id_fkey: the participant has a
+   * jury_participants row but no auth.users row, so they can never be invited.
+   */
+  rejected?: { name: string; reason: string }[];
   /** Set when ok is false. Safe to show to an admin. */
   error?: string;
 };
@@ -160,9 +166,29 @@ async function inviteParticipantsInner(
     supabaseAdmin.from("roles").select("user_id").eq("role", "blacklisted").in("user_id", uniqueIds),
     supabaseAdmin
       .from("jury_participants")
-      .select("user_id, blacklisted_at, reactivation_status")
+      // email + name come along so we can address the invite and name a failure
+      // without depending on the auth admin API, which is not always readable
+      // (at least one auth row currently returns "Database error loading user").
+      .select("user_id, blacklisted_at, reactivation_status, email, first_name, last_name")
       .in("user_id", uniqueIds),
   ]);
+
+  type JpRow = {
+    user_id: string;
+    blacklisted_at: string | null;
+    reactivation_status: string | null;
+    email: string | null;
+    first_name: string | null;
+    last_name: string | null;
+  };
+  const jpById = new Map<string, JpRow>(
+    ((jpRows ?? []) as JpRow[]).map((r) => [r.user_id, r])
+  );
+  const nameOf = (id: string) => {
+    const r = jpById.get(id);
+    const name = `${r?.first_name ?? ""} ${r?.last_name ?? ""}`.trim();
+    return name || r?.email || id;
+  };
   const blacklistedSet = new Set<string>([
     ...((blByRole ?? []).map((r: { user_id: string }) => r.user_id)),
     ...((jpRows ?? [])
@@ -224,21 +250,61 @@ async function inviteParticipantsInner(
     invite_status: "pending",
   }));
 
-  // Note this insert uses the caller-scoped client, not supabaseAdmin, so it is
-  // subject to RLS on session_participants. Name that in the message: a bare
-  // Postgres error here is indistinguishable from a bug, and "new row violates
-  // row-level security policy" is the single most likely failure.
-  const { data: insertedRows, error } = await supabase
-    .from("session_participants")
-    .insert(rows)
-    .select();
+  // Insert as one batch first. If the batch is rejected, retry row by row so a
+  // single bad participant cannot block everyone else in the selection.
+  //
+  // This matters because of a real data problem: participant_id has an FK onto
+  // auth.users(id), and some jury_participants rows have no auth user. Selecting
+  // one of those made the whole batch fail with FK 23503, so an admin inviting
+  // ten people got zero invites and an opaque 500.
+  const rejected: { name: string; reason: string }[] = [];
+  let insertedRows: { id: string; participant_id: string }[] = [];
 
-  if (error) {
-    throw new Error(
-      `Could not create invite rows for session ${sessionId} ` +
-      `(${rows.length} participant(s)): ${error.message}` +
-      (error.code ? ` [${error.code}]` : "")
+  const batch = await supabase.from("session_participants").insert(rows).select();
+
+  if (!batch.error) {
+    insertedRows = (batch.data ?? []) as { id: string; participant_id: string }[];
+  } else {
+    console.warn(
+      `[inviteParticipants] Batch insert of ${rows.length} row(s) failed ` +
+      `(${batch.error.code ?? "?"}: ${batch.error.message}) — retrying individually.`
     );
+
+    for (const row of rows) {
+      const one = await supabase
+        .from("session_participants")
+        .insert(row)
+        .select();
+
+      if (one.error) {
+        const reason =
+          one.error.code === "23503"
+            ? "no signed-up account for this participant (they have a profile but never created a login)"
+            : `${one.error.message}${one.error.code ? ` [${one.error.code}]` : ""}`;
+        rejected.push({ name: nameOf(row.participant_id), reason });
+        console.error(
+          `[inviteParticipants] Rejected ${row.participant_id} (${nameOf(row.participant_id)}): ` +
+          `${one.error.code ?? "?"} ${one.error.message}`
+        );
+      } else {
+        insertedRows.push(...((one.data ?? []) as { id: string; participant_id: string }[]));
+      }
+    }
+
+    // Everything failed — report it rather than pressing on to the email loop.
+    if (insertedRows.length === 0) {
+      revalidatePath("/dashboard/Admin/sessions");
+      const detail = rejected.length
+        ? rejected.map((r) => `${r.name}: ${r.reason}`).join("; ")
+        : `${batch.error.message}${batch.error.code ? ` [${batch.error.code}]` : ""}`;
+      return {
+        ok: false,
+        invited: 0,
+        skipped,
+        rejected,
+        error: `No invites could be created. ${detail}`,
+      };
+    }
   }
 
   // Fetch case times for this session to include in emails
@@ -266,23 +332,40 @@ async function inviteParticipantsInner(
   // Send invitation emails to each participant
   const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "");
 
+  // Invite rows that were created but whose email could not be sent. Reported
+  // back so "invited 10" never silently means "emailed 7".
+  const emailFailures: { name: string; reason: string }[] = [];
+
   for (const row of (insertedRows || [])) {
     const participantId = row.participant_id;
     const inviteRecordId = row.id;
 
     try {
-      const { data: userData, error: userError } =
-        await supabaseAdmin.auth.admin.getUserById(participantId);
+      // Resolve the address from jury_participants first and treat the auth admin
+      // API only as a fallback. It used to be the other way round, which meant an
+      // unreadable auth row silently skipped that person's invite email entirely —
+      // the row was created, no mail was sent, and the only trace was a log line.
+      // At least one auth row currently returns "Database error loading user".
+      let participantEmail = jpById.get(participantId)?.email ?? null;
 
-      if (userError || !userData?.user?.email) {
-        console.error(
-          `Could not get email for participant ${participantId}:`,
-          userError?.message || "No email found"
-        );
-        continue;
+      if (!participantEmail) {
+        const { data: userData, error: userError } =
+          await supabaseAdmin.auth.admin.getUserById(participantId);
+        participantEmail = userData?.user?.email ?? null;
+
+        if (!participantEmail) {
+          console.error(
+            `[inviteParticipants] No email for participant ${participantId} ` +
+            `(${nameOf(participantId)}) — invite row exists but no mail can be sent: ` +
+            `${userError?.message ?? "not in jury_participants and no auth email"}`
+          );
+          emailFailures.push({
+            name: nameOf(participantId),
+            reason: "no email address on file",
+          });
+          continue;
+        }
       }
-
-      const participantEmail = userData.user.email;
       const dateStr = sessionDate
         ? new Date(sessionDate).toLocaleDateString("en-US", {
           weekday: "long",
@@ -392,16 +475,33 @@ async function inviteParticipantsInner(
         emailError
       );
       // Don't throw — we still want the invite record saved even if email fails
+      emailFailures.push({
+        name: nameOf(participantId),
+        reason: emailError instanceof Error ? emailError.message : String(emailError),
+      });
     }
   }
 
   revalidatePath("/dashboard/Admin/sessions");
 
-  return {
-    ok: true,
-    invited: (insertedRows ?? []).length,
-    skipped,
-  };
+  const invited = insertedRows.length;
+  const problems = [...rejected, ...emailFailures];
+
+  // Partial success is still a failure worth showing: an admin who selected ten
+  // people and got seven invites needs to know which three, and why.
+  if (problems.length > 0) {
+    return {
+      ok: false,
+      invited,
+      skipped,
+      rejected: problems,
+      error:
+        `Invited ${invited} of ${invited + rejected.length}. ` +
+        `Not sent: ${problems.map((p) => `${p.name} (${p.reason})`).join("; ")}`,
+    };
+  }
+
+  return { ok: true, invited, skipped };
 }
 
 /* =========================

@@ -526,6 +526,88 @@ describe("Sessions", () => {
       expect(sendEmailSpy).not.toHaveBeenCalled();
     });
 
+    it("One FK-rejected participant does not block the rest of the batch", async () => {
+      // participant_id has an FK onto auth.users(id). A jury_participants row
+      // whose user never signed up fails with 23503, and that used to take the
+      // whole batch down: ten selected, zero invited, opaque 500.
+      state.responses = [
+        { data: [], error: null }, // roles guard
+        {
+          data: [
+            { user_id: "p-good", blacklisted_at: null, reactivation_status: "yes", email: "good@example.com", first_name: "Good", last_name: "Person" },
+            { user_id: "p-noauth", blacklisted_at: null, reactivation_status: "yes", email: "noauth@example.com", first_name: "No", last_name: "Account" },
+          ],
+          error: null,
+        },
+        // batch insert rejected
+        { data: null, error: { message: 'violates foreign key constraint "session_participants_participant_id_fkey"', code: "23503" } },
+        // retry: p-good succeeds
+        { data: [{ id: "invite-1", participant_id: "p-good", session_id: "session-1" }], error: null },
+        // retry: p-noauth rejected
+        { data: null, error: { message: 'violates foreign key constraint "session_participants_participant_id_fkey"', code: "23503" } },
+        // session_cases select for the email time
+        { data: [{ start_time: "14:00:00", end_time: "15:00:00" }], error: null },
+      ];
+
+      const result = await inviteParticipants("session-1", ["p-good", "p-noauth"], "2026-06-15");
+
+      // The good one still got in, and still got an email.
+      expect(result.invited).toBe(1);
+      expect(sendEmailSpy).toHaveBeenCalledTimes(1);
+      expect(sendEmailSpy.mock.calls[0][0].to).toBe("good@example.com");
+
+      // The bad one is named, with a human reason rather than a raw FK error.
+      expect(result.ok).toBe(false);
+      expect(result.rejected).toEqual(
+        expect.arrayContaining([expect.objectContaining({ name: "No Account" })])
+      );
+      expect(result.error).toMatch(/never created a login/i);
+    });
+
+    it("Resolves the invite email from jury_participants, not the auth admin API", async () => {
+      // An unreadable auth row ("Database error loading user") used to silently
+      // skip that person's invite email: row created, no mail, only a log line.
+      // participantEmails is left empty, so a getUserById fallback would find none.
+      state.responses = [
+        { data: [], error: null },
+        {
+          data: [
+            { user_id: "p-1", blacklisted_at: null, reactivation_status: "yes", email: "from-jury@example.com", first_name: "Jury", last_name: "Row" },
+          ],
+          error: null,
+        },
+        { data: [{ id: "invite-1", participant_id: "p-1", session_id: "session-1" }], error: null },
+        { data: [{ start_time: "14:00:00", end_time: "15:00:00" }], error: null },
+      ];
+
+      const result = await inviteParticipants("session-1", ["p-1"], "2026-06-15");
+
+      expect(result.ok).toBe(true);
+      expect(result.invited).toBe(1);
+      expect(sendEmailSpy).toHaveBeenCalledTimes(1);
+      expect(sendEmailSpy.mock.calls[0][0].to).toBe("from-jury@example.com");
+    });
+
+    it("Reports the all-skipped case as a failure, not a silent success", async () => {
+      state.responses = [
+        { data: [], error: null },
+        {
+          data: [
+            { user_id: "pending-1", blacklisted_at: null, reactivation_status: "pending", email: "p@example.com", first_name: "P", last_name: "One" },
+          ],
+          error: null,
+        },
+      ];
+
+      const result = await inviteParticipants("session-1", ["pending-1"], "2026-06-15");
+
+      expect(result.ok).toBe(false);
+      expect(result.invited).toBe(0);
+      expect(result.skipped.inactive).toBe(1);
+      expect(result.error).toMatch(/nobody was invited/i);
+      expect(sendEmailSpy).not.toHaveBeenCalled();
+    });
+
     it("Drops invitees who are not active panel members", async () => {
       // Only reactivation_status "yes" may attend. "pending" and "no" are both
       // "we have no current confirmation they still participate".
