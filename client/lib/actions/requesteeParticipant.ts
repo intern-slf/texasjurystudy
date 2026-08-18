@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { getBlockedParticipantIds } from "@/lib/case-lineage";
+import { ACTIVE_STATUS } from "@/lib/participant/activeStatus";
 
 /**
  * Search eligible participants for a case on the requestee side.
@@ -79,7 +80,9 @@ export async function searchParticipantsForCase(
     q = q
       .or(`eligible_after_at.is.null,eligible_after_at.lte.${nowIso}`)
       .eq("approved_by_admin", true)
-      .is("blacklisted_at", null);
+      .is("blacklisted_at", null)
+      // Only active panel members may attend — enforced in inviteParticipants.
+      .eq("reactivation_status", ACTIVE_STATUS);
   }
 
   if (excludeIds.length > 0) {
