@@ -173,6 +173,9 @@ export default function InviteMoreModal({ sessionId, sessionDate, candidates }: 
   // Confirmation step
   const [showConfirm, setShowConfirm] = useState(false);
 
+  // Why the last send failed, shown in the modal. Null when there is nothing to report.
+  const [sendError, setSendError] = useState<string | null>(null);
+
   function toggle(id: string) {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -195,8 +198,18 @@ export default function InviteMoreModal({ sessionId, sessionDate, candidates }: 
     const blocked = new Set(allKnownCandidates().filter(isBlocked).map((c) => c.id));
     const sendIds = Array.from(selected).filter((id) => !blocked.has(id));
     if (!sendIds.length) return;
+    setSendError(null);
     startTransition(async () => {
-      await inviteParticipants(sessionId, sendIds, sessionDate ?? undefined);
+      const result = await inviteParticipants(sessionId, sendIds, sessionDate ?? undefined);
+
+      // Stay open on failure so the reason stays readable and the selection is
+      // not silently discarded. Closing the modal on a failed send is what made
+      // this look like "the invite worked but no mail arrived".
+      if (result && !result.ok) {
+        setSendError(result.error ?? "The invites could not be sent.");
+        return;
+      }
+
       setIsOpen(false);
       setSelected(new Set());
       setSearchQuery("");
@@ -301,6 +314,18 @@ export default function InviteMoreModal({ sessionId, sessionDate, candidates }: 
                     </div>
                   ))}
                 </div>
+
+                {sendError && (
+                  <div className="mx-6 mb-1 mt-3 rounded-md border border-red-200 bg-red-50 px-4 py-3">
+                    <p className="text-sm font-semibold text-red-800">
+                      The invites were not sent
+                    </p>
+                    <p className="mt-1 text-xs leading-relaxed text-red-700">{sendError}</p>
+                    <p className="mt-2 text-xs text-red-600">
+                      Your selection has been kept. Fix the cause and press Confirm again.
+                    </p>
+                  </div>
+                )}
 
                 <div className="px-6 py-4 border-t flex justify-between items-center">
                   <button
