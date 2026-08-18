@@ -6,7 +6,9 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import Logo from "@/components/Logo";
 import { LogoutButton } from "@/components/logout-button";
+import AccountButton from "@/components/AccountButton";
 import { readRole, type Role } from "@/lib/auth-role";
+import { rememberVisit } from "@/lib/last-visited";
 
 function homeHrefForRole(role: Role): string {
   if (role === "requestee") return "/requestee";
@@ -54,18 +56,28 @@ export default function Navbar({
     };
   }, []);
 
-  // The middle slot is the only thing that changes: Login when signed out,
-  // Logout once signed in. Keeping it in the list preserves its position.
+  // The navbar sits in the root layout, so it sees every navigation — which
+  // makes it the one place that can remember where the user was when they
+  // wander back out to Home.
+  useEffect(() => {
+    rememberVisit(pathname);
+  }, [pathname]);
+
+  // Signing in swaps the last two slots: Login becomes Logout, Sign Up becomes
+  // the account icon. Keeping them in the list preserves their positions.
   type NavEntry =
     | { kind: "link"; label: string; href: string }
-    | { kind: "logout" };
+    | { kind: "logout" }
+    | { kind: "account" };
 
   const navItems: NavEntry[] = [
     { kind: "link", label: "Home", href: homeHrefForRole(role) },
     signedIn
       ? { kind: "logout" }
       : { kind: "link", label: "Login", href: "/auth/login" },
-    { kind: "link", label: "Sign Up", href: "/auth/signup" },
+    signedIn
+      ? { kind: "account" }
+      : { kind: "link", label: "Sign Up", href: "/auth/signup" },
   ];
 
   return (
@@ -87,6 +99,15 @@ export default function Navbar({
                   size="sm"
                   // Stripped back to match the plain text links beside it.
                   className="h-auto p-0 text-sm font-medium text-muted-foreground transition-colors hover:bg-transparent hover:text-primary"
+                />
+              );
+            }
+
+            if (item.kind === "account") {
+              return (
+                <AccountButton
+                  key="account"
+                  className="text-muted-foreground transition-colors hover:text-primary"
                 />
               );
             }
