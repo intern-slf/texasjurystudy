@@ -255,11 +255,11 @@ export default function FAQsPage() {
   };
 
   return (
-    <div className="flex min-h-screen bg-muted/10 font-sans">
+    <div className="flex min-h-screen flex-col bg-muted/10 font-sans lg:flex-row">
       <RequesteeSidebar activeTab="faqs" />
 
-      <main className="flex-1 overflow-y-auto">
-        <div className="max-w-3xl mx-auto px-8 py-12">
+      <main className="min-w-0 flex-1 overflow-y-auto">
+        <div className="max-w-3xl mx-auto px-4 py-8 sm:px-6 sm:py-12 lg:px-8">
           <BackButton
             href="/dashboard/requestee"
             label="Back to Dashboard"

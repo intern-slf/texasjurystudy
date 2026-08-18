@@ -66,7 +66,7 @@ export default async function SendMailConfirmPage({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h2 className="text-3xl font-bold tracking-tight">Confirm reactivation email</h2>
           <p className="text-muted-foreground mt-1">

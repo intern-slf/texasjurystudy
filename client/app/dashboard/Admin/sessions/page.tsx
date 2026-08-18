@@ -525,7 +525,7 @@ export default async function SessionsPage({
                         return (
                           <div
                             key={i}
-                            className="text-sm flex justify-between border rounded px-3 py-2 items-center"
+                            className="text-sm flex flex-wrap items-center justify-between gap-2 border rounded px-3 py-2"
                           >
                             <Link
                               href={`/dashboard/Admin/${c.case_id}`}
@@ -587,7 +587,7 @@ export default async function SessionsPage({
                         return (
                           <div
                             key={i}
-                            className="text-sm flex justify-between border rounded px-3 py-2 items-center"
+                            className="text-sm flex flex-wrap items-center justify-between gap-2 border rounded px-3 py-2"
                           >
                             <Link
                               href={`/dashboard/participant/${p.participant_id}`}

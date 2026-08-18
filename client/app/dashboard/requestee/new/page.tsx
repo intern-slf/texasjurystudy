@@ -353,9 +353,9 @@ export default function NewCasePage() {
   }
 
   return (
-    <main className="flex min-h-screen bg-background text-foreground">
+    <main className="flex min-h-screen flex-col bg-background text-foreground lg:flex-row">
       <RequesteeSidebar />
-      <section className="flex-1 max-w-6xl px-8 py-12 space-y-10 overflow-y-auto">
+      <section className="min-w-0 flex-1 max-w-6xl px-4 py-8 space-y-8 overflow-y-auto sm:px-6 sm:py-12 sm:space-y-10 lg:px-8">
         <header className="flex items-center gap-3">
           <h1 className="text-4xl font-extrabold tracking-tight">New Case Setup</h1>
           <div className="relative group">
@@ -365,7 +365,7 @@ export default function NewCasePage() {
             >
               ?
             </button>
-            <div className="absolute left-8 top-0 z-50 hidden group-hover:block w-80 bg-popover border border-border rounded-xl shadow-lg p-4 text-sm text-muted-foreground leading-relaxed">
+            <div className="absolute left-0 top-9 z-50 hidden group-hover:block w-[min(20rem,calc(100vw-3rem))] bg-popover lg:left-8 lg:top-0 lg:w-80 border border-border rounded-xl shadow-lg p-4 text-sm text-muted-foreground leading-relaxed">
               <p className="font-semibold text-foreground mb-2">How to create a case:</p>
               <ol className="space-y-1.5 list-none">
                 <li><span className="font-medium text-foreground">1. Enter Case Details</span> — Fill in the title and a brief description.</li>
@@ -691,7 +691,7 @@ export default function NewCasePage() {
             </button>
           </div>
         ) : (
-          <div className="flex gap-8 items-start animate-in zoom-in-95 duration-500">
+          <div className="flex flex-col gap-6 animate-in zoom-in-95 duration-500 lg:flex-row lg:items-start lg:gap-8">
             {/* Left — Success + Uploads */}
             <div className="flex-1 min-w-0 space-y-6 text-center">
               <div className="p-10 bg-green-500/5 border border-green-500/20 rounded-[32px]">
@@ -758,7 +758,7 @@ export default function NewCasePage() {
                     : [];
 
               return (
-                <div className="w-[420px] shrink-0 sticky top-12 self-start">
+                <div className="w-full min-w-0 lg:w-[420px] lg:shrink-0 lg:sticky lg:top-12 lg:self-start">
                   <div className="bg-card border rounded-2xl shadow-sm overflow-hidden">
                     {/* Header */}
                     <div className="bg-slate-900 px-5 py-4">

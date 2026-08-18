@@ -72,8 +72,8 @@ export default function NotifyPresenterModal({ sessionId, alreadyNotified, canNo
       </button>
 
       {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[85vh] overflow-y-auto p-6 space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-semibold text-slate-800">Notify Presenter</h3>
               <button

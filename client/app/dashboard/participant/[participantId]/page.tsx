@@ -43,7 +43,7 @@ export default async function ParticipantProfilePage({
       schParams?.from === "case" && schParams?.caseId;
 
     return (
-      <div className="max-w-5xl mx-auto p-8 space-y-8">
+      <div className="max-w-5xl mx-auto px-4 py-6 space-y-6 sm:p-8 sm:space-y-8">
         {/* BACK LINK */}
         {fromCase && role !== "participant" && (
           <BackButton
@@ -96,7 +96,7 @@ export default async function ParticipantProfilePage({
         {/* DEMOGRAPHICS */}
         <section className="bg-white border rounded-xl p-6">
           <h2 className="font-bold text-lg mb-4">Demographics</h2>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <p>Gender: {participant.gender}</p>
             <p>Race: {participant.race}</p>
             {participant.date_of_birth && (
@@ -117,7 +117,7 @@ export default async function ParticipantProfilePage({
         {/* CIVIC */}
         <section className="bg-white border rounded-xl p-6">
           <h2 className="font-bold text-lg mb-4">Civic / Legal</h2>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <p>U.S. Citizen: {participant.us_citizen}</p>
             <p>Served on Jury: {participant.served_on_jury}</p>
             <p>Convicted Felon: {participant.convicted_felon}</p>
@@ -127,7 +127,7 @@ export default async function ParticipantProfilePage({
         {/* SOCIOECONOMIC */}
         <section className="bg-white border rounded-xl p-6">
           <h2 className="font-bold text-lg mb-4">Socioeconomic</h2>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <p>Education: {participant.education_level}</p>
             <p>Family Income: {participant.family_income}</p>
             <p>Currently Employed: {participant.currently_employed}</p>
@@ -137,7 +137,7 @@ export default async function ParticipantProfilePage({
         {/* BACKGROUND */}
         <section className="bg-white border rounded-xl p-6">
           <h2 className="font-bold text-lg mb-4">Background</h2>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <p>Armed Forces: {participant.served_armed_forces}</p>
             <p>Political Affiliation: {participant.political_affiliation}</p>
           </div>
@@ -147,7 +147,7 @@ export default async function ParticipantProfilePage({
         {role !== "requestee" && (participant.driver_license_number || participant.driver_license_image_url) && (
           <section className="bg-white border rounded-xl p-6">
             <h2 className="font-bold text-lg mb-4">Identification</h2>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <p>Driver&apos;s License / ID #: {participant.driver_license_number || "\u2014"}</p>
               {participant.driver_license_image_url && (async () => {
                 const supabase = await createClient();

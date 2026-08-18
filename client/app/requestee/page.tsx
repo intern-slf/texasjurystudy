@@ -35,7 +35,7 @@ export default function RequesteeLanding() {
           }}
         />
 
-        <div className="container mx-auto px-6 py-20 md:py-28">
+        <div className="container mx-auto px-0 sm:px-6 py-20 md:py-28">
           <div className="mx-auto max-w-4xl text-center space-y-6">
             <div className="inline-flex items-center rounded-full border border-primary/20 bg-primary/5 px-4 py-1.5 text-sm font-medium text-primary">
               <Sparkles className="h-3.5 w-3.5 mr-2" />
@@ -106,7 +106,7 @@ export default function RequesteeLanding() {
       </section>
 
       {/* What is Texas Jury Study? */}
-      <section id="what-is-tjs" className="container mx-auto px-6 py-24 scroll-mt-20">
+      <section id="what-is-tjs" className="container mx-auto px-0 sm:px-6 py-24 scroll-mt-20">
         <div className="max-w-4xl mx-auto">
           <div className="mb-12 text-center">
             <h2 className="mt-3 text-3xl font-bold tracking-tight md:text-5xl">
@@ -156,7 +156,7 @@ export default function RequesteeLanding() {
           }}
         />
 
-        <div className="container mx-auto px-6 max-w-5xl">
+        <div className="container mx-auto px-0 sm:px-6 max-w-5xl">
           <div className="mb-12 text-center">
             <h2 className="mt-3 text-3xl font-bold tracking-tight md:text-5xl">
               Who should submit a case?
@@ -211,7 +211,7 @@ export default function RequesteeLanding() {
       </section>
 
       {/* When / at what stage? */}
-      <section className="container mx-auto px-6 py-24">
+      <section className="container mx-auto px-0 sm:px-6 py-24">
         <div className="max-w-5xl mx-auto">
           <div className="mb-12 text-center">
             <h2 className="mt-3 text-3xl font-bold tracking-tight md:text-5xl">
@@ -261,7 +261,7 @@ export default function RequesteeLanding() {
           }}
         />
 
-        <div className="container mx-auto px-6 max-w-5xl">
+        <div className="container mx-auto px-0 sm:px-6 max-w-5xl">
           <div className="mb-12 text-center">
             <h2 className="mt-3 text-3xl font-bold tracking-tight md:text-5xl">
               Flexible, <span className="text-primary">cost-effective</span> pricing.
@@ -338,7 +338,7 @@ export default function RequesteeLanding() {
       </section>
 
       {/* How do I sign up? — final CTA */}
-      <section id="get-started" className="container mx-auto px-6 py-24 scroll-mt-20">
+      <section id="get-started" className="container mx-auto px-0 sm:px-6 py-24 scroll-mt-20">
         <div className="max-w-5xl mx-auto">
           <div className="mb-12 text-center">
             <h2 className="mt-3 text-3xl font-bold tracking-tight md:text-5xl">

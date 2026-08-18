@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import Logo from "@/components/Logo";
+import { buttonVariants } from "@/components/ui/button";
 import { LogoutButton } from "@/components/logout-button";
 import AccountButton from "@/components/AccountButton";
 import { readRole, type Role } from "@/lib/auth-role";
@@ -66,7 +67,7 @@ export default function Navbar({
   // Signing in swaps the last two slots: Login becomes Logout, Sign Up becomes
   // the account icon. Keeping them in the list preserves their positions.
   type NavEntry =
-    | { kind: "link"; label: string; href: string }
+    | { kind: "link"; label: string; href: string; cta?: true }
     | { kind: "logout" }
     | { kind: "account" };
 
@@ -77,61 +78,73 @@ export default function Navbar({
       : { kind: "link", label: "Login", href: "/auth/login" },
     signedIn
       ? { kind: "account" }
-      : { kind: "link", label: "Sign Up", href: "/auth/signup" },
+      : { kind: "link", label: "Sign Up", href: "/auth/signup", cta: true },
   ];
+
+  const renderItem = (item: NavEntry) => {
+    if (item.kind === "logout") {
+      return <LogoutButton variant="outline" size="sm" className="h-9 px-4 text-sm" />;
+    }
+
+    if (item.kind === "account") {
+      return <AccountButton />;
+    }
+
+    // The sign-up slot is the one call to action on the bar, so it carries the
+    // solid fill; everything else stays quiet until hovered.
+    if (item.cta) {
+      return (
+        <Link
+          href={item.href}
+          className={buttonVariants({ size: "sm", className: "h-9 px-4 text-sm shadow-sm" })}
+        >
+          {item.label}
+        </Link>
+      );
+    }
+
+    const isActive = pathname === item.href;
+
+    return (
+      <Link
+        href={item.href}
+        aria-current={isActive ? "page" : undefined}
+        className={`inline-flex h-9 items-center rounded-md px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${
+          isActive
+            ? "bg-secondary text-primary"
+            : "text-muted-foreground hover:bg-secondary/70 hover:text-primary"
+        }`}
+      >
+        {item.label}
+      </Link>
+    );
+  };
 
   return (
     <header className="sticky top-0 z-[999] w-full border-b bg-background/75 backdrop-blur-md supports-[backdrop-filter]:bg-background/60 shadow-sm">
-      <nav className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
+      <nav className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
         {/* Logo */}
-        <Link href="/" className="flex items-center gap-2">
+        <Link
+          href="/"
+          className="flex shrink-0 items-center gap-2 rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        >
           <Logo className="h-9 w-auto" />
         </Link>
 
         {/* Navigation */}
-        <div className="flex items-center gap-8">
-          {navItems.map((item) => {
-            if (item.kind === "logout") {
-              return (
-                <LogoutButton
-                  key="logout"
-                  variant="ghost"
-                  size="sm"
-                  // Stripped back to match the plain text links beside it.
-                  className="h-auto p-0 text-sm font-medium text-muted-foreground transition-colors hover:bg-transparent hover:text-primary"
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          {navItems.map((item, index) => (
+            <Fragment key={item.kind === "link" ? item.href : item.kind}>
+              {/* Separates the page links from the account actions. */}
+              {index === 1 && (
+                <span
+                  aria-hidden="true"
+                  className="mx-1 hidden h-5 w-px bg-border sm:block"
                 />
-              );
-            }
-
-            if (item.kind === "account") {
-              return (
-                <AccountButton
-                  key="account"
-                  className="text-muted-foreground transition-colors hover:text-primary"
-                />
-              );
-            }
-
-            const isActive = pathname === item.href;
-
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`relative text-sm font-medium transition-colors ${isActive
-                    ? "text-primary"
-                    : "text-muted-foreground hover:text-primary"
-                  }`}
-              >
-                {item.label}
-
-                {/* Active underline */}
-                {isActive && (
-                  <span className="absolute -bottom-1 left-0 h-[2px] w-full rounded-full bg-primary" />
-                )}
-              </Link>
-            );
-          })}
+              )}
+              {renderItem(item)}
+            </Fragment>
+          ))}
         </div>
       </nav>
     </header>

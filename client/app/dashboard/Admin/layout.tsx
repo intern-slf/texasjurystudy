@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { ShieldCheck } from "lucide-react";
 import { createClient } from "../../../lib/supabase/server";
 import AdminSidebar from "@/components/AdminSidebar";
 
@@ -106,16 +107,19 @@ export default async function AdminLayout({
   };
 
   return (
-    <div className="flex min-h-screen bg-muted/10 font-sans">
+    <div className="flex min-h-screen flex-col bg-muted/10 font-sans lg:flex-row">
       {/* SIDEBAR */}
       <AdminSidebar active="requested" counts={counts} />
 
       {/* MAIN AREA */}
-      <div className="flex flex-col flex-1 overflow-hidden">
+      <div className="flex min-w-0 flex-1 flex-col">
         {/* HEADER */}
-        <header className="sticky top-0 z-20 border-b bg-background/80 backdrop-blur-md px-8 py-4 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div className="flex flex-col gap-0.5">
+        {/* Only sticky from lg up — below that the global navbar is already
+            pinned at top:0 and the two would overlap. */}
+        <header className="relative z-20 border-b bg-background/80 backdrop-blur-md px-4 py-4 shadow-sm sm:px-6 lg:sticky lg:top-0 lg:px-8">
+          {/* Wraps rather than truncating, so a long email stays readable on a phone. */}
+          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+            <div className="flex min-w-0 flex-col gap-0.5">
               <h1 className="text-xl font-bold tracking-tight">
                 Texas Jury Study
               </h1>
@@ -127,8 +131,8 @@ export default async function AdminLayout({
               </div>
             </div>
 
-            <nav className="flex items-center gap-6">
-              <div className="flex flex-col items-end">
+            <nav className="flex shrink-0 items-center gap-3 sm:gap-6">
+              <div className="flex min-w-0 flex-col items-end">
                 <span className="text-[10px] uppercase font-bold text-muted-foreground">
                   Current User
                 </span>
@@ -136,7 +140,7 @@ export default async function AdminLayout({
                   {user.email}
                 </span>
               </div>
-              <div className="h-9 w-9 rounded-full bg-primary/10 border flex items-center justify-center text-xs font-bold text-primary shadow-sm">
+              <div className="h-9 w-9 shrink-0 rounded-full bg-primary/10 border flex items-center justify-center text-xs font-bold text-primary shadow-sm">
                 {user.email?.charAt(0).toUpperCase()}
               </div>
             </nav>
@@ -144,24 +148,27 @@ export default async function AdminLayout({
         </header>
 
         {/* CONTENT AREA */}
-        <main className="flex-1 overflow-y-auto p-8 custom-scrollbar bg-muted/10">
+        <main className="flex-1 overflow-y-auto p-4 custom-scrollbar bg-muted/10 sm:p-6 lg:p-8">
           <div className="mx-auto max-w-7xl animate-in fade-in slide-in-from-bottom-4 duration-500">
             {children}
           </div>
         </main>
 
         {/* FOOTER */}
-        <footer className="border-t bg-background px-8 py-4 flex justify-between items-center text-[10px] font-medium text-muted-foreground uppercase tracking-widest">
-          <div className="flex items-center gap-4">
-            <span>&copy; 2026 Texas Jury Study</span>
-            <span className="h-3 w-[1px] bg-border" />
-            <span>v1.0.4</span>
+        <footer className="border-t bg-background px-4 py-4 sm:px-6 lg:px-8">
+          <div className="flex flex-col items-start gap-2 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+            <p>
+              &copy; {new Date().getFullYear()} Texas Jury Study. All rights
+              reserved.
+            </p>
+            <p className="inline-flex items-center gap-2 font-medium">
+              <ShieldCheck
+                className="h-3.5 w-3.5 text-primary"
+                aria-hidden="true"
+              />
+              Confidential — authorized administrators only
+            </p>
           </div>
-          <span className="flex items-center gap-2">
-            <span className="h-1 w-1 rounded-full bg-primary" />
-            Confidential Admin Access
-            <span className="h-1 w-1 rounded-full bg-primary" />
-          </span>
         </footer>
       </div>
     </div>
