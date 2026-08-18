@@ -358,7 +358,7 @@ export default async function NewSessionPage({
       </div>
 
       {/* SPLIT */}
-      <div className="grid grid-cols-2 gap-8">
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
         {/* LEFT - CASES */}
         <div className="space-y-4">
           <h2 className="font-semibold">Cases &amp; Timing</h2>

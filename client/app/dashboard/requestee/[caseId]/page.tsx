@@ -67,9 +67,9 @@ export default async function RequesteeCaseDetailPage({
 
   if (!c) {
     return (
-      <div className="flex min-h-screen bg-muted/10">
+      <div className="flex min-h-screen flex-col bg-muted/10 lg:flex-row">
         <RequesteeSidebar activeTab="current" />
-        <main className="flex-1 flex items-center justify-center">
+        <main className="min-w-0 flex-1 flex items-center justify-center p-6">
           <p className="text-muted-foreground">Case not found.</p>
         </main>
       </div>
@@ -103,11 +103,11 @@ export default async function RequesteeCaseDetailPage({
 
 
   return (
-    <div className="flex min-h-screen bg-muted/10 font-sans">
+    <div className="flex min-h-screen flex-col bg-muted/10 font-sans lg:flex-row">
       <RequesteeSidebar activeTab={backTab} />
 
-      <main className="flex-1 overflow-y-auto">
-        <div className="max-w-4xl mx-auto px-8 py-10 space-y-6">
+      <main className="min-w-0 flex-1 overflow-y-auto">
+        <div className="max-w-4xl mx-auto px-4 py-8 space-y-6 sm:px-6 sm:py-10 lg:px-8">
 
           {/* BACK */}
           <BackButton

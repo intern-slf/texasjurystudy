@@ -96,7 +96,7 @@ export default function CreateSessionButton() {
       </button>
 
       {showConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[80vh] flex flex-col">
             <div className="flex items-center justify-between px-6 py-4 border-b">
               <h2 className="text-lg font-bold">Confirm Session Creation</h2>

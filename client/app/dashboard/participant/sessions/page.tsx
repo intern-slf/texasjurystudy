@@ -105,7 +105,7 @@ export default async function ParticipantSessionsPage({
   const past     = sessions.filter((s) => s.isPast);
 
   return (
-    <div className="max-w-3xl mx-auto p-8 space-y-8">
+    <div className="max-w-3xl mx-auto px-4 py-6 space-y-6 sm:p-8 sm:space-y-8">
       {/* HEADER */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">My Sessions</h1>

@@ -30,7 +30,7 @@ export default async function EditProfilePage({
   const reactivated = resolved.reactivated === "1";
 
   return (
-    <div className="max-w-3xl mx-auto p-8">
+    <div className="max-w-3xl mx-auto px-4 py-6 sm:p-8">
       <BackButton
         href="/dashboard/participant"
         label="Back to Dashboard"

@@ -486,11 +486,11 @@ const sections: Section[] = [
 
 export default function RequesteeHomePage() {
   return (
-    <div className="flex min-h-screen bg-white font-sans">
+    <div className="flex min-h-screen flex-col bg-white font-sans lg:flex-row">
       <RequesteeSidebar activeTab="home" />
 
-      <main className="flex-1 overflow-y-auto">
-        <div className="max-w-5xl mx-auto px-6 sm:px-10 py-12 sm:py-16">
+      <main className="min-w-0 flex-1 overflow-y-auto">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-10 py-8 sm:py-12 lg:py-16">
           {/* HERO */}
           <header className="mb-14 pb-10 border-b border-slate-200">
 

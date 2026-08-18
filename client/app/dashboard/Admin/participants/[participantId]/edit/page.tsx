@@ -56,7 +56,7 @@ export default async function AdminEditParticipantPage({
   }
 
   return (
-    <div className="max-w-3xl mx-auto p-8">
+    <div className="max-w-3xl mx-auto px-4 py-6 sm:p-8">
       <BackButton href={backHref} label="Back to Profile" className="mb-4" />
       <EditProfileForm
         participant={participant}

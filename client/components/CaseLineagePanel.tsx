@@ -13,7 +13,7 @@ export default async function CaseLineagePanel({ caseId }: { caseId: string }) {
 
   if (chain.length === 0) {
     return (
-      <section className="bg-white p-8 rounded-xl border shadow-sm">
+      <section className="bg-white p-5 rounded-xl border shadow-sm sm:p-8">
         <h3 className="text-xl font-bold mb-2">Case History</h3>
         <p className="text-sm text-slate-400 italic">No lineage information available.</p>
       </section>
@@ -26,7 +26,7 @@ export default async function CaseLineagePanel({ caseId }: { caseId: string }) {
   const currentIndex = chain.findIndex((node) => node.id === caseId);
 
   return (
-    <section className="bg-white p-8 rounded-xl border shadow-sm space-y-5">
+    <section className="bg-white p-5 rounded-xl border shadow-sm sm:p-8 space-y-5">
       <div className="flex flex-wrap items-baseline justify-between gap-3">
         <h3 className="text-xl font-bold">Case History</h3>
         <p className="text-xs text-slate-500">

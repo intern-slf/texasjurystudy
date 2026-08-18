@@ -51,7 +51,7 @@ export default function Home() {
           }}
         />
 
-        <div className="container mx-auto px-6 py-20 md:py-32">
+        <div className="container mx-auto px-0 sm:px-6 py-20 md:py-32">
           <div className="mx-auto max-w-4xl text-center space-y-6">
             <div className="inline-flex items-center rounded-full border border-primary/20 bg-primary/5 px-4 py-1.5 text-sm font-medium text-primary">
               <Sparkles className="h-3.5 w-3.5 mr-2" />
@@ -123,7 +123,7 @@ export default function Home() {
       </section>
 
       {/* What is a focus group */}
-      <section className="container mx-auto px-6 py-24">
+      <section className="container mx-auto px-0 sm:px-6 py-24">
         <div className="mb-16 text-center max-w-3xl mx-auto">
           <h2 className="text-3xl font-bold tracking-tight md:text-5xl">
             What is a <span className="text-primary">legal focus group?</span>
@@ -182,7 +182,7 @@ export default function Home() {
           }}
         />
 
-        <div className="container mx-auto px-6">
+        <div className="container mx-auto px-0 sm:px-6">
           <div className="mb-16 text-center max-w-3xl mx-auto">
             <span className="inline-block text-sm font-semibold text-primary uppercase tracking-widest">
               What we do
@@ -235,7 +235,7 @@ export default function Home() {
       </section>
 
       {/* Trust band */}
-      <section className="container mx-auto px-6 py-20">
+      <section className="container mx-auto px-0 sm:px-6 py-20">
         <div className="grid gap-6 md:grid-cols-3 max-w-5xl mx-auto">
           {[
             {
@@ -271,7 +271,7 @@ export default function Home() {
       </section>
 
       {/* Two doors */}
-      <section className="container mx-auto px-6 py-24">
+      <section className="container mx-auto px-0 sm:px-6 py-24">
         <div className="mb-16 text-center max-w-2xl mx-auto">
           <h2 className="text-3xl font-bold tracking-tight md:text-5xl">
             Which side are you on?

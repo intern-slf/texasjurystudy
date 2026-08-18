@@ -34,11 +34,11 @@ export default function Logo({ className = "h-9 w-auto" }: { className?: string 
         y="62"
         width="243"
         height="51"
-        className="fill-[#b33336] dark:fill-[#c23c40]"
+        className="fill-[#C32130] dark:fill-[#D33845]"
       />
 
       {/* Navy panel + star */}
-      <rect x="0" y="0" width="89" height="113" className="fill-[#0e2a64] dark:fill-[#1e4291]" />
+      <rect x="0" y="0" width="89" height="113" className="fill-[#012A68] dark:fill-[#1B4489]" />
       <path d={STAR} fill="#ffffff" />
 
       <text
@@ -50,7 +50,7 @@ export default function Logo({ className = "h-9 w-auto" }: { className?: string 
         fontFamily={SERIF}
         fontSize="60.5"
         fontWeight="700"
-        className="fill-[#b33336] dark:fill-[#e35d62]"
+        className="fill-[#C32130] dark:fill-[#E86A73]"
       >
         TEXAS
       </text>

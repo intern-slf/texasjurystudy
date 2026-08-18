@@ -11,7 +11,7 @@ export default function Footer() {
 
   return (
     <footer className="w-full border-t bg-white/80 backdrop-blur">
-      <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-6 px-6 py-8 md:flex-row">
+      <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-6 px-4 py-8 sm:px-6 md:flex-row lg:px-8">
         {/* Copyright */}
         <p className="text-sm text-muted-foreground">
           © {year ?? "—"} Texas Jury Study. All rights reserved.
@@ -29,7 +29,7 @@ export default function Footer() {
         </p>
 
         {/* Links */}
-        <div className="flex items-center gap-8 text-sm">
+        <div className="flex flex-wrap items-center justify-center gap-x-8 gap-y-3 text-sm">
           <a
             href="/privacy"
             className="transition-colors text-muted-foreground hover:text-primary"

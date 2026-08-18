@@ -11,7 +11,7 @@ export default async function CaseSessionsPanel({ caseId }: { caseId: string }) 
   const sessions = await getCaseSessions(caseId);
 
   return (
-    <section className="bg-white p-8 rounded-xl border shadow-sm space-y-5">
+    <section className="bg-white p-5 rounded-xl border shadow-sm sm:p-8 space-y-5">
       <div className="flex items-baseline justify-between gap-3">
         <h3 className="text-xl font-bold">Sessions &amp; Participants</h3>
         <Link href="/dashboard/Admin/sessions" className="text-xs text-blue-600 hover:underline">

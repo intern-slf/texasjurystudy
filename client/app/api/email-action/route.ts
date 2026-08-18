@@ -115,24 +115,24 @@ function page(title: string, content: string): string {
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>${title} | Texas Jury Study</title>
 </head>
-<body style="margin:0;padding:0;background-color:#f4f6f9;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">
+<body style="margin:0;padding:0;background-color:#F7F4EE;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
     <tr>
       <td align="center" style="padding:48px 16px;">
         <table role="presentation" width="100%" style="max-width:520px;" cellpadding="0" cellspacing="0">
           <tr>
-            <td style="background-color:#1e3a8a;border-radius:8px 8px 0 0;padding:28px 36px;text-align:center;">
+            <td style="background-color:#012A68;border-radius:8px 8px 0 0;padding:28px 36px;text-align:center;">
               <p style="margin:0;font-size:22px;font-weight:700;color:#ffffff;letter-spacing:-0.3px;">Texas Jury Study</p>
             </td>
           </tr>
           <tr>
-            <td style="background-color:#ffffff;padding:40px 36px;border-left:1px solid #e2e8f0;border-right:1px solid #e2e8f0;text-align:center;">
+            <td style="background-color:#ffffff;padding:40px 36px;border-left:1px solid #DAD5C8;border-right:1px solid #DAD5C8;text-align:center;">
               ${content}
             </td>
           </tr>
           <tr>
-            <td style="background-color:#f8fafc;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 8px 8px;padding:20px 36px;text-align:center;">
-              <p style="margin:0;font-size:11px;color:#cbd5e1;">© ${year} Texas Jury Study. All rights reserved.</p>
+            <td style="background-color:#F7F4EE;border:1px solid #DAD5C8;border-top:none;border-radius:0 0 8px 8px;padding:20px 36px;text-align:center;">
+              <p style="margin:0;font-size:11px;color:#6B6960;">© ${year} Texas Jury Study. All rights reserved.</p>
             </td>
           </tr>
         </table>
@@ -145,8 +145,8 @@ function page(title: string, content: string): string {
 
 function successPage(action: "accepted" | "declined", dashboardUrl: string): string {
   const isAccepted = action === "accepted";
-  const color = isAccepted ? "#16a34a" : "#dc2626";
-  const bgColor = isAccepted ? "#f0fdf4" : "#fef2f2";
+  const color = isAccepted ? "#2D6A3E" : "#C32130";
+  const bgColor = isAccepted ? "#E3EFE6" : "#F9E9EA";
   const headline = isAccepted ? "You're In!" : "Invitation Declined";
   const message = isAccepted
     ? "Thank you for accepting. We look forward to seeing you at the session. You will receive a Zoom link closer to the date."
@@ -155,38 +155,38 @@ function successPage(action: "accepted" | "declined", dashboardUrl: string): str
   return page(headline, `
     <div style="width:64px;height:64px;border-radius:50%;background-color:${bgColor};border:2px solid ${color};margin:0 auto 20px;font-size:28px;line-height:64px;">${isAccepted ? "✓" : "✕"}</div>
     <h1 style="margin:0 0 12px;font-size:26px;font-weight:700;color:${color};">${headline}</h1>
-    <p style="margin:0 0 28px;font-size:16px;color:#475569;line-height:1.6;">${message}</p>
-    <a href="${dashboardUrl}" style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;background-color:#2563eb;text-decoration:none;border-radius:6px;">View My Dashboard</a>
+    <p style="margin:0 0 28px;font-size:16px;color:#3F3E38;line-height:1.6;">${message}</p>
+    <a href="${dashboardUrl}" style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;background-color:#012A68;text-decoration:none;border-radius:6px;">View My Dashboard</a>
   `);
 }
 
 function alreadyRespondedPage(existingAction: string, dashboardUrl: string): string {
   return page("Already Responded", `
-    <div style="width:64px;height:64px;border-radius:50%;background-color:#f0f9ff;border:2px solid #0ea5e9;margin:0 auto 20px;font-size:28px;line-height:64px;">ℹ</div>
-    <h1 style="margin:0 0 12px;font-size:24px;font-weight:700;color:#0369a1;">You Have Already Responded</h1>
-    <p style="margin:0 0 8px;font-size:16px;color:#475569;">You already <strong>${existingAction}</strong> this invitation.</p>
-    <p style="margin:0 0 28px;font-size:14px;color:#64748b;">To change your response, please log in to your participant dashboard.</p>
-    <a href="${dashboardUrl}" style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;background-color:#2563eb;text-decoration:none;border-radius:6px;">Go to Dashboard</a>
+    <div style="width:64px;height:64px;border-radius:50%;background-color:#EFF3F9;border:2px solid #3B6EA5;margin:0 auto 20px;font-size:28px;line-height:64px;">ℹ</div>
+    <h1 style="margin:0 0 12px;font-size:24px;font-weight:700;color:#011A44;">You Have Already Responded</h1>
+    <p style="margin:0 0 8px;font-size:16px;color:#3F3E38;">You already <strong>${existingAction}</strong> this invitation.</p>
+    <p style="margin:0 0 28px;font-size:14px;color:#54524A;">To change your response, please log in to your participant dashboard.</p>
+    <a href="${dashboardUrl}" style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;background-color:#012A68;text-decoration:none;border-radius:6px;">Go to Dashboard</a>
   `);
 }
 
 function sessionFullPage(dashboardUrl: string): string {
   return page("Session Full", `
-    <div style="width:64px;height:64px;border-radius:50%;background-color:#eff6ff;border:2px solid #2563eb;margin:0 auto 20px;font-size:28px;line-height:64px;">📋</div>
-    <h1 style="margin:0 0 12px;font-size:24px;font-weight:700;color:#1e3a8a;">Session Is Full</h1>
-    <p style="margin:0 0 8px;font-size:16px;color:#475569;line-height:1.6;">Thank you for your interest, but this session has already reached its participant capacity.</p>
-    <p style="margin:0 0 28px;font-size:14px;color:#64748b;">Don't worry — you will be considered for the next available session that matches your profile.</p>
-    <a href="${dashboardUrl}" style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;background-color:#2563eb;text-decoration:none;border-radius:6px;">Go to Dashboard</a>
+    <div style="width:64px;height:64px;border-radius:50%;background-color:#EFF3F9;border:2px solid #012A68;margin:0 auto 20px;font-size:28px;line-height:64px;">📋</div>
+    <h1 style="margin:0 0 12px;font-size:24px;font-weight:700;color:#012A68;">Session Is Full</h1>
+    <p style="margin:0 0 8px;font-size:16px;color:#3F3E38;line-height:1.6;">Thank you for your interest, but this session has already reached its participant capacity.</p>
+    <p style="margin:0 0 28px;font-size:14px;color:#54524A;">Don't worry — you will be considered for the next available session that matches your profile.</p>
+    <a href="${dashboardUrl}" style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;background-color:#012A68;text-decoration:none;border-radius:6px;">Go to Dashboard</a>
   `);
 }
 
 function inactivePage(dashboardUrl: string): string {
   return page("Account Not Active", `
-    <div style="width:64px;height:64px;border-radius:50%;background-color:#fff7ed;border:2px solid #f97316;margin:0 auto 20px;font-size:28px;line-height:64px;">⚠</div>
-    <h1 style="margin:0 0 12px;font-size:24px;font-weight:700;color:#c2410c;">Your Account Is Not Active</h1>
-    <p style="margin:0 0 8px;font-size:16px;color:#475569;line-height:1.6;">Only active panel members can attend a session, and we do not have a current confirmation that you are still interested in participating.</p>
-    <p style="margin:0 0 28px;font-size:14px;color:#64748b;line-height:1.6;">If you would like to take part, please confirm using the <strong>&ldquo;Yes, I&rsquo;m still interested&rdquo;</strong> button in our reactivation email, or contact Texas Jury Study.</p>
-    <a href="${dashboardUrl}" style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;background-color:#2563eb;text-decoration:none;border-radius:6px;">Go to Dashboard</a>
+    <div style="width:64px;height:64px;border-radius:50%;background-color:#FBF0DD;border:2px solid #AD8A37;margin:0 auto 20px;font-size:28px;line-height:64px;">⚠</div>
+    <h1 style="margin:0 0 12px;font-size:24px;font-weight:700;color:#6E5418;">Your Account Is Not Active</h1>
+    <p style="margin:0 0 8px;font-size:16px;color:#3F3E38;line-height:1.6;">Only active panel members can attend a session, and we do not have a current confirmation that you are still interested in participating.</p>
+    <p style="margin:0 0 28px;font-size:14px;color:#54524A;line-height:1.6;">If you would like to take part, please confirm using the <strong>&ldquo;Yes, I&rsquo;m still interested&rdquo;</strong> button in our reactivation email, or contact Texas Jury Study.</p>
+    <a href="${dashboardUrl}" style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;background-color:#012A68;text-decoration:none;border-radius:6px;">Go to Dashboard</a>
   `);
 }
 
@@ -199,11 +199,11 @@ function missingProfilePage(missing: string[], dashboardUrl: string): string {
   ].filter(Boolean).join(" and ");
 
   return page("Profile Incomplete", `
-    <div style="width:64px;height:64px;border-radius:50%;background-color:#fff7ed;border:2px solid #f97316;margin:0 auto 20px;font-size:28px;line-height:64px;">⚠</div>
-    <h1 style="margin:0 0 12px;font-size:24px;font-weight:700;color:#c2410c;">Profile Incomplete</h1>
-    <p style="margin:0 0 8px;font-size:16px;color:#475569;line-height:1.6;">You cannot accept this invitation until you update your profile with the following missing information:</p>
-    <p style="margin:0 0 28px;font-size:15px;font-weight:600;color:#c2410c;">${items}</p>
-    <a href="${dashboardUrl}" style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;background-color:#2563eb;text-decoration:none;border-radius:6px;">Update Profile</a>
+    <div style="width:64px;height:64px;border-radius:50%;background-color:#FBF0DD;border:2px solid #AD8A37;margin:0 auto 20px;font-size:28px;line-height:64px;">⚠</div>
+    <h1 style="margin:0 0 12px;font-size:24px;font-weight:700;color:#6E5418;">Profile Incomplete</h1>
+    <p style="margin:0 0 8px;font-size:16px;color:#3F3E38;line-height:1.6;">You cannot accept this invitation until you update your profile with the following missing information:</p>
+    <p style="margin:0 0 28px;font-size:15px;font-weight:600;color:#6E5418;">${items}</p>
+    <a href="${dashboardUrl}" style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;background-color:#012A68;text-decoration:none;border-radius:6px;">Update Profile</a>
   `);
 }
 
@@ -211,9 +211,9 @@ function errorPage(title: string, message: string): string {
   const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
 
   return page(title, `
-    <div style="width:64px;height:64px;border-radius:50%;background-color:#fef2f2;border:2px solid #dc2626;margin:0 auto 20px;font-size:28px;line-height:64px;">!</div>
-    <h1 style="margin:0 0 12px;font-size:24px;font-weight:700;color:#dc2626;">${title}</h1>
-    <p style="margin:0 0 28px;font-size:15px;color:#475569;line-height:1.6;">${message}</p>
-    <a href="${appUrl}/dashboard/participant" style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;background-color:#2563eb;text-decoration:none;border-radius:6px;">Go to Dashboard</a>
+    <div style="width:64px;height:64px;border-radius:50%;background-color:#F9E9EA;border:2px solid #C32130;margin:0 auto 20px;font-size:28px;line-height:64px;">!</div>
+    <h1 style="margin:0 0 12px;font-size:24px;font-weight:700;color:#C32130;">${title}</h1>
+    <p style="margin:0 0 28px;font-size:15px;color:#3F3E38;line-height:1.6;">${message}</p>
+    <a href="${appUrl}/dashboard/participant" style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;background-color:#012A68;text-decoration:none;border-radius:6px;">Go to Dashboard</a>
   `);
 }

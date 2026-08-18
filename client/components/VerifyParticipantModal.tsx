@@ -74,7 +74,7 @@ export default function VerifyParticipantModal({
       />
 
       {/* MODAL */}
-      <div className="relative bg-white rounded-xl shadow-2xl max-w-3xl w-full mx-4 max-h-[85vh] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+      <div className="relative bg-white rounded-xl shadow-2xl max-w-3xl w-full mx-4 max-h-[85vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-200">
         {/* CLOSE */}
         <button
           onClick={onClose}
@@ -85,7 +85,7 @@ export default function VerifyParticipantModal({
 
         <div className="flex flex-col md:flex-row">
           {/* ====== LEFT: ID IMAGE with cursor zoom ====== */}
-          <div className="md:w-1/2 bg-slate-50 border-r flex flex-col items-center justify-center p-6 min-h-[300px]">
+          <div className="md:w-1/2 bg-slate-50 border-b md:border-b-0 md:border-r flex flex-col items-center justify-center p-6 min-h-[300px]">
             {p.idSignedUrl ? (
               <>
                 <div
