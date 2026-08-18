@@ -9,6 +9,7 @@ import { recordBackoutStrike } from "@/lib/actions/participantFlags";
 import { generateEmailActionToken } from "@/lib/emailActionToken";
 import { getBlockedParticipantIdsForCases } from "@/lib/case-lineage";
 import { ACTIVE_STATUS, isActiveStatus, isParticipantActive } from "@/lib/participant/activeStatus";
+import { NO_LOGIN_REASON, getAllIdsWithoutLogin, getIdsWithoutLogin } from "@/lib/participant/loginAccount";
 import { revalidatePath } from "next/cache";
 import { localToUTC, localToUTCTime } from "@/lib/timezone";
 
@@ -115,7 +116,14 @@ export type InviteResult = {
   ok: boolean;
   invited: number;
   /** Dropped by the hard guards, by reason. */
-  skipped: { blacklisted: number; inactive: number };
+  skipped: { blacklisted: number; inactive: number; noAccount: number };
+  /**
+   * Participants who could not be invited, by name. Mostly the no-login case:
+   * session_participants.participant_id FKs onto auth.users(id), so someone with
+   * a jury_participants row but no auth.users row can never be invited (FK
+   * 23503). Caught up front now; the FK path below is the backstop.
+   */
+  rejected?: { name: string; reason: string }[];
   /** Set when ok is false. Safe to show to an admin. */
   error?: string;
 };
@@ -136,7 +144,7 @@ export async function inviteParticipants(
     return {
       ok: false,
       invited: 0,
-      skipped: { blacklisted: 0, inactive: 0 },
+      skipped: { blacklisted: 0, inactive: 0, noAccount: 0 },
       error: message,
     };
   }
@@ -160,9 +168,29 @@ async function inviteParticipantsInner(
     supabaseAdmin.from("roles").select("user_id").eq("role", "blacklisted").in("user_id", uniqueIds),
     supabaseAdmin
       .from("jury_participants")
-      .select("user_id, blacklisted_at, reactivation_status")
+      // email + name come along so we can address the invite and name a failure
+      // without depending on the auth admin API, which is not always readable
+      // (at least one auth row currently returns "Database error loading user").
+      .select("user_id, blacklisted_at, reactivation_status, email, first_name, last_name")
       .in("user_id", uniqueIds),
   ]);
+
+  type JpRow = {
+    user_id: string;
+    blacklisted_at: string | null;
+    reactivation_status: string | null;
+    email: string | null;
+    first_name: string | null;
+    last_name: string | null;
+  };
+  const jpById = new Map<string, JpRow>(
+    ((jpRows ?? []) as JpRow[]).map((r) => [r.user_id, r])
+  );
+  const nameOf = (id: string) => {
+    const r = jpById.get(id);
+    const name = `${r?.first_name ?? ""} ${r?.last_name ?? ""}`.trim();
+    return name || r?.email || id;
+  };
   const blacklistedSet = new Set<string>([
     ...((blByRole ?? []).map((r: { user_id: string }) => r.user_id)),
     ...((jpRows ?? [])
@@ -195,50 +223,118 @@ async function inviteParticipantsInner(
       Array.from(inactiveSet)
     );
   }
+  // ── Hard guard: a participant with no auth.users row can never be invited.
+  //    participant_id has an FK onto auth.users(id) and the whole participant
+  //    flow is login-based (magic-link accept, DL/PayPal profile), so this is not
+  //    a database quirk to work around — those profiles are not people who can
+  //    attend. Checked up front so they are named rather than surfacing as a raw
+  //    FK 23503; the row-by-row retry below stays as the backstop for when this
+  //    check cannot answer. See lib/participant/loginAccount.
+  const rejected: { name: string; reason: string }[] = [];
+  const noLoginSet = await getIdsWithoutLogin(allowedIds);
+  const invitableIds = allowedIds.filter((id) => !noLoginSet.has(id));
+
+  if (noLoginSet.size > 0) {
+    console.warn(
+      `[inviteParticipants] Blocked ${noLoginSet.size} participant(s) with no login account ` +
+      `from session ${sessionId} (no auth.users row — they can never be invited):`,
+      Array.from(noLoginSet)
+    );
+    for (const id of allowedIds) {
+      if (noLoginSet.has(id)) rejected.push({ name: nameOf(id), reason: NO_LOGIN_REASON });
+    }
+  }
+
   const skipped = {
     blacklisted: blacklistedSet.size,
     inactive: inactiveSet.size,
+    noAccount: noLoginSet.size,
   };
 
-  if (allowedIds.length === 0) {
+  if (invitableIds.length === 0) {
     revalidatePath("/dashboard/Admin/sessions");
     // Not an error, but absolutely not a success either — say so, or the admin
     // is told the invites went out when nobody was invited.
     const reasons = [
       skipped.inactive > 0 ? `${skipped.inactive} not active` : null,
       skipped.blacklisted > 0 ? `${skipped.blacklisted} blacklisted` : null,
+      skipped.noAccount > 0 ? `${skipped.noAccount} with no login account` : null,
     ].filter(Boolean).join(", ");
+    const named = rejected.length
+      ? ` ${rejected.map((r) => `${r.name}: ${r.reason}`).join("; ")}`
+      : "";
     return {
       ok: false,
       invited: 0,
       skipped,
+      rejected,
       error: reasons
-        ? `Nobody was invited — every selected participant was skipped (${reasons}).`
+        ? `Nobody was invited — every selected participant was skipped (${reasons}).${named}`
         : "Nobody was invited — no valid participants were selected.",
     };
   }
 
-  const rows = allowedIds.map((id) => ({
+  const rows = invitableIds.map((id) => ({
     session_id: sessionId,
     participant_id: id,
     invite_status: "pending",
   }));
 
-  // Note this insert uses the caller-scoped client, not supabaseAdmin, so it is
-  // subject to RLS on session_participants. Name that in the message: a bare
-  // Postgres error here is indistinguishable from a bug, and "new row violates
-  // row-level security policy" is the single most likely failure.
-  const { data: insertedRows, error } = await supabase
-    .from("session_participants")
-    .insert(rows)
-    .select();
+  // Insert as one batch first. If the batch is rejected, retry row by row so a
+  // single bad participant cannot block everyone else in the selection.
+  //
+  // This matters because of a real data problem: participant_id has an FK onto
+  // auth.users(id), and some jury_participants rows have no auth user. Selecting
+  // one of those made the whole batch fail with FK 23503, so an admin inviting
+  // ten people got zero invites and an opaque 500. The guard above now catches
+  // that case by name; this stays for anything it could not rule out.
+  let insertedRows: { id: string; participant_id: string }[] = [];
 
-  if (error) {
-    throw new Error(
-      `Could not create invite rows for session ${sessionId} ` +
-      `(${rows.length} participant(s)): ${error.message}` +
-      (error.code ? ` [${error.code}]` : "")
+  const batch = await supabase.from("session_participants").insert(rows).select();
+
+  if (!batch.error) {
+    insertedRows = (batch.data ?? []) as { id: string; participant_id: string }[];
+  } else {
+    console.warn(
+      `[inviteParticipants] Batch insert of ${rows.length} row(s) failed ` +
+      `(${batch.error.code ?? "?"}: ${batch.error.message}) — retrying individually.`
     );
+
+    for (const row of rows) {
+      const one = await supabase
+        .from("session_participants")
+        .insert(row)
+        .select();
+
+      if (one.error) {
+        const reason =
+          one.error.code === "23503"
+            ? NO_LOGIN_REASON
+            : `${one.error.message}${one.error.code ? ` [${one.error.code}]` : ""}`;
+        rejected.push({ name: nameOf(row.participant_id), reason });
+        console.error(
+          `[inviteParticipants] Rejected ${row.participant_id} (${nameOf(row.participant_id)}): ` +
+          `${one.error.code ?? "?"} ${one.error.message}`
+        );
+      } else {
+        insertedRows.push(...((one.data ?? []) as { id: string; participant_id: string }[]));
+      }
+    }
+
+    // Everything failed — report it rather than pressing on to the email loop.
+    if (insertedRows.length === 0) {
+      revalidatePath("/dashboard/Admin/sessions");
+      const detail = rejected.length
+        ? rejected.map((r) => `${r.name}: ${r.reason}`).join("; ")
+        : `${batch.error.message}${batch.error.code ? ` [${batch.error.code}]` : ""}`;
+      return {
+        ok: false,
+        invited: 0,
+        skipped,
+        rejected,
+        error: `No invites could be created. ${detail}`,
+      };
+    }
   }
 
   // Fetch case times for this session to include in emails
@@ -266,23 +362,40 @@ async function inviteParticipantsInner(
   // Send invitation emails to each participant
   const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "");
 
+  // Invite rows that were created but whose email could not be sent. Reported
+  // back so "invited 10" never silently means "emailed 7".
+  const emailFailures: { name: string; reason: string }[] = [];
+
   for (const row of (insertedRows || [])) {
     const participantId = row.participant_id;
     const inviteRecordId = row.id;
 
     try {
-      const { data: userData, error: userError } =
-        await supabaseAdmin.auth.admin.getUserById(participantId);
+      // Resolve the address from jury_participants first and treat the auth admin
+      // API only as a fallback. It used to be the other way round, which meant an
+      // unreadable auth row silently skipped that person's invite email entirely —
+      // the row was created, no mail was sent, and the only trace was a log line.
+      // At least one auth row currently returns "Database error loading user".
+      let participantEmail = jpById.get(participantId)?.email ?? null;
 
-      if (userError || !userData?.user?.email) {
-        console.error(
-          `Could not get email for participant ${participantId}:`,
-          userError?.message || "No email found"
-        );
-        continue;
+      if (!participantEmail) {
+        const { data: userData, error: userError } =
+          await supabaseAdmin.auth.admin.getUserById(participantId);
+        participantEmail = userData?.user?.email ?? null;
+
+        if (!participantEmail) {
+          console.error(
+            `[inviteParticipants] No email for participant ${participantId} ` +
+            `(${nameOf(participantId)}) — invite row exists but no mail can be sent: ` +
+            `${userError?.message ?? "not in jury_participants and no auth email"}`
+          );
+          emailFailures.push({
+            name: nameOf(participantId),
+            reason: "no email address on file",
+          });
+          continue;
+        }
       }
-
-      const participantEmail = userData.user.email;
       const dateStr = sessionDate
         ? new Date(sessionDate).toLocaleDateString("en-US", {
           weekday: "long",
@@ -392,16 +505,33 @@ async function inviteParticipantsInner(
         emailError
       );
       // Don't throw — we still want the invite record saved even if email fails
+      emailFailures.push({
+        name: nameOf(participantId),
+        reason: emailError instanceof Error ? emailError.message : String(emailError),
+      });
     }
   }
 
   revalidatePath("/dashboard/Admin/sessions");
 
-  return {
-    ok: true,
-    invited: (insertedRows ?? []).length,
-    skipped,
-  };
+  const invited = insertedRows.length;
+  const problems = [...rejected, ...emailFailures];
+
+  // Partial success is still a failure worth showing: an admin who selected ten
+  // people and got seven invites needs to know which three, and why.
+  if (problems.length > 0) {
+    return {
+      ok: false,
+      invited,
+      skipped,
+      rejected: problems,
+      error:
+        `Invited ${invited} of ${invited + rejected.length}. ` +
+        `Not sent: ${problems.map((p) => `${p.name} (${p.reason})`).join("; ")}`,
+    };
+  }
+
+  return { ok: true, invited, skipped };
 }
 
 /* =========================
@@ -1061,6 +1191,12 @@ export async function searchEligibleParticipants(
   //    chains. Same rule the recommended list uses, so the two agree.
   const lineageBlockedIds = await getSessionBlockedParticipantIds(supabase, sessionId);
 
+  // 3b. Participants with no login account — they can never be invited (the
+  //     insert would fail FK 23503), so they are surfaced greyed-out rather than
+  //     offered. See lib/participant/loginAccount.
+  const noLoginSet = await getAllIdsWithoutLogin();
+  const noLoginIds = Array.from(noLoginSet);
+
   const { count } = await supabase
     .from("jury_participants")
     .select("*", { count: "exact", head: true });
@@ -1081,7 +1217,12 @@ export async function searchEligibleParticipants(
   };
   const mapRow = (
     p: SearchResultRow,
-    flags: { blacklisted?: boolean; lineageBlocked?: boolean; inactive?: boolean } = {}
+    flags: {
+      blacklisted?: boolean;
+      lineageBlocked?: boolean;
+      inactive?: boolean;
+      noAccount?: boolean;
+    } = {}
   ) => ({
     id: p.user_id || p.id,
     first_name: p.first_name,
@@ -1092,11 +1233,12 @@ export async function searchEligibleParticipants(
     blacklisted: flags.blacklisted ?? false,
     lineageBlocked: flags.lineageBlocked ?? false,
     inactive: flags.inactive ?? false,
+    noAccount: flags.noAccount ?? false,
   });
 
   // ── Eligible participants (active, approved, not blacklisted, not in lineage, not already invited) ──
   const eligibleExcludeIds = Array.from(
-    new Set([...alreadyInvitedIds, ...blacklistedIds, ...lineageBlockedIds])
+    new Set([...alreadyInvitedIds, ...blacklistedIds, ...lineageBlockedIds, ...noLoginIds])
   );
   let q = supabase.from(testTable).select("*");
   if (!isOldData) {
@@ -1120,7 +1262,7 @@ export async function searchEligibleParticipants(
   // Fetch a flagged group by id, honouring the same name search.
   const fetchFlagged = async (
     ids: string[],
-    flags: { blacklisted?: boolean; lineageBlocked?: boolean }
+    flags: { blacklisted?: boolean; lineageBlocked?: boolean; noAccount?: boolean }
   ) => {
     if (!ids.length) return [];
     let fq = supabase.from(testTable).select("*").in(idField, ids);
@@ -1134,11 +1276,16 @@ export async function searchEligibleParticipants(
 
   // ── Lineage-blocked (already used on these cases or their follow-ups) ──
   const lineageToShow = lineageBlockedIds.filter(
-    (id) => !alreadyInvitedSet.has(id) && !blacklistedSet.has(id)
+    (id) => !alreadyInvitedSet.has(id) && !blacklistedSet.has(id) && !noLoginSet.has(id)
   );
 
   // ── Blacklisted matches (surfaced greyed-out, never invitable) ──
   const blacklistedToShow = blacklistedIds.filter((id) => !alreadyInvitedSet.has(id));
+
+  // ── No login account (permanently un-invitable) ──
+  const noLoginToShow = noLoginIds.filter(
+    (id) => !alreadyInvitedSet.has(id) && !blacklistedSet.has(id)
+  );
 
   // ── Non-active matches (reactivation_status not "yes") ──
   //    Surfaced greyed-out so an admin searching a known name sees *why* they
@@ -1154,7 +1301,7 @@ export async function searchEligibleParticipants(
       .or(`reactivation_status.neq.${ACTIVE_STATUS},reactivation_status.is.null`);
 
     const excludeIds = Array.from(
-      new Set([...alreadyInvitedIds, ...blacklistedIds, ...lineageBlockedIds])
+      new Set([...alreadyInvitedIds, ...blacklistedIds, ...lineageBlockedIds, ...noLoginIds])
     );
     if (excludeIds.length > 0) {
       iq = iq.not(idField, "in", `(${excludeIds.map((id) => `"${id}"`).join(",")})`);
@@ -1167,14 +1314,38 @@ export async function searchEligibleParticipants(
     return ((data ?? []) as SearchResultRow[]).map((p) => mapRow(p, { inactive: true }));
   };
 
-  const [lineageBlocked, blacklisted, inactive] = await Promise.all([
+  const [lineageBlocked, blacklisted, inactive, noAccount] = await Promise.all([
     fetchFlagged(lineageToShow, { lineageBlocked: true }),
     fetchFlagged(blacklistedToShow, { blacklisted: true }),
     fetchInactive(),
+    fetchFlagged(noLoginToShow, { noAccount: true }),
   ]);
 
   // Eligible first, then the greyed-out groups
-  return [...eligible, ...lineageBlocked, ...blacklisted, ...inactive];
+  return [...eligible, ...lineageBlocked, ...blacklisted, ...inactive, ...noAccount];
+}
+
+/* =========================
+   PARTICIPANTS WHO CAN NEVER BE INVITED
+   Ids only, so the create-session search can grey them out. The check itself
+   needs the service role (auth.users is not reachable through PostgREST), which
+   is why the browser has to ask for it rather than query it.
+========================= */
+export async function getUninvitableParticipantIds(): Promise<string[]> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const { data: roleRow } = await supabase
+    .from("roles")
+    .select("role")
+    .eq("user_id", user.id)
+    .single();
+  if (roleRow?.role !== "admin") throw new Error("Not authorized");
+
+  return Array.from(await getAllIdsWithoutLogin());
 }
 
 /* =========================

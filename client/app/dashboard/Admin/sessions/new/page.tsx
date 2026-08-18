@@ -7,6 +7,7 @@ import {
 } from "@/lib/actions/session";
 import { redirect } from "next/navigation";
 import { ACTIVE_STATUS } from "@/lib/participant/activeStatus";
+import { getAllIdsWithoutLogin } from "@/lib/participant/loginAccount";
 import CreateSessionButton from "@/components/CreateSessionButton";
 import CaseTimeInputs from "@/components/CaseTimeInputs";
 import TimezoneInput from "@/components/TimezoneInput";
@@ -168,6 +169,10 @@ export default async function NewSessionPage({
     .eq("role", "blacklisted");
   const blacklistedIds = (blacklistedRoles ?? []).map((r: { user_id: string }) => r.user_id);
 
+  // Profiles with no auth.users row can never be invited — the invite insert
+  // fails FK 23503 — so they are never recommended. See lib/participant/loginAccount.
+  const noLoginIds = Array.from(await getAllIdsWithoutLogin());
+
   // --- NEW: Lineage Exclusion Logic ---
   const allLineageParticipantIds: string[] = [];
   if (selectedIds.length > 0) {
@@ -194,8 +199,10 @@ export default async function NewSessionPage({
     // ── Hard exclusions (never relaxed) ──────────────────────────────
     // Skip modern exclusions for legacy tables (e.g. oldData)
     if (!isOldData) {
-      // 1. Skip participants whose role = 'blacklisted' OR in lineage
-      const combinedExclusions = Array.from(new Set([...blacklistedIds, ...allLineageParticipantIds]));
+      // 1. Skip participants whose role = 'blacklisted', who have no login, or who are in lineage
+      const combinedExclusions = Array.from(
+        new Set([...blacklistedIds, ...noLoginIds, ...allLineageParticipantIds])
+      );
       if (combinedExclusions.length > 0) {
         query = query.not("user_id", "in", `(${combinedExclusions.map(id => `"${id}"`).join(",")})`);
       }

@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { getBlockedParticipantIds } from "@/lib/case-lineage";
 import { ACTIVE_STATUS } from "@/lib/participant/activeStatus";
+import { getAllIdsWithoutLogin } from "@/lib/participant/loginAccount";
 
 /**
  * Search eligible participants for a case on the requestee side.
@@ -60,9 +61,14 @@ export async function searchParticipantsForCase(
     .eq("role", "blacklisted");
   const blacklistedIds = (blacklistedRoles ?? []).map((r: { user_id: string }) => r.user_id);
 
+  // 5b. Participants with no login account — the invite insert would fail on
+  //     session_participants' FK onto auth.users, so they are never offered.
+  //     See lib/participant/loginAccount.
+  const noLoginIds = Array.from(await getAllIdsWithoutLogin());
+
   // 6. Combine all exclusion IDs
   const excludeIds = Array.from(
-    new Set([...blockedIds, ...alreadyInvitedIds, ...blacklistedIds])
+    new Set([...blockedIds, ...alreadyInvitedIds, ...blacklistedIds, ...noLoginIds])
   );
 
   // 7. Determine table
@@ -175,9 +181,16 @@ export async function requesteeAddParticipants(
     .eq("id", sessionId)
     .single();
 
-  await inviteParticipants(sessionId, safeIds, session?.session_date ?? undefined);
+  const result = await inviteParticipants(sessionId, safeIds, session?.session_date ?? undefined);
 
-  return { invited: safeIds.length };
+  // Report what actually happened. Returning safeIds.length unconditionally told
+  // the requestee "N added" even when every one of them had been dropped by the
+  // invite guards — blacklisted, not an active panel member, or no login account.
+  if (result.invited === 0) {
+    throw new Error(result.error ?? "No participants could be added.");
+  }
+
+  return { invited: result.invited, warning: result.ok ? undefined : result.error };
 }
 
 /**

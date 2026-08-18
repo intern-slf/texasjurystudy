@@ -25,6 +25,8 @@ export interface Candidate {
   lineageBlocked?: boolean;
   /** Not an active panel member — `reactivation_status` is not "yes". */
   inactive?: boolean;
+  /** Has a profile but no login (no `auth.users` row), so can never be invited. */
+  noAccount?: boolean;
   matchLevel?: number;
   filterChecks?: {
     key: string;
@@ -127,9 +129,9 @@ function FilterChecks({ filterChecks, matchLevel }: { filterChecks: Candidate["f
 
 const INITIAL_VISIBLE = 20;
 
-/** Blacklisted, lineage-blocked and non-active participants are listed but never selectable. */
+/** Blacklisted, lineage-blocked, non-active and login-less participants are listed but never selectable. */
 function isBlocked(p: Candidate): boolean {
-  return Boolean(p.blacklisted || p.lineageBlocked || p.inactive);
+  return Boolean(p.blacklisted || p.lineageBlocked || p.inactive || p.noAccount);
 }
 
 function blockReason(p: Candidate): { label: string; title: string; badgeClass: string } {
@@ -138,6 +140,14 @@ function blockReason(p: Candidate): { label: string; title: string; badgeClass: 
       label: "Blacklisted",
       title: "This participant is blacklisted and cannot be invited.",
       badgeClass: "bg-red-50 text-red-700 border-red-200",
+    };
+  }
+  if (p.noAccount) {
+    return {
+      label: "No login",
+      title:
+        "This person has a participant profile but never created a login, so there is no account to invite — they could not open the invitation, complete their profile, or be paid.",
+      badgeClass: "bg-slate-100 text-slate-600 border-slate-300",
     };
   }
   if (p.inactive) {
