@@ -684,10 +684,30 @@ export async function sendZoomLinkEmail(
       </tr>
     </table>
 
-    <p style="margin:0;font-size:13px;color:#64748b;">
+    <p style="margin:0 0 24px;font-size:13px;color:#64748b;">
       Or copy this link into your browser:<br/>
       <span style="color:#2563eb;word-break:break-all;">${zoomLink}</span>
     </p>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#fef9c3;border-left:4px solid #ca8a04;border-radius:6px;margin:0 0 8px;">
+      <tr>
+        <td style="padding:16px 20px;">
+          <p style="margin:0 0 8px;font-size:11px;font-weight:700;color:#854d0e;text-transform:uppercase;letter-spacing:0.08em;">Required to Participate &amp; Get Paid</p>
+          <p style="margin:0 0 10px;font-size:14px;color:#854d0e;">
+            Please join from a <strong>computer (desktop or laptop)</strong> with a <strong>working camera</strong> and <strong>working audio</strong> (microphone and speakers or headphones).
+          </p>
+          <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 10px;">
+            <tr><td style="padding:0 0 6px;font-size:14px;color:#854d0e;">&bull;&nbsp; Camera must stay on for the entire session</td></tr>
+            <tr><td style="padding:0 0 6px;font-size:14px;color:#854d0e;">&bull;&nbsp; Microphone and speakers must work so you can be heard and hear others</td></tr>
+            <tr><td style="padding:0 0 6px;font-size:14px;color:#854d0e;">&bull;&nbsp; Test your camera and audio in Zoom <strong>before</strong> the session starts</td></tr>
+            <tr><td style="padding:0;font-size:14px;color:#854d0e;">&bull;&nbsp; Join on time from a quiet place with a stable internet connection</td></tr>
+          </table>
+          <p style="margin:0;font-size:14px;font-weight:700;color:#854d0e;">
+            If you cannot join from a computer with working camera and audio, you will lose your spot in the session and will not receive payment.
+          </p>
+        </td>
+      </tr>
+    </table>
   `);
 
   await sendEmail({
