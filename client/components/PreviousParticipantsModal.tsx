@@ -12,10 +12,20 @@ import {
     Loader2
 } from "lucide-react";
 import { Badge } from "./ui/badge";
+import { sortRoster, rosterGroup, rosterStatusLabel, type RosterGroup } from "@/lib/participant/rosterOrder";
+
+const BADGE_VARIANT: Record<RosterGroup, "default" | "outline" | "destructive" | "secondary"> = {
+    accepted: "default",
+    declined: "destructive",
+    pending: "outline",
+    struck: "secondary",
+};
 
 interface Participant {
     participant_id: string;
     invite_status: string;
+    /** `session_participants.struck_at` — accepted, then backed out or no-showed. */
+    struck_at?: string | null;
     jury_participants: {
         first_name: string;
         last_name: string;
@@ -63,7 +73,8 @@ export default function PreviousParticipantsModal({ caseId, ancestorIds }: Props
                             session_date,
                             session_participants (
                                 participant_id,
-                                invite_status
+                                invite_status,
+                                struck_at
                             )
                         )
                     )
@@ -136,14 +147,31 @@ export default function PreviousParticipantsModal({ caseId, ancestorIds }: Props
                     // Deep merge jury details into each participant
                     const processedSessionCases = caseItem.session_cases?.map((sc) => {
                         const session = (Array.isArray(sc.sessions) ? sc.sessions[0] : sc.sessions) ?? undefined;
+                        // RawParticipant carries its columns behind an index
+                        // signature, which a spread drops — restate the two the
+                        // ordering and badge depend on so they stay typed.
+                        const merged = (session?.session_participants ?? []).map((p) => ({
+                            ...p,
+                            invite_status: typeof p.invite_status === "string" ? p.invite_status : null,
+                            struck_at: typeof p.struck_at === "string" ? p.struck_at : null,
+                            jury_participants: (p.participant_id && juryDetailsMap[p.participant_id]) || null
+                        }));
+
                         return {
                             ...sc,
                             sessions: {
                                 ...(session ?? {}),
-                                session_participants: session?.session_participants?.map((p) => ({
-                                    ...p,
-                                    jury_participants: (p.participant_id && juryDetailsMap[p.participant_id]) || null
-                                }))
+                                // Accepted → declined → pending → struck, alphabetical
+                                // inside each group, keyed on the name as rendered below.
+                                session_participants: sortRoster(merged, (p) => {
+                                    const jp = p.jury_participants;
+                                    const full = jp ? `${jp.first_name ?? ""} ${jp.last_name ?? ""}`.trim() : "";
+                                    return {
+                                        name: full || jp?.email || `Participant ${(p.participant_id ?? "").slice(0, 8)}`,
+                                        inviteStatus: p.invite_status,
+                                        struck: Boolean(p.struck_at),
+                                    };
+                                })
                             }
                         };
                     });
@@ -266,10 +294,10 @@ export default function PreviousParticipantsModal({ caseId, ancestorIds }: Props
                                                                             </div>
                                                                         </div>
                                                                         <Badge
-                                                                            variant={p.invite_status === 'accepted' ? 'default' : p.invite_status === 'pending' ? 'outline' : 'destructive'}
+                                                                            variant={BADGE_VARIANT[rosterGroup(p.invite_status, Boolean(p.struck_at))]}
                                                                             className="text-[9px] uppercase h-5 pointer-events-none"
                                                                         >
-                                                                            {p.invite_status}
+                                                                            {rosterStatusLabel(p.invite_status, Boolean(p.struck_at))}
                                                                         </Badge>
                                                                     </Link>
                                                                 ))}

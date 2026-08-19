@@ -13,6 +13,7 @@ import {
   sortParticipantsByMultiCaseMatch,
 } from "@/lib/filter-utils";
 import { getLineageInvolvementForCases, splitLineageInvolvement } from "@/lib/case-lineage";
+import { sortRoster, rosterStatusLabel } from "@/lib/participant/rosterOrder";
 import { ACTIVE_STATUS } from "@/lib/participant/activeStatus";
 import { getAllIdsWithoutLogin } from "@/lib/participant/loginAccount";
 import InviteMoreModal, { type Candidate } from "@/components/InviteMoreModal";
@@ -331,7 +332,7 @@ export default async function SessionsPage({
 
       const { data: rawSParticipants } = await supabase
         .from("session_participants")
-        .select("participant_id, invite_status")
+        .select("participant_id, invite_status, struck_at")
         .eq("session_id", s.id);
 
       // Deduplicate by participant_id (keep the latest status — last row wins)
@@ -376,6 +377,20 @@ export default async function SessionsPage({
         }
       }
 
+      // Roster order: accepted → declined → pending → struck, alphabetical by the
+      // displayed name inside each group. Runs here rather than at fetch time
+      // because the name lives in participantDetails, which is only just loaded.
+      const rosterName = (participantId: string) => {
+        const d = participantDetails.find((x) => x.user_id === participantId);
+        if (!d) return "Unknown participant";
+        return `${d.first_name ?? ""} ${d.last_name ?? ""}`.trim() || "Unnamed participant";
+      };
+      const orderedParticipants = sortRoster(sParticipants, (p) => ({
+        name: rosterName(p.participant_id),
+        inviteStatus: p.invite_status,
+        struck: Boolean(p.struck_at),
+      }));
+
       // Fetch recommended candidates (excluding already-invited) — only on upcoming tab.
       // Past sessions render the InviteMoreModal but it's effectively dead UI; no need to pay the cost.
       const alreadyInvitedSet = new Set(participantIds);
@@ -384,7 +399,7 @@ export default async function SessionsPage({
           ? await fetchCandidates(supabase, caseIds, alreadyInvitedSet, testTable, blacklistedIds, noLoginIds)
           : [];
 
-      return { s, scases, caseDetails, alreadySubmitted, canNotify, sParticipants, participantDetails, candidates };
+      return { s, scases, caseDetails, alreadySubmitted, canNotify, sParticipants: orderedParticipants, participantDetails, candidates };
     })
   );
 
@@ -608,8 +623,8 @@ export default async function SessionsPage({
                             </Link>
 
                             <div className="flex items-center gap-2">
-                              <span className="capitalize text-xs font-semibold">
-                                {p.invite_status}
+                              <span className="text-xs font-semibold">
+                                {rosterStatusLabel(p.invite_status, Boolean(p.struck_at))}
                               </span>
                               <ParticipantActionsMenu
                                 sessionId={s.id}

@@ -6,14 +6,15 @@ import BackButton from "@/components/BackButton";
 import { unstable_noStore as noStore, revalidatePath } from "next/cache";
 import { getPendingInvites } from "@/lib/participant/getPendingInvites";
 import { updateInviteStatus } from "@/lib/participant/updateInviteStatus";
+import { hasSessionStarted } from "@/lib/participant/sessionStart";
 
 export default async function ParticipantSessionsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ sessionFull?: string; missingProfile?: string }>;
+  searchParams: Promise<{ sessionFull?: string; missingProfile?: string; sessionStarted?: string }>;
 }) {
   noStore();
-  const { sessionFull, missingProfile } = await searchParams;
+  const { sessionFull, missingProfile, sessionStarted } = await searchParams;
   const supabase = await createClient();
 
   const {
@@ -123,6 +124,17 @@ export default async function ParticipantSessionsPage({
         </div>
       )}
 
+      {/* SESSION ALREADY STARTED */}
+      {sessionStarted === "1" && (
+        <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-5 py-4 text-slate-700 shadow-sm">
+          <span className="text-xl">🕒</span>
+          <div>
+            <p className="font-semibold text-sm">This session has already started.</p>
+            <p className="text-xs text-slate-500 mt-0.5">Invitations close when the session begins, so it can no longer be accepted.</p>
+          </div>
+        </div>
+      )}
+
       {missingProfile && (
         <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-5 py-4 text-red-800 shadow-sm">
           <span className="text-xl">⚠️</span>
@@ -166,6 +178,10 @@ export default async function ParticipantSessionsPage({
                 })
               : "Date TBD";
 
+            // Invitations close when the first case begins. Declining stays
+            // open; the server enforces the same rule in updateInviteStatus.
+            const started = hasSessionStarted(date, starts);
+
             return (
               <form
                 key={invite.id}
@@ -181,24 +197,33 @@ export default async function ParticipantSessionsPage({
                   </span>
                 </div>
 
-                <div className="flex gap-2 pt-1">
-                  <button
-                    formAction={async () => {
-                      "use server";
-                      const result = await updateInviteStatus(invite.id, "accepted");
-                      if (result && "blocked" in result && result.blocked) {
-                        if (result.reason === "missing_profile") {
-                          const missing = (result as { missing?: string[] }).missing ?? [];
-                          redirect(`/dashboard/participant/sessions?missingProfile=${missing.join(",")}`);
+                <div className="flex items-center gap-2 pt-1">
+                  {started ? (
+                    <span className="text-xs italic text-amber-800">
+                      This session has already started, so it can no longer be accepted.
+                    </span>
+                  ) : (
+                    <button
+                      formAction={async () => {
+                        "use server";
+                        const result = await updateInviteStatus(invite.id, "accepted");
+                        if (result && "blocked" in result && result.blocked) {
+                          if (result.reason === "missing_profile") {
+                            const missing = (result as { missing?: string[] }).missing ?? [];
+                            redirect(`/dashboard/participant/sessions?missingProfile=${missing.join(",")}`);
+                          }
+                          if (result.reason === "session_started") {
+                            redirect("/dashboard/participant/sessions?sessionStarted=1");
+                          }
+                          redirect("/dashboard/participant/sessions?sessionFull=1");
                         }
-                        redirect("/dashboard/participant/sessions?sessionFull=1");
-                      }
-                      revalidatePath("/dashboard/participant/sessions");
-                    }}
-                    className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 text-sm font-semibold"
-                  >
-                    Accept
-                  </button>
+                        revalidatePath("/dashboard/participant/sessions");
+                      }}
+                      className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 text-sm font-semibold"
+                    >
+                      Accept
+                    </button>
+                  )}
 
                   <button
                     formAction={async () => {

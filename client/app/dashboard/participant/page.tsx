@@ -3,17 +3,24 @@ import ParticipantForm from "@/components/ParticipantForm";
 import Link from "next/link";
 import { getPendingInvites } from "@/lib/participant/getPendingInvites";
 import { updateInviteStatus } from "@/lib/participant/updateInviteStatus";
+import { hasSessionStarted } from "@/lib/participant/sessionStart";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { unstable_noStore as noStore } from "next/cache";
 
+/** Shape of the nested session on a pending invite (see getPendingInvites). */
+type InviteSession = {
+  session_date?: string | null;
+  session_cases?: { start_time?: string | null; end_time?: string | null }[] | null;
+};
+
 export default async function ParticipantDashboard({
   searchParams,
 }: {
-  searchParams: Promise<{ inviteId?: string; status?: string; sessionFull?: string; missingProfile?: string; inactive?: string }>;
+  searchParams: Promise<{ inviteId?: string; status?: string; sessionFull?: string; missingProfile?: string; inactive?: string; sessionStarted?: string }>;
 }) {
   noStore();
-  const { inviteId, status, sessionFull, missingProfile, inactive } = await searchParams;
+  const { inviteId, status, sessionFull, missingProfile, inactive, sessionStarted } = await searchParams;
   const supabase = await createClient();
 
   /* =========================
@@ -41,6 +48,8 @@ export default async function ParticipantDashboard({
           redirectTo = `/dashboard/participant?missingProfile=${missing.join(",")}`;
         } else if (result.reason === "inactive") {
           redirectTo = "/dashboard/participant?inactive=1";
+        } else if (result.reason === "session_started") {
+          redirectTo = "/dashboard/participant?sessionStarted=1";
         } else {
           redirectTo = "/dashboard/participant?sessionFull=1";
         }
@@ -99,6 +108,17 @@ export default async function ParticipantDashboard({
         </div>
       )}
 
+      {/* SESSION ALREADY STARTED */}
+      {sessionStarted === "1" && (
+        <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-5 py-4 text-slate-700 shadow-sm">
+          <span className="text-xl">🕒</span>
+          <div>
+            <p className="font-semibold text-sm">This session has already started.</p>
+            <p className="text-xs text-slate-500 mt-0.5">Invitations close when the session begins, so it can no longer be accepted.</p>
+          </div>
+        </div>
+      )}
+
       {/* NOT AN ACTIVE PANEL MEMBER */}
       {inactive === "1" && (
         <div className="flex items-start gap-3 rounded-xl border border-orange-200 bg-orange-50 px-5 py-4 text-orange-800 shadow-sm">
@@ -152,78 +172,87 @@ export default async function ParticipantDashboard({
           <h2 className="font-bold text-lg mb-4">Session Invitations</h2>
 
           <div className="space-y-4">
-            {pendingInvites.map((invite) => (
-              <form
-                key={invite.id}
-                className="flex items-center justify-between border p-4 rounded-lg"
-              >
-                <div>
-                  <p className="font-medium">Session Invite</p>
-                  <p className="text-sm text-slate-500">
-                    Date: {(() => {
-                      const session = Array.isArray(invite.sessions) ? invite.sessions[0] : invite.sessions;
-                      return session?.session_date;
-                    })()}
-                  </p>
-                  <p className="text-sm text-slate-500">
-                    Time: {(() => {
-                      const session = Array.isArray(invite.sessions) ? invite.sessions[0] : invite.sessions;
-                      const cases = session?.session_cases || [];
-                      if (cases.length === 0) return "TBD";
+            {pendingInvites.map((invite) => {
+              const session = (Array.isArray(invite.sessions) ? invite.sessions[0] : invite.sessions) as
+                | InviteSession
+                | null
+                | undefined;
+              const cases = session?.session_cases ?? [];
+              const startTimes = cases.map((c) => c.start_time).filter((v): v is string => Boolean(v)).sort();
+              const endTimes = cases.map((c) => c.end_time).filter((v): v is string => Boolean(v)).sort();
 
-                      type SCase = { start_time?: string | null; end_time?: string | null };
-                      const startTimes = (cases as SCase[]).map((c) => c.start_time).filter((v): v is string => Boolean(v)).sort();
-                      const endTimes = (cases as SCase[]).map((c) => c.end_time).filter((v): v is string => Boolean(v)).sort();
+              const fmtCt = (t: string) => {
+                const [h, m] = t.split(":");
+                const d = new Date();
+                d.setUTCHours(parseInt(h), parseInt(m), 0, 0);
+                return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Chicago" });
+              };
 
-                      if (startTimes.length === 0 || endTimes.length === 0) return "TBD";
+              const timeLabel =
+                startTimes.length && endTimes.length
+                  ? `${fmtCt(startTimes[0])} – ${fmtCt(endTimes[endTimes.length - 1])} (CT)`
+                  : "TBD";
 
-                      const fmtCt = (t: string) => {
-                        const [h, m] = t.split(":");
-                        const d = new Date();
-                        d.setUTCHours(parseInt(h), parseInt(m), 0, 0);
-                        return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Chicago" });
-                      };
+              // Invitations close when the first case begins. Declining stays
+              // open; the server enforces the same rule in updateInviteStatus.
+              const started = hasSessionStarted(session?.session_date, startTimes);
 
-                      return `${fmtCt(startTimes[0])} – ${fmtCt(endTimes[endTimes.length - 1])} (CT)`;
-                    })()}
-                  </p>
-                </div>
+              return (
+                <form
+                  key={invite.id}
+                  className="flex items-center justify-between border p-4 rounded-lg"
+                >
+                  <div>
+                    <p className="font-medium">Session Invite</p>
+                    <p className="text-sm text-slate-500">Date: {session?.session_date}</p>
+                    <p className="text-sm text-slate-500">Time: {timeLabel}</p>
+                  </div>
 
-                <div className="flex gap-2">
-                  <button
-                    formAction={async () => {
-                      "use server";
-                      const result = await updateInviteStatus(invite.id, "accepted");
-                      if (result && "blocked" in result && result.blocked) {
-                        if (result.reason === "missing_profile") {
-                          const missing = (result as { missing?: string[] }).missing ?? [];
-                          redirect(`/dashboard/participant?missingProfile=${missing.join(",")}`);
-                        }
-                        if (result.reason === "inactive") {
-                          redirect("/dashboard/participant?inactive=1");
-                        }
-                        redirect("/dashboard/participant?sessionFull=1");
-                      }
-                      revalidatePath("/dashboard/participant");
-                    }}
-                    className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700"
-                  >
-                    Accept
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {started ? (
+                      <span className="max-w-[15rem] text-right text-xs italic text-slate-500">
+                        This session has already started, so it can no longer be accepted.
+                      </span>
+                    ) : (
+                      <button
+                        formAction={async () => {
+                          "use server";
+                          const result = await updateInviteStatus(invite.id, "accepted");
+                          if (result && "blocked" in result && result.blocked) {
+                            if (result.reason === "missing_profile") {
+                              const missing = (result as { missing?: string[] }).missing ?? [];
+                              redirect(`/dashboard/participant?missingProfile=${missing.join(",")}`);
+                            }
+                            if (result.reason === "inactive") {
+                              redirect("/dashboard/participant?inactive=1");
+                            }
+                            if (result.reason === "session_started") {
+                              redirect("/dashboard/participant?sessionStarted=1");
+                            }
+                            redirect("/dashboard/participant?sessionFull=1");
+                          }
+                          revalidatePath("/dashboard/participant");
+                        }}
+                        className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700"
+                      >
+                        Accept
+                      </button>
+                    )}
 
-                  <button
-                    formAction={async () => {
-                      "use server";
-                      await updateInviteStatus(invite.id, "declined");
-                      revalidatePath("/dashboard/participant");
-                    }}
-                    className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700"
-                  >
-                    Decline
-                  </button>
-                </div>
-              </form>
-            ))}
+                    <button
+                      formAction={async () => {
+                        "use server";
+                        await updateInviteStatus(invite.id, "declined");
+                        revalidatePath("/dashboard/participant");
+                      }}
+                      className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700"
+                    >
+                      Decline
+                    </button>
+                  </div>
+                </form>
+              );
+            })}
           </div>
         </section>
       )}

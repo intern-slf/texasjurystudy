@@ -773,6 +773,17 @@ describe("Sessions", () => {
       ));
     });
 
+    /**
+     * The session-start gate runs first on every accept: a `sessions` row for
+     * the date, then the `session_cases` list for the earliest start time. A
+     * far-future date holds the gate open so a test can reach the check it is
+     * actually about. Declining skips this entirely.
+     */
+    const notStartedYet = () => [
+      { data: { session_date: "2999-01-01" }, error: null },
+      { data: [{ start_time: "09:00:00" }], error: null },
+    ];
+
     it("pending → accepted", async () => {
       state.responses = [
         // 1. select session_id, participant_id of invite
@@ -780,11 +791,13 @@ describe("Sessions", () => {
           data: { session_id: "s-1", participant_id: "p-1" },
           error: null,
         },
-        // 2. isSessionFull → session row
+        // 2-3. session-start gate — session not under way yet
+        ...notStartedYet(),
+        // 4. isSessionFull → session row
         { data: { participant_cap: 10 }, error: null },
-        // 3. isSessionFull → count
+        // 5. isSessionFull → count
         { count: 0, error: null },
-        // 4. profile fetch (active panel member, profile complete)
+        // 6. profile fetch (active panel member, profile complete)
         {
           data: {
             paypal_username: "p1",
@@ -794,7 +807,7 @@ describe("Sessions", () => {
           },
           error: null,
         },
-        // 5. main update — return empty array to short-circuit the
+        // 7. main update — return empty array to short-circuit the
         // downstream side-effect ladder we're not testing here.
         { data: [], error: null },
       ];
@@ -835,6 +848,7 @@ describe("Sessions", () => {
     it("Session full blocked", async () => {
       state.responses = [
         { data: { session_id: "s-1", participant_id: "p-1" }, error: null },
+        ...notStartedYet(),
         { data: { participant_cap: 1 }, error: null },
         { count: 1, error: null }, // already at cap
       ];
@@ -854,6 +868,7 @@ describe("Sessions", () => {
     it("Incomplete profile blocked", async () => {
       state.responses = [
         { data: { session_id: "s-1", participant_id: "p-1" }, error: null },
+        ...notStartedYet(),
         { data: { participant_cap: 10 }, error: null },
         { count: 0, error: null },
         // Active panel member, but profile missing both DL and PayPal
@@ -889,6 +904,7 @@ describe("Sessions", () => {
     it("Non-active participant blocked from accepting", async () => {
       state.responses = [
         { data: { session_id: "s-1", participant_id: "p-1" }, error: null },
+        ...notStartedYet(),
         { data: { participant_cap: 10 }, error: null },
         { count: 0, error: null },
         // Profile is complete, but they never confirmed they are still interested
@@ -920,6 +936,7 @@ describe("Sessions", () => {
       // to fill in a DL and PayPal for a session they still could not join.
       state.responses = [
         { data: { session_id: "s-1", participant_id: "p-1" }, error: null },
+        ...notStartedYet(),
         { data: { participant_cap: 10 }, error: null },
         { count: 0, error: null },
         {
@@ -936,6 +953,49 @@ describe("Sessions", () => {
       const result = await updateInviteStatus("invite-6", "accepted");
 
       expect(result).toEqual({ blocked: true, reason: "inactive" });
+    });
+
+    it("Accepting is blocked once the session has started", async () => {
+      state.responses = [
+        { data: { session_id: "s-1", participant_id: "p-1" }, error: null },
+        // Session date and first case start are both in the past
+        { data: { session_date: "2020-01-01" }, error: null },
+        { data: [{ start_time: "19:30:00" }, { start_time: "09:00:00" }], error: null },
+      ];
+
+      const result = await updateInviteStatus("invite-8", "accepted");
+
+      expect(result).toEqual({ blocked: true, reason: "session_started" });
+      // Checked before capacity and profile, so nothing else was even queried,
+      // and the invite row was never updated.
+      const update = state.captured.find(
+        (c) =>
+          c.table === "session_participants" &&
+          c.ops.some((o) => o.op === "update")
+      );
+      expect(update).toBeUndefined();
+      expect(state.captured.some((c) => c.table === "jury_participants")).toBe(false);
+    });
+
+    it("Declining still works after the session has started", async () => {
+      // The cutoff is on accepting only — a late no is still worth recording.
+      state.responses = [{ data: [], error: null }];
+
+      await updateInviteStatus("invite-9", "declined");
+
+      const updateCall = state.captured.find(
+        (c) =>
+          c.table === "session_participants" &&
+          c.ops.some((o) => o.op === "update")
+      )!;
+      const upd = updateCall.ops.find((o) => o.op === "update") as {
+        op: "update";
+        payload: Record<string, unknown>;
+      };
+      expect(upd.payload.invite_status).toBe("declined");
+      // No session/date lookup happened at all on the decline path.
+      expect(state.captured.some((c) => c.table === "sessions")).toBe(false);
+      expect(state.captured.some((c) => c.table === "session_cases")).toBe(false);
     });
 
     it("A non-active participant can still decline", async () => {
