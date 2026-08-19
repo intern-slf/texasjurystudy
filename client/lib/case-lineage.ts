@@ -249,35 +249,74 @@ export async function getFullCaseChain(caseId: string): Promise<CaseChainNode[]>
   return ordered;
 }
 
-/**
- * Gets all participant IDs that are blocked from future follow-ups of this case.
- * This includes ALL participants across the entire follow-up chain (ancestors + descendants).
- */
-export async function getBlockedParticipantIds(
-  caseId: string,
-  client?: Awaited<ReturnType<typeof createClient>>,
-): Promise<string[]> {
-  const ancestors = await getAncestorCaseIds(caseId, client);
-  const descendants = await getDescendantCaseIds(caseId, client);
-  const allRelatedIds = [...ancestors, caseId, ...descendants];
-  return getLineageParticipantIds(allRelatedIds, client);
+/* =========================
+   LINEAGE INVOLVEMENT
+
+   Being *invited* to a case in a chain is not the same as being *spent* on it.
+   Someone who declined, never answered a past invite, or accepted and was then
+   struck never actually sat on the case, so a follow-up can still draw them.
+   Only these two states consume a participant:
+
+     accepted          — they sat on (or are confirmed to sit on) a case here
+     pending-upcoming  — invited to a session that hasn't happened yet; blocking
+                         them until they answer stops the same person accepting
+                         two sessions in one chain
+
+   Everything else is surfaced as history (see `isLineageBlocking`) so an admin
+   can see the prior invite without being stopped by it.
+========================= */
+export type LineageInvolvement =
+  | "accepted"
+  | "pending-upcoming"
+  | "struck"
+  | "declined"
+  | "no-response";
+
+/** True when this involvement spends the participant on the chain. */
+export function isLineageBlocking(involvement: LineageInvolvement): boolean {
+  return involvement === "accepted" || involvement === "pending-upcoming";
 }
 
 /**
- * Blocked participants across every case attached to a session — the union of
- * each case's follow-up chain. Used by the invite-more paths so the recommended
- * list and the search box agree on who is already "spent" on these matters.
+ * Splits an involvement map into the ids that block an invite and the ids that
+ * only carry history worth showing next to a still-selectable name.
  */
-export async function getBlockedParticipantIdsForCases(
+export function splitLineageInvolvement(involvement: Map<string, LineageInvolvement>) {
+  const blockedIds: string[] = [];
+  const priorInvolvement = new Map<string, LineageInvolvement>();
+  for (const [id, value] of involvement) {
+    if (isLineageBlocking(value)) blockedIds.push(id);
+    else priorInvolvement.set(id, value);
+  }
+  return { blockedIds, priorInvolvement };
+}
+
+/** Highest wins when one person appears on several cases in the same chain. */
+const INVOLVEMENT_RANK: Record<LineageInvolvement, number> = {
+  accepted: 4,
+  "pending-upcoming": 3,
+  struck: 2,
+  declined: 1,
+  "no-response": 0,
+};
+
+function classifyInvolvement(
+  row: { invite_status?: string | null; struck_at?: string | null },
+  isUpcoming: boolean,
+): LineageInvolvement {
+  // A strike outranks the status it was applied to: they accepted and then
+  // backed out or never showed, so they never actually sat on the case.
+  if (row.struck_at) return "struck";
+  if (row.invite_status === "accepted") return "accepted";
+  if (row.invite_status === "declined" || row.invite_status === "rejected") return "declined";
+  return isUpcoming ? "pending-upcoming" : "no-response";
+}
+
+/** Every case in the same follow-up chain as each of `caseIds`, deduped. */
+async function getRelatedCaseIds(
   caseIds: string[],
   client?: Awaited<ReturnType<typeof createClient>>,
 ): Promise<string[]> {
-  if (!caseIds.length) return [];
-
-  // Collect every related case first, then resolve participants in ONE query.
-  // Calling getBlockedParticipantIds per case would issue a separate
-  // session_cases + session_participants round-trip for each one, and this runs
-  // per session on the admin sessions page.
   const related = await Promise.all(
     caseIds.map(async (id) => {
       const [ancestors, descendants] = await Promise.all([
@@ -287,20 +326,47 @@ export async function getBlockedParticipantIdsForCases(
       return [...ancestors, id, ...descendants];
     })
   );
-
-  const allRelatedIds = Array.from(new Set(related.flat()));
-  return getLineageParticipantIds(allRelatedIds, client);
+  return Array.from(new Set(related.flat()));
 }
 
 /**
- * Fetches IDs of all participants who were invited to sessions 
- * associated with any case in the given lineage.
+ * Gets all participant IDs that are blocked from future follow-ups of this case.
+ * Spans the entire follow-up chain (ancestors + descendants); see
+ * `LineageInvolvement` for which invites actually block.
  */
-export async function getLineageParticipantIds(
-  caseIds: string[],
+export async function getBlockedParticipantIds(
+  caseId: string,
   client?: Awaited<ReturnType<typeof createClient>>,
 ): Promise<string[]> {
-  if (caseIds.length === 0) return [];
+  return getLineageParticipantIds(await getRelatedCaseIds([caseId], client), client);
+}
+
+/**
+ * Involvement across every case attached to a session — the union of each
+ * case's follow-up chain. Used by the invite-more paths so the recommended list
+ * and the search box agree on who is already "spent" on these matters. Keeps
+ * *why* each person turned up, since callers show the non-blocking history
+ * ("previously invited — declined") next to a still-selectable name.
+ */
+export async function getLineageInvolvementForCases(
+  caseIds: string[],
+  client?: Awaited<ReturnType<typeof createClient>>,
+): Promise<Map<string, LineageInvolvement>> {
+  if (!caseIds.length) return new Map();
+  return getLineageParticipantInvolvement(await getRelatedCaseIds(caseIds, client), client);
+}
+
+/**
+ * Classifies every participant ever invited to a session on one of these cases.
+ * Collecting the related cases first and resolving participants in one query
+ * matters — this runs per session on the admin sessions page.
+ */
+export async function getLineageParticipantInvolvement(
+  caseIds: string[],
+  client?: Awaited<ReturnType<typeof createClient>>,
+): Promise<Map<string, LineageInvolvement>> {
+  const involvement = new Map<string, LineageInvolvement>();
+  if (caseIds.length === 0) return involvement;
 
   const supabase = client ?? (await createClient());
 
@@ -310,20 +376,69 @@ export async function getLineageParticipantIds(
     .select("session_id")
     .in("case_id", caseIds);
 
-  if (scError || !sessionCases?.length) return [];
+  if (scError || !sessionCases?.length) return involvement;
 
-  const sessionIds = sessionCases.map(sc => sc.session_id);
+  const sessionIds = Array.from(
+    new Set(
+      sessionCases
+        .map((sc: { session_id: string | null }) => sc.session_id)
+        .filter((id: string | null): id is string => Boolean(id))
+    )
+  );
+  if (!sessionIds.length) return involvement;
 
-  // 2. Get all participants from these sessions
-  // We include all who were invited (status doesn't matter for "different people")
-  const { data: participants, error: pError } = await supabase
-    .from("session_participants")
-    .select("participant_id")
-    .in("session_id", sessionIds);
+  // 2. Session dates decide whether an unanswered invite is still live, and the
+  //    invite rows carry the status itself.
+  const [{ data: sessions }, { data: participants, error: pError }] = await Promise.all([
+    supabase.from("sessions").select("id, session_date").in("id", sessionIds),
+    supabase
+      .from("session_participants")
+      .select("participant_id, session_id, invite_status, struck_at")
+      .in("session_id", sessionIds),
+  ]);
 
-  if (pError || !participants?.length) return [];
+  if (pError || !participants?.length) return involvement;
 
-  return Array.from(new Set(participants.map(p => p.participant_id)));
+  // `session_date` is a plain date column, so comparing it lexically against
+  // today's YYYY-MM-DD is enough — the same test the admin sessions list uses.
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const upcomingSessionIds = new Set(
+    ((sessions ?? []) as { id: string; session_date: string | null }[])
+      .filter((s) => (s.session_date ?? "") >= todayStr)
+      .map((s) => s.id)
+  );
+
+  type InviteRow = {
+    participant_id: string | null;
+    session_id: string | null;
+    invite_status: string | null;
+    struck_at: string | null;
+  };
+  for (const row of participants as InviteRow[]) {
+    if (!row.participant_id) continue;
+    const next = classifyInvolvement(row, upcomingSessionIds.has(row.session_id ?? ""));
+    const current = involvement.get(row.participant_id);
+    if (!current || INVOLVEMENT_RANK[next] > INVOLVEMENT_RANK[current]) {
+      involvement.set(row.participant_id, next);
+    }
+  }
+
+  return involvement;
+}
+
+/**
+ * IDs of participants who are spent on the given lineage — i.e. accepted, or
+ * sitting on an unanswered invite to a session that hasn't happened yet.
+ * Declined, past no-response and struck invites do NOT block.
+ */
+export async function getLineageParticipantIds(
+  caseIds: string[],
+  client?: Awaited<ReturnType<typeof createClient>>,
+): Promise<string[]> {
+  const involvement = await getLineageParticipantInvolvement(caseIds, client);
+  return Array.from(involvement)
+    .filter(([, v]) => isLineageBlocking(v))
+    .map(([id]) => id);
 }
 
 /**
