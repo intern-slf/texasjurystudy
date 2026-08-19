@@ -23,13 +23,19 @@ import {
   attachMultiCaseScores,
   sortParticipantsByMultiCaseMatch
 } from "@/lib/filter-utils";
-import { getAncestorCaseIds, getLineageParticipantIds } from "@/lib/case-lineage";
+import {
+  getAncestorCaseIds,
+  getLineageParticipantInvolvement,
+  splitLineageInvolvement,
+  type LineageInvolvement,
+} from "@/lib/case-lineage";
 import BackButton from "@/components/BackButton";
 import SelectAllParticipants from "@/components/SelectAllParticipants";
 import ShowMoreButton from "@/components/ShowMoreButton";
 import CheckboxRestorer from "@/components/CheckboxRestorer";
 import ParticipantSearch from "@/components/ParticipantSearch";
 import ParticipantCounter from "@/components/ParticipantCounter";
+import PriorInvolvementBadge from "@/components/PriorInvolvementBadge";
 
 /* =========================
    PAGE
@@ -174,14 +180,22 @@ export default async function NewSessionPage({
   const noLoginIds = Array.from(await getAllIdsWithoutLogin());
 
   // --- NEW: Lineage Exclusion Logic ---
+  // Only participants actually spent on an ancestor case are excluded — accepted,
+  // or holding a live invite to a session that hasn't happened. Anyone who
+  // declined, never answered, or was struck stays recommendable and just carries
+  // a history badge.
   const allLineageParticipantIds: string[] = [];
+  let priorInvolvement = new Map<string, LineageInvolvement>();
   if (selectedIds.length > 0) {
     const ancestorIdsBatch = await Promise.all(
       selectedIds.map(id => getAncestorCaseIds(id))
     );
     const uniqueAncestorIds = Array.from(new Set(ancestorIdsBatch.flat()));
-    const lineageParticipantIds = await getLineageParticipantIds(uniqueAncestorIds);
-    allLineageParticipantIds.push(...lineageParticipantIds);
+    const split = splitLineageInvolvement(
+      await getLineageParticipantInvolvement(uniqueAncestorIds)
+    );
+    allLineageParticipantIds.push(...split.blockedIds);
+    priorInvolvement = split.priorInvolvement;
   }
   // ------------------------------------
 
@@ -445,14 +459,17 @@ export default async function NewSessionPage({
                   className="flex items-center justify-between p-3 hover:bg-slate-50"
                 >
                   <div className="flex-1 min-w-0">
-                    <a
-                      href={`/dashboard/participant/${p.id}${isOldData ? "?test_table=oldData" : ""}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="font-medium text-blue-600 hover:underline"
-                    >
-                      {p.first_name} {p.last_name}
-                    </a>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <a
+                        href={`/dashboard/participant/${p.id}${isOldData ? "?test_table=oldData" : ""}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-medium text-blue-600 hover:underline"
+                      >
+                        {p.first_name} {p.last_name}
+                      </a>
+                      <PriorInvolvementBadge involvement={priorInvolvement.get(pId)} />
+                    </div>
                     <div className="text-xs text-slate-500 mt-1">
                       {p.date_of_birth
                         ? `Age ${(() => { const b = new Date(p.date_of_birth as string); const t = new Date(); let a = t.getFullYear() - b.getFullYear(); const m = t.getMonth() - b.getMonth(); if (m < 0 || (m === 0 && t.getDate() < b.getDate())) a--; return a; })()} \u2022 `

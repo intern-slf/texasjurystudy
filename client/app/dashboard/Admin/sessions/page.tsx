@@ -12,7 +12,7 @@ import {
   attachMultiCaseScores,
   sortParticipantsByMultiCaseMatch,
 } from "@/lib/filter-utils";
-import { getBlockedParticipantIdsForCases } from "@/lib/case-lineage";
+import { getLineageInvolvementForCases, splitLineageInvolvement } from "@/lib/case-lineage";
 import { ACTIVE_STATUS } from "@/lib/participant/activeStatus";
 import { getAllIdsWithoutLogin } from "@/lib/participant/loginAccount";
 import InviteMoreModal, { type Candidate } from "@/components/InviteMoreModal";
@@ -95,8 +95,12 @@ async function fetchCandidates(
   // Lineage exclusions (session-specific — depends on this session's caseIds).
   // Same rule the Invite More search uses to grey people out, so the recommended
   // list never offers someone the search box would flag as "Already used".
+  // Only accepted / still-live invites exclude; anyone invited before who never
+  // sat on the chain stays recommendable and just carries their history.
   // Reuse the page's supabase client so the lineage walk doesn't re-read cookies.
-  const allLineageIds = await getBlockedParticipantIdsForCases(caseIds, supabase);
+  const { blockedIds: allLineageIds, priorInvolvement } = splitLineageInvolvement(
+    await getLineageInvolvementForCases(caseIds, supabase)
+  );
 
   const nowIso = new Date().toISOString();
   const seenIds = new Set<string>(alreadyInvitedIds);
@@ -212,16 +216,20 @@ async function fetchCandidates(
   rawParticipants = attachMultiCaseScores(rawParticipants, filtersList);
   rawParticipants = sortParticipantsByMultiCaseMatch(rawParticipants);
 
-  return rawParticipants.map((p): Candidate => ({
-    id: (p.user_id || p.id) ?? "",
-    first_name: p.first_name ?? "",
-    last_name: p.last_name ?? "",
-    city: p.city ?? undefined,
-    date_of_birth: p.date_of_birth ?? undefined,
-    political_affiliation: p.political_affiliation ?? undefined,
-    matchLevel: p.matchLevel,
-    filterChecks: p.filterChecks,
-  }));
+  return rawParticipants.map((p): Candidate => {
+    const id = (p.user_id || p.id) ?? "";
+    return {
+      id,
+      first_name: p.first_name ?? "",
+      last_name: p.last_name ?? "",
+      city: p.city ?? undefined,
+      date_of_birth: p.date_of_birth ?? undefined,
+      political_affiliation: p.political_affiliation ?? undefined,
+      matchLevel: p.matchLevel,
+      filterChecks: p.filterChecks,
+      priorInvolvement: priorInvolvement.get(id) ?? null,
+    };
+  });
 }
 
 

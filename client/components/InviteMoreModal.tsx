@@ -3,6 +3,9 @@
 import { useState, useTransition, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { inviteParticipants, searchEligibleParticipants } from "@/lib/actions/session";
+import PriorInvolvementBadge from "@/components/PriorInvolvementBadge";
+// Type-only: erased at compile time, so no server module reaches the client bundle.
+import type { LineageInvolvement } from "@/lib/case-lineage";
 
 function calcAge(dob: string): number {
   const birth = new Date(dob);
@@ -23,6 +26,12 @@ export interface Candidate {
   blacklisted?: boolean;
   /** Already used on one of this session's cases or its follow-up chain. */
   lineageBlocked?: boolean;
+  /**
+   * Invited to this lineage before but never sat on it, so still invitable.
+   * Shown as history next to the name; blocking involvements arrive as
+   * `lineageBlocked` instead.
+   */
+  priorInvolvement?: LineageInvolvement | null;
   /** Not an active panel member — `reactivation_status` is not "yes". */
   inactive?: boolean;
   /** Has a profile but no login (no `auth.users` row), so can never be invited. */
@@ -165,6 +174,7 @@ function blockReason(p: Candidate): { label: string; title: string; badgeClass: 
     badgeClass: "bg-amber-50 text-amber-700 border-amber-200",
   };
 }
+
 
 export default function InviteMoreModal({ sessionId, sessionDate, candidates }: Props) {
   const [isOpen, setIsOpen] = useState(false);
@@ -446,8 +456,9 @@ export default function InviteMoreModal({ sessionId, sessionDate, candidates }: 
                               className="h-4 w-4 rounded border-gray-300 shrink-0"
                             />
                             <div className="flex-1 min-w-0">
-                              <div className="font-medium text-sm">
-                                {p.first_name} {p.last_name}
+                              <div className="font-medium text-sm flex items-center gap-2 flex-wrap">
+                                <span>{p.first_name} {p.last_name}</span>
+                                <PriorInvolvementBadge involvement={p.priorInvolvement} />
                               </div>
                               <div className="text-xs text-slate-500">
                                 {p.date_of_birth ? `Age ${calcAge(p.date_of_birth)} \u2022 ` : ""}

@@ -228,6 +228,17 @@ Same shape as 3.11: four `it.todo` entries that document the contract of a `matc
 
 **Action item:** when the matcher is implemented, this file should be the first one written — it is the inverse of [filter-utils.test.ts](../client/__tests__/filter-utils.test.ts) (filters translated into a DB query) and they should agree on every fixture.
 
+### 3.13 [case-lineage.test.ts](../client/__tests__/case-lineage.test.ts) — who is "spent" on a follow-up chain
+
+**Subject:** the real `getLineageParticipantInvolvement`, `getLineageParticipantIds`, `splitLineageInvolvement` and `isLineageBlocking` from [lib/case-lineage](../client/lib/case-lineage.ts). This is the rule behind the "Already used" tag on every invite screen, so it is asserted directly rather than through a page.
+
+Uses a **table-keyed** fake client rather than the FIFO response queue of 4.1: the involvement walk fires `sessions` and `session_participants` concurrently, so a queue would silently encode `Promise.all` ordering.
+
+| `describe` | Coverage |
+|---|---|
+| `case-lineage involvement classification` | Only two states spend a participant: `accepted`, and an unanswered invite to a session that has not happened (`pending-upcoming`, which stops one person accepting two sessions in the same chain). Accepted-then-**struck** classifies as `struck` and does **not** block — they backed out or never showed, so they never sat on the case. `declined` (and the legacy `rejected` spelling) and a past unanswered invite (`no-response`) do not block either. A session dated **today** counts as upcoming. When someone appears on several cases in one chain the blocking classification wins. A case with no sessions yields an empty map. |
+| `splitLineageInvolvement` | Partitions an involvement map into blocked ids and the non-blocking history the UI shows as "Previously invited — …" next to a still-selectable name; asserts nobody lands in both halves, and that the split agrees with `isLineageBlocking`. |
+
 ---
 
 ## 4. Mocking patterns used across the suite

@@ -7,7 +7,11 @@ import type { PresenterParticipantInfo, PresenterCaseInfo } from "@/lib/mail";
 import { checkAndNotifySessionFull } from "@/lib/participant/updateInviteStatus";
 import { recordBackoutStrike } from "@/lib/actions/participantFlags";
 import { generateEmailActionToken } from "@/lib/emailActionToken";
-import { getBlockedParticipantIdsForCases } from "@/lib/case-lineage";
+import {
+  getLineageInvolvementForCases,
+  splitLineageInvolvement,
+  type LineageInvolvement,
+} from "@/lib/case-lineage";
 import { ACTIVE_STATUS, isActiveStatus, isParticipantActive } from "@/lib/participant/activeStatus";
 import { NO_LOGIN_REASON, getAllIdsWithoutLogin, getIdsWithoutLogin } from "@/lib/participant/loginAccount";
 import { revalidatePath } from "next/cache";
@@ -1100,7 +1104,7 @@ export async function replaceCaseInSession(
 }
 
 /* =========================
-   SESSION LINEAGE BLOCK LIST (cached)
+   SESSION LINEAGE INVOLVEMENT (cached)
    A lineage walk is several sequential round-trips (ancestors are chased one
    level at a time), and the Invite More search fires one per debounced
    keystroke. Cache the per-session result briefly so a burst of typing costs one
@@ -1112,19 +1116,22 @@ export async function replaceCaseInSession(
    render, and blacklist is enforced server-side in inviteParticipants.
 ========================= */
 const BLOCKED_IDS_TTL_MS = 30_000;
-const blockedIdsCache = new Map<string, { ids: string[]; at: number }>();
+const lineageInvolvementCache = new Map<
+  string,
+  { involvement: Map<string, LineageInvolvement>; at: number }
+>();
 
-async function getSessionBlockedParticipantIds(
+async function getSessionLineageInvolvement(
   supabase: Awaited<ReturnType<typeof createClient>>,
   sessionId: string,
-): Promise<string[]> {
+): Promise<Map<string, LineageInvolvement>> {
   const now = Date.now();
-  const hit = blockedIdsCache.get(sessionId);
-  if (hit && now - hit.at < BLOCKED_IDS_TTL_MS) return hit.ids;
+  const hit = lineageInvolvementCache.get(sessionId);
+  if (hit && now - hit.at < BLOCKED_IDS_TTL_MS) return hit.involvement;
 
   // Drop expired entries so a long-lived instance doesn't accumulate sessions.
-  for (const [key, entry] of blockedIdsCache) {
-    if (now - entry.at >= BLOCKED_IDS_TTL_MS) blockedIdsCache.delete(key);
+  for (const [key, entry] of lineageInvolvementCache) {
+    if (now - entry.at >= BLOCKED_IDS_TTL_MS) lineageInvolvementCache.delete(key);
   }
 
   const { data: sessionCaseRows } = await supabase
@@ -1136,9 +1143,9 @@ async function getSessionBlockedParticipantIds(
     .map((r: { case_id: string | null }) => r.case_id)
     .filter((id): id is string => Boolean(id));
 
-  const ids = await getBlockedParticipantIdsForCases(caseIds, supabase);
-  blockedIdsCache.set(sessionId, { ids, at: now });
-  return ids;
+  const involvement = await getLineageInvolvementForCases(caseIds, supabase);
+  lineageInvolvementCache.set(sessionId, { involvement, at: now });
+  return involvement;
 }
 
 /* =========================
@@ -1148,6 +1155,10 @@ async function getSessionBlockedParticipantIds(
    flagged (`blacklisted` / `lineageBlocked`) so the UI can grey them out and say
    why. Neither can actually be invited: blacklist is enforced server-side by
    inviteParticipants, and lineage-blocked rows carry no selectable checkbox.
+
+   Someone invited to this lineage before who never sat on it (declined, no
+   response, or struck) is fully invitable; they come back selectable with
+   `priorInvolvement` set so the UI can still show that history.
 ========================= */
 export async function searchEligibleParticipants(
   sessionId: string,
@@ -1189,7 +1200,11 @@ export async function searchEligibleParticipants(
 
   // 3. Participants already spent on this session's cases or their follow-up
   //    chains. Same rule the recommended list uses, so the two agree.
-  const lineageBlockedIds = await getSessionBlockedParticipantIds(supabase, sessionId);
+  //    `priorInvolvement` is the rest of the chain's history — people who were
+  //    invited but never sat, who stay invitable.
+  const { blockedIds: lineageBlockedIds, priorInvolvement } = splitLineageInvolvement(
+    await getSessionLineageInvolvement(supabase, sessionId)
+  );
 
   // 3b. Participants with no login account — they can never be invited (the
   //     insert would fail FK 23503), so they are surfaced greyed-out rather than
@@ -1223,18 +1238,24 @@ export async function searchEligibleParticipants(
       inactive?: boolean;
       noAccount?: boolean;
     } = {}
-  ) => ({
-    id: p.user_id || p.id,
-    first_name: p.first_name,
-    last_name: p.last_name,
-    city: p.city,
-    date_of_birth: p.date_of_birth,
-    political_affiliation: p.political_affiliation,
-    blacklisted: flags.blacklisted ?? false,
-    lineageBlocked: flags.lineageBlocked ?? false,
-    inactive: flags.inactive ?? false,
-    noAccount: flags.noAccount ?? false,
-  });
+  ) => {
+    const id = p.user_id || p.id;
+    return {
+      id,
+      first_name: p.first_name,
+      last_name: p.last_name,
+      city: p.city,
+      date_of_birth: p.date_of_birth,
+      political_affiliation: p.political_affiliation,
+      blacklisted: flags.blacklisted ?? false,
+      lineageBlocked: flags.lineageBlocked ?? false,
+      inactive: flags.inactive ?? false,
+      noAccount: flags.noAccount ?? false,
+      // Non-blocking history on this lineage, so a selectable row can still say
+      // "previously invited — declined" rather than looking untouched.
+      priorInvolvement: (id ? priorInvolvement.get(id) : undefined) ?? null,
+    };
+  };
 
   // ── Eligible participants (active, approved, not blacklisted, not in lineage, not already invited) ──
   const eligibleExcludeIds = Array.from(
