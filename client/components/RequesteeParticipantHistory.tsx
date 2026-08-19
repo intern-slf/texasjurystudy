@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
+import { sortRoster, rosterGroup, rosterStatusLabel } from "@/lib/participant/rosterOrder";
 
 interface ChainParticipant {
   id: string;
@@ -10,6 +11,8 @@ interface ChainParticipant {
   last_name: string;
   email: string;
   invite_status: string;
+  /** `session_participants.struck_at` — accepted, then backed out or no-showed. */
+  struck: boolean;
 }
 
 interface ChainNode {
@@ -98,11 +101,14 @@ export default function RequesteeParticipantHistory({ caseId, currentCaseId }: P
 
       const sessionIds = [...new Set((sessionCases ?? []).map((sc) => sc.session_id))];
 
-      const participantsBySession: Record<string, { participant_id: string; invite_status: string }[]> = {};
+      const participantsBySession: Record<
+        string,
+        { participant_id: string; invite_status: string; struck_at?: string | null }[]
+      > = {};
       if (sessionIds.length > 0) {
         const { data: sp } = await supabase
           .from("session_participants")
-          .select("session_id, participant_id, invite_status")
+          .select("session_id, participant_id, invite_status, struck_at")
           .in("session_id", sessionIds);
 
         for (const row of sp ?? []) {
@@ -165,6 +171,7 @@ export default function RequesteeParticipantHistory({ caseId, currentCaseId }: P
               last_name: d?.last_name ?? "",
               email: d?.email ?? "",
               invite_status: sp.invite_status,
+              struck: Boolean(sp.struck_at),
             });
           }
         }
@@ -176,7 +183,12 @@ export default function RequesteeParticipantHistory({ caseId, currentCaseId }: P
           admin_status: c.admin_status,
           created_at: c.created_at,
           parent_case_id: c.parent_case_id,
-          participants,
+          // Accepted → declined → pending → struck, alphabetical inside each group.
+          participants: sortRoster(participants, (p) => ({
+            name: `${p.first_name} ${p.last_name}`.trim(),
+            inviteStatus: p.invite_status,
+            struck: p.struck,
+          })),
         };
       });
 
@@ -244,10 +256,19 @@ export default function RequesteeParticipantHistory({ caseId, currentCaseId }: P
     return <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 font-medium">Pending</span>;
   };
 
-  const inviteStatusBadge = (status: string) => {
-    if (status === "accepted") return <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-50 text-green-700">Accepted</span>;
-    if (status === "declined") return <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-50 text-red-700">Declined</span>;
-    return <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">Pending</span>;
+  const inviteStatusBadge = (status: string, struck = false) => {
+    const tone = {
+      accepted: "bg-green-50 text-green-700",
+      declined: "bg-red-50 text-red-700",
+      struck: "bg-orange-50 text-orange-700",
+      pending: "bg-slate-100 text-slate-600",
+    }[rosterGroup(status, struck)];
+
+    return (
+      <span className={`text-[10px] px-1.5 py-0.5 rounded ${tone}`}>
+        {rosterStatusLabel(status, struck)}
+      </span>
+    );
   };
 
   return (
@@ -342,7 +363,7 @@ export default function RequesteeParticipantHistory({ caseId, currentCaseId }: P
                               {p.first_name} {p.last_name}
                             </span>
                           </div>
-                          {inviteStatusBadge(p.invite_status)}
+                          {inviteStatusBadge(p.invite_status, p.struck)}
                         </Link>
                       ))}
                     </div>

@@ -134,7 +134,7 @@ The sections below document every file in [client/__tests__/](../client/__tests_
 |---|---|
 | `zip-lookup.test.ts` | Hits the **real** zippopotam.us + geo.fcc.gov endpoints. Asserts: 200 with a `state` for `78701`; 400 for non-numeric ZIP; 404 for `00000` (upstream-failure surfacing); graceful degradation to `county: ""` when the FCC endpoint throws. **Note:** this test reaches the internet — it can be flaky in restricted networks. Total budget: 15 s per case. |
 | `convert-heic.test.ts` | The `heic-convert` library is mocked to behave like a real decoder (validates the `ftyp` magic, rejects > 10 MiB). Asserts a HEIC file converts to JPEG (SOI marker `0xFFD8`), a PNG is rejected, an 11 MiB payload returns 500 with a `too large` error. |
-| `email-action.test.ts` | The one-click accept/decline endpoint. Generates a real signed token, drives `updateInviteStatus` via a spy, and asserts the **rendered HTML** contains the user-visible headline for each branch: success, already-responded, session-full, missing-profile (driver license + PayPal), expired token, tampered signature. |
+| `email-action.test.ts` | The one-click accept/decline endpoint. Generates a real signed token, drives `updateInviteStatus` via a spy, and asserts the **rendered HTML** contains the user-visible headline for each branch: success, already-responded, session-full, session-already-started, missing-profile (driver license + PayPal), expired token, tampered signature. The started branch also asserts it does **not** fall through to the session-full page, which is the catch-all for an unrecognised block reason. |
 | `auth-confirm.test.ts` | Supabase `verifyOtp` is mocked. A valid `token_hash` redirects to `/dashboard`; an expired token redirects to `/auth/error?error=...`; a missing token redirects to `/auth/error?error=Invalid or missing token`. The redirect target is asserted by catching the `RedirectError` thrown by the mocked `next/navigation`. |
 
 ### 3.6 [authentication.test.ts](../client/__tests__/authentication.test.ts) — auth server actions + middleware
@@ -177,7 +177,7 @@ Both Supabase clients (`server` and `admin`) share the same stateful mock so a s
 | `create-session.test.ts` | Admin caller: inserts into `sessions` with `created_by = admin.id` and `session_date` from the input; non-admin caller blocked at the RLS boundary (`42501`). |
 | `add-cases-to-session.test.ts` | Inserts one `session_cases` row per case (length asserted); start_time / end_time are passed through `localToUTCTime` for the given session date and timezone — guards the integration between this action and the timezone helper; each linked case's `admin_scheduled_at` is set to a valid UTC instant on the session date, targeted by case id. |
 | `invite-participants.test.ts` | One `session_participants` row per invitee, all with `invite_status: "pending"` and the right `session_id`; the action does **not** enforce `participant_cap` itself — the test mirrors the caller contract by trimming before invoking, documenting where the cap must be enforced; sends exactly one email per invitee to the resolved address. |
-| `update-invite-status.test.ts` | `pending → accepted` records `responded_at` and a status flip; `pending → declined` skips the pre-checks; **session-full block** returns `{ blocked: true, reason: "session_full" }` and never issues the update; **missing-profile block** returns `{ blocked: true, reason: "missing_profile", missing: [...] }` listing the unsatisfied fields (`dl`, `paypal`); the **double-response gate** lives in the route handler — its contract (skip the action entirely if `invite_status` is already terminal) is asserted here at the layer boundary. |
+| `update-invite-status.test.ts` | `pending → accepted` records `responded_at` and a status flip; `pending → declined` skips the pre-checks; **session-started block** returns `{ blocked: true, reason: "session_started" }` — checked *first*, so no capacity or profile query is even issued; **session-full block** returns `{ blocked: true, reason: "session_full" }` and never issues the update; **missing-profile block** returns `{ blocked: true, reason: "missing_profile", missing: [...] }` listing the unsatisfied fields (`dl`, `paypal`); declining after the session has started still succeeds and touches neither `sessions` nor `session_cases`; the **double-response gate** lives in the route handler — its contract (skip the action entirely if `invite_status` is already terminal) is asserted here at the layer boundary. <br><br>Every accept-path case must enqueue the two session-start responses (`notStartedYet()`) after the invite row — the gate runs before all the others, so omitting them shifts the whole FIFO queue. |
 
 ### 3.9 [rls.test.ts](../client/__tests__/rls.test.ts) — RLS policy intent (simulator)
 
@@ -238,6 +238,29 @@ Uses a **table-keyed** fake client rather than the FIFO response queue of 4.1: t
 |---|---|
 | `case-lineage involvement classification` | Only two states spend a participant: `accepted`, and an unanswered invite to a session that has not happened (`pending-upcoming`, which stops one person accepting two sessions in the same chain). Accepted-then-**struck** classifies as `struck` and does **not** block — they backed out or never showed, so they never sat on the case. `declined` (and the legacy `rejected` spelling) and a past unanswered invite (`no-response`) do not block either. A session dated **today** counts as upcoming. When someone appears on several cases in one chain the blocking classification wins. A case with no sessions yields an empty map. |
 | `splitLineageInvolvement` | Partitions an involvement map into blocked ids and the non-blocking history the UI shows as "Previously invited — …" next to a still-selectable name; asserts nobody lands in both halves, and that the split agrees with `isLineageBlocking`. |
+
+### 3.14 [roster-order.test.ts](../client/__tests__/roster-order.test.ts) — participant list order
+
+**Subject:** the real `rosterGroup` / `rosterStatusLabel` / `sortRoster` / `compareRosterEntries` from [lib/participant/rosterOrder](../client/lib/participant/rosterOrder.ts) — pure, no mocks.
+
+**Why this exists:** five screens render the same roster from five different row shapes ([Admin/sessions](../client/app/dashboard/Admin/sessions/page.tsx), [ParticipantRoster](../client/components/ParticipantRoster.tsx), [CaseParticipantSummary](../client/components/CaseParticipantSummary.tsx), [PreviousParticipantsModal](../client/components/PreviousParticipantsModal.tsx), [RequesteeParticipantHistory](../client/components/RequesteeParticipantHistory.tsx)). They agree only because they share this comparator, so it is asserted here rather than five times over.
+
+| `describe` | Coverage |
+|---|---|
+| `rosterGroup` | Buckets `accepted` / `declined` / `pending`; the legacy `rejected` spelling reads as declined; `null`, `undefined` and unknown statuses read as pending (matching `InviteStatusBadge`); a strike **outranks** whatever status it was applied to, so an accepted-then-struck participant is never grouped with the people who are coming. |
+| `rosterStatusLabel` | One label per group, including `Struck` for a struck accept. |
+| `sortRoster` | Order is accepted → declined → pending → struck, matching the declared `ROSTER_GROUP_ORDER`; alphabetical **inside** a group only (an accepted "Zoe" still outranks a declined "Adam"); the within-group key is the displayed `"First Last"` string; the input array is not mutated; equal entries compare `0` so the sort stays stable; an empty roster is handled. |
+
+### 3.15 [session-start.test.ts](../client/__tests__/session-start.test.ts) — the accept cutoff
+
+**Subject:** the real `sessionStartInstant` / `hasSessionStarted` from [lib/participant/sessionStart](../client/lib/participant/sessionStart.ts) — pure, with `now` injected so nothing is clock-flaky.
+
+**Why this exists:** this is the rule behind "you can no longer accept this invitation". `session_cases.start_time` is stored **UTC** (`addCasesToSession` runs the admin's local input through `localToUTCTime`), so session date + earliest start time is a real instant rather than a floating wall-clock time.
+
+| `describe` | Coverage |
+|---|---|
+| `sessionStartInstant` | Anchors to the **earliest** case start across the session, not the first row returned; accepts `HH:MM` as well as `HH:MM:SS`; tolerates a full timestamp in the date column; falls back to midnight UTC when a session has no case times (it cannot be run without cases, so the day itself closes it); returns `null` for a missing or unparseable date; skips unparseable times rather than throwing. |
+| `hasSessionStarted` | False one second before the first case, true exactly at the start instant, and stays true during and long after the session; **false earlier the same day** — the gate is the case start, not midnight; an unreadable date does not block, on the principle that a response should get through rather than be rejected on a row we cannot parse. |
 
 ---
 

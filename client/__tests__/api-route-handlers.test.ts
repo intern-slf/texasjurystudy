@@ -361,6 +361,30 @@ describe("API Route Handlers", () => {
       expect(html).toContain("Session Is Full");
     });
 
+    it("Session already started", async () => {
+      supabaseState.sessionParticipantRow = {
+        data: { invite_status: "pending", participant_id: "p-6" },
+        error: null,
+      };
+      updateInviteStatusMock.mockResolvedValue({
+        blocked: true,
+        reason: "session_started",
+      });
+
+      const token = generateEmailActionToken(
+        "invite-started",
+        "accepted",
+        TEST_SECRET
+      );
+      const res = await GET(reqWithToken(token));
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).toContain("This Session Has Already Started");
+      // Must not fall through to the session-full page, which is the catch-all
+      // for an unrecognised block reason.
+      expect(html).not.toContain("Session Is Full");
+    });
+
     it("Incomplete profile", async () => {
       supabaseState.sessionParticipantRow = {
         data: { invite_status: "pending", participant_id: "p-5" },

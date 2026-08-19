@@ -3,6 +3,7 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { sendInviteAcceptedConfirmationEmail, sendInviteDeclinedConfirmationEmail, sendSessionFullEmail, sendZoomLinkEmail } from "@/lib/mail";
 import { isActiveStatus } from "@/lib/participant/activeStatus";
+import { hasSessionStarted } from "@/lib/participant/sessionStart";
 
 /* =========================
    CHECK IF SESSION HAS REACHED ITS PARTICIPANT CAP
@@ -31,8 +32,9 @@ export async function updateInviteStatus(
 ) {
   console.log(`[updateInviteStatus] Updating ${sessionParticipantId} to ${status}`);
 
-  // 0. If accepting, check active panel status, session capacity and required
-  //    profile fields
+  // 0. If accepting, check the session hasn't started, then active panel status,
+  //    session capacity and required profile fields. Declining stays open at
+  //    every stage — a late no is still worth recording.
   if (status === "accepted") {
     const { data: inviteRow } = await supabaseAdmin
       .from("session_participants")
@@ -41,6 +43,28 @@ export async function updateInviteStatus(
       .single();
 
     if (inviteRow) {
+      // Checked first: once the first case is under way there is nothing left to
+      // accept, so none of the other gates are worth reporting.
+      const [{ data: sessionRow }, { data: startRows }] = await Promise.all([
+        supabaseAdmin
+          .from("sessions")
+          .select("session_date")
+          .eq("id", inviteRow.session_id)
+          .single(),
+        supabaseAdmin
+          .from("session_cases")
+          .select("start_time")
+          .eq("session_id", inviteRow.session_id),
+      ]);
+
+      const started = hasSessionStarted(
+        sessionRow?.session_date,
+        (startRows ?? []).map((r: { start_time: string | null }) => r.start_time),
+      );
+      if (started) {
+        return { blocked: true, reason: "session_started" } as const;
+      }
+
       const isFull = await isSessionFull(inviteRow.session_id);
       if (isFull) {
         return { blocked: true, reason: "session_full" } as const;

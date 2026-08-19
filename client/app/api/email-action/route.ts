@@ -57,6 +57,9 @@ export async function GET(req: NextRequest) {
       if (result.reason === "inactive") {
         return html(inactivePage(magicLink));
       }
+      if (result.reason === "session_started") {
+        return html(sessionStartedPage(magicLink));
+      }
       return html(sessionFullPage(magicLink));
     }
     return html(successPage(action, magicLink));
@@ -176,6 +179,16 @@ function sessionFullPage(dashboardUrl: string): string {
     <h1 style="margin:0 0 12px;font-size:24px;font-weight:700;color:#012A68;">Session Is Full</h1>
     <p style="margin:0 0 8px;font-size:16px;color:#3F3E38;line-height:1.6;">Thank you for your interest, but this session has already reached its participant capacity.</p>
     <p style="margin:0 0 28px;font-size:14px;color:#54524A;">Don't worry — you will be considered for the next available session that matches your profile.</p>
+    <a href="${dashboardUrl}" style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;background-color:#012A68;text-decoration:none;border-radius:6px;">Go to Dashboard</a>
+  `);
+}
+
+function sessionStartedPage(dashboardUrl: string): string {
+  return page("Session Already Started", `
+    <div style="width:64px;height:64px;border-radius:50%;background-color:#EFF3F9;border:2px solid #012A68;margin:0 auto 20px;font-size:28px;line-height:64px;">🕒</div>
+    <h1 style="margin:0 0 12px;font-size:24px;font-weight:700;color:#012A68;">This Session Has Already Started</h1>
+    <p style="margin:0 0 8px;font-size:16px;color:#3F3E38;line-height:1.6;">Invitations close when the session begins, so this one can no longer be accepted.</p>
+    <p style="margin:0 0 28px;font-size:14px;color:#54524A;">You will be considered for the next session that matches your profile.</p>
     <a href="${dashboardUrl}" style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;background-color:#012A68;text-decoration:none;border-radius:6px;">Go to Dashboard</a>
   `);
 }

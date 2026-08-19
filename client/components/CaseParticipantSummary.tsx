@@ -2,12 +2,15 @@
 
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { sortRoster, rosterGroup, rosterStatusLabel } from "@/lib/participant/rosterOrder";
 
 interface Participant {
   id: string;
   first_name: string;
   last_name: string;
   invite_status: string;
+  /** `session_participants.struck_at` — accepted, then backed out or no-showed. */
+  struck: boolean;
 }
 
 interface Props {
@@ -45,7 +48,7 @@ export default function CaseParticipantSummary({ caseId }: Props) {
       // Get participants from those sessions
       const { data: sp } = await supabase
         .from("session_participants")
-        .select("participant_id, invite_status")
+        .select("participant_id, invite_status, struck_at")
         .in("session_id", sessionIds);
 
       if (!sp?.length) {
@@ -55,7 +58,10 @@ export default function CaseParticipantSummary({ caseId }: Props) {
       }
 
       // Deduplicate
-      const uniqueMap = new Map<string, { participant_id: string; invite_status: string }>();
+      const uniqueMap = new Map<
+        string,
+        { participant_id: string; invite_status: string; struck_at?: string | null }
+      >();
       for (const row of sp) {
         if (!uniqueMap.has(row.participant_id)) {
           uniqueMap.set(row.participant_id, row);
@@ -91,9 +97,17 @@ export default function CaseParticipantSummary({ caseId }: Props) {
         first_name: detailsMap[id]?.first_name ?? "Unknown",
         last_name: detailsMap[id]?.last_name ?? "",
         invite_status: uniqueMap.get(id)?.invite_status ?? "pending",
+        struck: Boolean(uniqueMap.get(id)?.struck_at),
       }));
 
-      setParticipants(result);
+      // Accepted → declined → pending → struck, alphabetical inside each group.
+      setParticipants(
+        sortRoster(result, (p) => ({
+          name: `${p.first_name} ${p.last_name}`.trim(),
+          inviteStatus: p.invite_status,
+          struck: p.struck,
+        }))
+      );
     } catch (e) {
       console.error("Failed to load participants:", e);
     }
@@ -108,9 +122,11 @@ export default function CaseParticipantSummary({ caseId }: Props) {
     return <span className="text-xs text-muted-foreground italic">No participants recorded</span>;
   }
 
-  const accepted = participants.filter((p) => p.invite_status === "accepted").length;
-  const declined = participants.filter((p) => p.invite_status === "declined").length;
-  const pending = participants.filter((p) => p.invite_status !== "accepted" && p.invite_status !== "declined").length;
+  // Counted off the same grouping the list is ordered by, so a struck participant
+  // is not also counted among the people who accepted.
+  const counts = { accepted: 0, declined: 0, pending: 0, struck: 0 };
+  for (const p of participants) counts[rosterGroup(p.invite_status, p.struck)]++;
+  const { accepted, declined, pending, struck } = counts;
 
   return (
     <div className="space-y-2">
@@ -127,7 +143,7 @@ export default function CaseParticipantSummary({ caseId }: Props) {
         </svg>
         <span>{participants.length} participant{participants.length !== 1 ? "s" : ""}</span>
         <span className="text-[10px] text-muted-foreground">
-          ({accepted} accepted{declined > 0 ? `, ${declined} declined` : ""}{pending > 0 ? `, ${pending} pending` : ""})
+          ({accepted} accepted{declined > 0 ? `, ${declined} declined` : ""}{pending > 0 ? `, ${pending} pending` : ""}{struck > 0 ? `, ${struck} struck` : ""})
         </span>
         <span className={`text-[10px] transition-transform ${expanded ? "rotate-180" : ""}`}>▼</span>
       </button>
@@ -142,13 +158,14 @@ export default function CaseParticipantSummary({ caseId }: Props) {
                 </div>
                 <span className="text-xs flex-1">{p.first_name} {p.last_name}</span>
                 <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
-                  p.invite_status === "accepted"
-                    ? "bg-green-50 text-green-700"
-                    : p.invite_status === "declined"
-                    ? "bg-red-50 text-red-700"
-                    : "bg-slate-100 text-slate-600"
+                  {
+                    accepted: "bg-green-50 text-green-700",
+                    declined: "bg-red-50 text-red-700",
+                    struck: "bg-orange-50 text-orange-700",
+                    pending: "bg-slate-100 text-slate-600",
+                  }[rosterGroup(p.invite_status, p.struck)]
                 }`}>
-                  {p.invite_status === "accepted" ? "Accepted" : p.invite_status === "declined" ? "Declined" : "Pending"}
+                  {rosterStatusLabel(p.invite_status, p.struck)}
                 </span>
               </div>
             ))}

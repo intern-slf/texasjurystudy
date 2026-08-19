@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import InviteStatusBadge from "@/components/InviteStatusBadge";
+import { sortRoster } from "@/lib/participant/rosterOrder";
 
 /**
  * A participant list ordered accepted-first, collapsed to the first few until
@@ -41,12 +42,19 @@ export default function ParticipantRoster({
     return <p className="text-xs text-slate-400 italic">No participants invited.</p>;
   }
 
-  const byName = (a: RosterParticipant, b: RosterParticipant) => a.name.localeCompare(b.name);
+  // Shared roster order: accepted → declined → pending → struck, alphabetical by
+  // name inside each group. Applied to both blocks, so "Other" reads declined
+  // first, then unanswered, then struck.
+  const read = (p: RosterParticipant) => ({
+    name: p.name,
+    inviteStatus: p.inviteStatus,
+    struck: p.struck,
+  });
   // A struck participant accepted and then backed out, so they don't belong under
   // an "Accepted" heading — the heading is meant to read "these people are coming".
   const isAccepted = (p: RosterParticipant) => p.inviteStatus === "accepted" && !p.struck;
-  const accepted = participants.filter(isAccepted).sort(byName);
-  const others = participants.filter((p) => !isAccepted(p)).sort(byName);
+  const accepted = sortRoster(participants.filter(isAccepted), read);
+  const others = sortRoster(participants.filter((p) => !isAccepted(p)), read);
 
   const ordered = [...accepted, ...others];
   const visible = expanded ? ordered : ordered.slice(0, initialVisible);
