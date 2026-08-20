@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyEmailActionToken } from "@/lib/emailActionToken";
 import { updateInviteStatus } from "@/lib/participant/updateInviteStatus";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import {
+  HOURLY_RATE_CENTS,
+  WAITLIST_WAIT_FEE_CENTS,
+  WAITLIST_HOLD_MINUTES,
+  formatCents,
+} from "@/lib/participant/waitlist";
 
 export const runtime = "nodejs";
 
@@ -61,6 +67,12 @@ export async function GET(req: NextRequest) {
         return html(sessionStartedPage(magicLink));
       }
       return html(sessionFullPage(magicLink));
+    }
+    // The seats were gone, so this accept took a reserve slot instead. Never
+    // show "You're In!" here — they are not in, and the hold rules and the two
+    // payment outcomes are the whole point of the slot.
+    if (result && "waitlisted" in result && result.waitlisted) {
+      return html(waitlistedPage(magicLink));
     }
     return html(successPage(action, magicLink));
   } catch (err) {
@@ -180,6 +192,42 @@ function sessionFullPage(dashboardUrl: string): string {
     <p style="margin:0 0 8px;font-size:16px;color:#3F3E38;line-height:1.6;">Thank you for your interest, but this session has already reached its participant capacity.</p>
     <p style="margin:0 0 28px;font-size:14px;color:#54524A;">Don't worry — you will be considered for the next available session that matches your profile.</p>
     <a href="${dashboardUrl}" style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;background-color:#012A68;text-decoration:none;border-radius:6px;">Go to Dashboard</a>
+  `);
+}
+
+function waitlistedPage(dashboardUrl: string): string {
+  const hourly = formatCents(HOURLY_RATE_CENTS);
+  const waitFee = formatCents(WAITLIST_WAIT_FEE_CENTS);
+
+  return page("You're on the Waitlist", `
+    <div style="width:64px;height:64px;border-radius:50%;background-color:#FBF0DD;border:2px solid #AD8A37;margin:0 auto 20px;font-size:28px;line-height:64px;">⏳</div>
+    <h1 style="margin:0 0 12px;font-size:26px;font-weight:700;color:#6E5418;">You're on the Waitlist</h1>
+    <p style="margin:0 0 20px;font-size:16px;color:#3F3E38;line-height:1.6;">
+      Thank you for accepting. This session had already reached its participant capacity, so you have a <strong>waitlist spot</strong> rather than a confirmed seat. Waitlist spots are paid &mdash; here is how it works.
+    </p>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#FBF0DD;border-left:4px solid #AD8A37;border-radius:6px;margin:0 0 20px;text-align:left;">
+      <tr>
+        <td style="padding:16px 20px;">
+          <p style="margin:0 0 8px;font-size:14px;color:#6E5418;">&bull;&nbsp; Join the Zoom meeting at the session start time, the same as a confirmed participant.</p>
+          <p style="margin:0 0 8px;font-size:14px;color:#6E5418;">&bull;&nbsp; Wait in the Zoom waiting room for up to <strong>${WAITLIST_HOLD_MINUTES} minutes</strong>.</p>
+          <p style="margin:0 0 8px;font-size:14px;color:#6E5418;">&bull;&nbsp; If someone does not show up, you will be admitted and take part in the full session.</p>
+          <p style="margin:0;font-size:14px;color:#6E5418;">&bull;&nbsp; If no spot opens in that time, you are free to leave.</p>
+        </td>
+      </tr>
+    </table>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#E3EFE6;border-left:4px solid #2D6A3E;border-radius:6px;margin:0 0 28px;text-align:left;">
+      <tr>
+        <td style="padding:16px 20px;">
+          <p style="margin:0 0 6px;font-size:14px;color:#2D6A3E;"><strong>If you are called in:</strong> ${hourly} per hour for the full session, the same as any confirmed participant.</p>
+          <p style="margin:0;font-size:14px;color:#2D6A3E;"><strong>If you wait and are not called in:</strong> ${waitFee} for holding the spot.</p>
+        </td>
+      </tr>
+    </table>
+
+    <p style="margin:0 0 20px;font-size:14px;color:#54524A;">We have emailed you these details as well, along with the Zoom link when it is ready.</p>
+    <a href="${dashboardUrl}" style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;background-color:#012A68;text-decoration:none;border-radius:6px;">View My Dashboard</a>
   `);
 }
 

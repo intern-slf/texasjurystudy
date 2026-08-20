@@ -19,10 +19,10 @@ import {
 export default async function ParticipantSessionsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ sessionFull?: string; missingProfile?: string; sessionStarted?: string }>;
+  searchParams: Promise<{ sessionFull?: string; missingProfile?: string; sessionStarted?: string; waitlisted?: string }>;
 }) {
   noStore();
-  const { sessionFull, missingProfile, sessionStarted } = await searchParams;
+  const { sessionFull, missingProfile, sessionStarted, waitlisted } = await searchParams;
   const supabase = await createClient();
 
   const {
@@ -135,6 +135,23 @@ export default async function ParticipantSessionsPage({
         </div>
       )}
 
+      {/* ACCEPTED ONTO THE WAITLIST */}
+      {waitlisted === "1" && (
+        <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900 shadow-sm">
+          <span className="text-xl">⏳</span>
+          <div>
+            <p className="font-semibold text-sm">You&apos;re on the waitlist for this session.</p>
+            <p className="text-xs text-amber-800 mt-0.5 leading-relaxed">
+              It was already full, so you have a reserve spot rather than a confirmed seat. Join at
+              the start time and wait in the Zoom waiting room — if a spot opens you&apos;ll be
+              admitted and paid {formatCents(HOURLY_RATE_CENTS)} per hour for the full session. If
+              no spot opens within {WAITLIST_HOLD_MINUTES} minutes you may leave, and you&apos;ll
+              still be paid {formatCents(WAITLIST_WAIT_FEE_CENTS)} for waiting.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* SESSION ALREADY STARTED */}
       {sessionStarted === "1" && (
         <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-5 py-4 text-slate-700 shadow-sm">
@@ -227,6 +244,11 @@ export default async function ParticipantSessionsPage({
                             redirect("/dashboard/participant/sessions?sessionStarted=1");
                           }
                           redirect("/dashboard/participant/sessions?sessionFull=1");
+                        }
+                        // Seats were gone — they took a reserve slot, which needs
+                        // saying out loud rather than a silent refresh.
+                        if (result && "waitlisted" in result && result.waitlisted) {
+                          redirect("/dashboard/participant/sessions?waitlisted=1");
                         }
                         revalidatePath("/dashboard/participant/sessions");
                       }}

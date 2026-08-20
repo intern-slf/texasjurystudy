@@ -361,6 +361,30 @@ describe("API Route Handlers", () => {
       expect(html).toContain("Session Is Full");
     });
 
+    it("Accepted onto the waitlist", async () => {
+      supabaseState.sessionParticipantRow = {
+        data: { invite_status: "pending", participant_id: "p-7" },
+        error: null,
+      };
+      updateInviteStatusMock.mockResolvedValue({ waitlisted: true, position: 1 });
+
+      const token = generateEmailActionToken(
+        "invite-waitlisted",
+        "accepted",
+        TEST_SECRET
+      );
+      const res = await GET(reqWithToken(token));
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).toContain("on the Waitlist");
+      // The whole point: someone holding a reserve slot must never be told they
+      // are in, and must be given the hold rules and both payment outcomes.
+      expect(html).not.toContain("You're In!");
+      expect(html).toContain("waiting room");
+      expect(html).toContain("$30.00");
+      expect(html).toContain("$10.00");
+    });
+
     it("Session already started", async () => {
       supabaseState.sessionParticipantRow = {
         data: { invite_status: "pending", participant_id: "p-6" },

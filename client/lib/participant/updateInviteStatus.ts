@@ -200,7 +200,14 @@ export async function updateInviteStatus(
 
   console.log(`[updateInviteStatus] Success:`, updatedRows);
 
-  if (!updatedRows?.length) return;
+  // What the caller needs to tell a seat apart from a reserve slot. Returned
+  // from every exit below, because otherwise the accept/decline pages cannot
+  // distinguish the two and a waitlister is told "You're In!".
+  const outcome = isWaitlistAccept
+    ? ({ waitlisted: true, position: waitlistPosition } as const)
+    : undefined;
+
+  if (!updatedRows?.length) return outcome;
   const { session_id, participant_id } = updatedRows[0];
 
   // 2. Only set cooldown + send accepted email when participant ACCEPTS
@@ -217,7 +224,7 @@ export async function updateInviteStatus(
         .select("start_time, end_time")
         .eq("session_id", session_id);
 
-      if (!session || !sessionCases?.length) return;
+      if (!session || !sessionCases?.length) return outcome;
 
       // Cooldown is for people who actually took a seat. A waitlister has not
       // used up their turn, so they stay eligible for other sessions until (and
@@ -334,6 +341,8 @@ export async function updateInviteStatus(
       console.error("[updateInviteStatus] Failed to send decline email:", emailErr);
     }
   }
+
+  return outcome;
 }
 
 /* =========================

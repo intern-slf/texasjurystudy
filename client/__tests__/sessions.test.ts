@@ -1028,8 +1028,10 @@ describe("Sessions", () => {
 
       const result = await updateInviteStatus("invite-w1", "accepted");
 
-      // Not a block — they got a slot.
-      expect(result).toBeUndefined();
+      // Not a block — they got a slot. But the caller MUST be able to tell it
+      // apart from a seat, or the accept page says "You're In!" to someone who
+      // is not in.
+      expect(result).toEqual({ waitlisted: true, position: 1 });
 
       const updateCall = state.captured.find(
         (c) =>
@@ -1096,7 +1098,10 @@ describe("Sessions", () => {
         { data: [], error: null },
       ];
 
-      await updateInviteStatus("invite-seat", "accepted");
+      const result = await updateInviteStatus("invite-seat", "accepted");
+
+      // A real seat returns nothing, so the accept page shows "You're In!".
+      expect(result).toBeUndefined();
 
       const updateCall = state.captured.find(
         (c) =>
