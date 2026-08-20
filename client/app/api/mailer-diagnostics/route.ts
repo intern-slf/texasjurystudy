@@ -57,7 +57,11 @@ export async function GET(req: NextRequest) {
 
   const report: Record<string, unknown> = {
     env: {
-      MAILER_URL: Boolean(process.env.MAILER_URL),
+      // The literal value, not a boolean: a wrong host fails at DNS and never
+      // reaches Cloud Run, which looks identical to an auth failure from the
+      // outside. Reporting only Boolean() here hid exactly that.
+      MAILER_URL: process.env.MAILER_URL ?? null,
+      MAILER_URL_set: Boolean(process.env.MAILER_URL),
       MAILER_SHARED_SECRET: Boolean(process.env.MAILER_SHARED_SECRET),
       GCP_WORKLOAD_IDENTITY_AUDIENCE:
         process.env.GCP_WORKLOAD_IDENTITY_AUDIENCE ?? null,
@@ -121,6 +125,40 @@ export async function GET(req: NextRequest) {
     if (res.ok) {
       report.stsExchange = { ok: true, status: res.status };
       report.verdict = "Token exchange succeeded — federation is working.";
+
+      // The step nothing has yet exercised: can this function actually reach
+      // the mailer, and does Cloud Run's IAM check accept a *federated access
+      // token* rather than an OIDC ID token? Probes /health, so no mail is
+      // sent. A thrown fetch here means DNS or egress, not authorisation.
+      const federated = (JSON.parse(text) as { access_token?: string })
+        .access_token;
+      const mailerUrl = (process.env.MAILER_URL ?? "").replace(/\/$/, "");
+      if (federated && mailerUrl) {
+        try {
+          const probe = await fetch(`${mailerUrl}/health`, {
+            headers: { Authorization: `Bearer ${federated}` },
+            signal: AbortSignal.timeout(15_000),
+          });
+          const probeBody = await probe.text();
+          report.mailerProbe = {
+            url: `${mailerUrl}/health`,
+            status: probe.status,
+            body: probeBody.slice(0, 300),
+          };
+          report.verdict =
+            probe.status === 200
+              ? "Full chain works: token exchanged and Cloud Run accepted it."
+              : `Cloud Run rejected the federated token with ${probe.status}.`;
+        } catch (err) {
+          report.mailerProbe = {
+            url: `${mailerUrl}/health`,
+            error: err instanceof Error ? err.message : String(err),
+          };
+          report.verdict =
+            "Could not reach the mailer at all — check MAILER_URL. This is a " +
+            "connectivity failure, not an authorisation one.";
+        }
+      }
     } else {
       report.stsExchange = { ok: false, status: res.status, body: text.slice(0, 500) };
       report.verdict = "Google rejected the token exchange; see stsExchange.body.";

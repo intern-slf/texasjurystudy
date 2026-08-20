@@ -187,8 +187,12 @@ export async function sendEmail({
   subject,
   html,
 }: SendEmailOptions): Promise<SendEmailResult> {
-  const url = process.env.MAILER_URL;
-  const secret = process.env.MAILER_SHARED_SECRET;
+  // Trimmed because these are pasted into a dashboard by hand. Stray
+  // whitespace makes MAILER_URL an invalid URL, so fetch throws before any
+  // request is made — indistinguishable from an auth failure from the outside,
+  // and invisible in the Vercel UI.
+  const url = process.env.MAILER_URL?.trim();
+  const secret = process.env.MAILER_SHARED_SECRET?.trim();
 
   // Deliberately throws rather than returning quietly. lib/env.ts only runs at
   // build time (it is imported from next.config.ts), so it cannot catch a
