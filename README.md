@@ -258,11 +258,12 @@ Frontend
 Backend
 
 -> Supabase
--> Resend (Email Infrastructure)
+-> Gmail API via Cloud Run (Email Infrastructure — see mailer/)
 
 Deployment
 
--> Vercel
+-> Vercel (Next.js app)
+-> Google Cloud Run (mailer service)
 
 Routing Logic
 
@@ -291,7 +292,7 @@ Email and Password Management
 -> Email confirmation required
 -> Password reset via Supabase recovery
 -> Custom password update page supported
--> Case approval notifications (via Resend)
+-> Case approval notifications (via the mailer service, sent as support@)
 
 Development Setup
 
@@ -306,7 +307,8 @@ The Next.js application is located in the `client` directory.
 
    NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your_supabase_key
-   RESEND_API_KEY=your_resend_api_key (Optional, for emails)
+   MAILER_URL=https://your-mailer-service.a.run.app
+   MAILER_SHARED_SECRET=your_mailer_shared_secret
    NEXT_PUBLIC_APP_URL=http://localhost:3000
 
 3. Run development server:

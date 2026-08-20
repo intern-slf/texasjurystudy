@@ -1,0 +1,13 @@
+{
+  "name": "tjs-mailer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Cloud Run service that sends Texas Jury Study email via the Gmail API as support@, using keyless domain-wide delegation.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node server.js"
+  }
+}

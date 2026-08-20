@@ -1,4 +1,5 @@
-import nodemailer from 'nodemailer';
+import { randomUUID } from 'crypto';
+import { getMailerAuthToken } from '@/lib/mailerAuth';
 
 // ---------------------------------------------------------------------------
 // Shared email wrapper – provides consistent branded header and footer
@@ -47,30 +48,43 @@ export function emailWrapper(content: string): string {
   `.trim();
 }
 
-// Create a reusable transporter object using the default SMTP transport
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: Number(process.env.SMTP_PORT) || 587,
-  secure: false, // true for 465, false for other ports
-  // Pool connections so bulk sends (e.g. reactivation campaign) reuse a few
-  // SMTP connections instead of doing a TCP+TLS+AUTH handshake per email.
-  // This is what prevents Gmail's "454-4.7.0 Too many login attempts" — without
-  // a pool, every email re-runs AUTH PLAIN and Gmail throttles the logins.
-  // maxConnections also acts as the concurrency cap when callers fire sends in
-  // parallel — nodemailer queues messages onto these connections. rateLimit/
-  // rateDelta cap throughput (msgs per window) so we don't trip Gmail's message
-  // rate limit either. NOTE: this does NOT raise Gmail's daily send cap
-  // (~500 free / ~2000 Workspace) — a real campaign needs a transactional ESP.
-  pool: true,
-  maxConnections: 3,
-  maxMessages: 100,
-  rateDelta: 1000,
-  rateLimit: 5,
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-});
+// ---------------------------------------------------------------------------
+// Transport
+//
+// Mail is delivered by the `mailer` Cloud Run service (see /mailer), which
+// sends through the Gmail API as support@. Nothing here talks SMTP any more:
+// the old nodemailer pool existed to stop Gmail's "454-4.7.0 Too many login
+// attempts", and a pool is meaningless on autoscaled serverless where every
+// cold instance would re-authenticate anyway.
+//
+// Throughput limiting now lives in two places:
+//   - the mailer paces actual Gmail API calls (SENDS_PER_SECOND there), and
+//   - MAX_IN_FLIGHT below caps concurrent requests from this process, which is
+//     the job nodemailer's `maxConnections: 3` used to do. Without it a
+//     500-recipient campaign would open 500 sockets at once.
+//
+// NOTE: this still does not raise Gmail's daily send cap (~2000 Workspace).
+// ---------------------------------------------------------------------------
+
+const MAX_IN_FLIGHT = 3;
+const MAX_ATTEMPTS = 3;
+
+let inFlight = 0;
+const waiting: Array<() => void> = [];
+
+async function acquireSlot(): Promise<void> {
+  if (inFlight < MAX_IN_FLIGHT) {
+    inFlight++;
+    return;
+  }
+  await new Promise<void>((resolve) => waiting.push(resolve));
+  inFlight++;
+}
+
+function releaseSlot(): void {
+  inFlight--;
+  waiting.shift()?.();
+}
 
 export interface SendEmailOptions {
   to: string;
@@ -78,25 +92,131 @@ export interface SendEmailOptions {
   html: string;
 }
 
-export async function sendEmail({ to, subject, html }: SendEmailOptions) {
-  if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) {
-    console.error("SMTP configuration is missing in .env.local. Skipping email.");
-    return;
+export interface SendEmailResult {
+  id: string;
+  threadId: string;
+}
+
+interface MailerRequest extends SendEmailOptions {
+  // Stable for the lifetime of one logical send, including every retry below,
+  // so the mailer can recognise a repeat and decline to deliver twice. A Gmail
+  // send is not idempotent and a lost response is indistinguishable from a
+  // failed one, so without this a retry means a duplicate email.
+  idempotencyKey: string;
+}
+
+async function postToMailer(
+  body: MailerRequest,
+  url: string,
+  secret: string
+): Promise<SendEmailResult> {
+  let lastError: Error = new Error("No send attempt was made.");
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    // The mailer is deployed privately, so Cloud Run's IAM check needs a
+    // Google-signed token in Authorization. Fetched per attempt because it is
+    // cached and cheap, and a retry after a long backoff may need a fresh one.
+    // Null means federation isn't configured — fine for a public deployment,
+    // where the shared secret alone suffices.
+    let googleToken: string | null = null;
+    try {
+      googleToken = await getMailerAuthToken();
+    } catch (error) {
+      // A federation misconfiguration is permanent; retrying cannot fix it.
+      throw error instanceof Error ? error : new Error(String(error));
+    }
+
+    let res: Response;
+    try {
+      res = await fetch(`${url.replace(/\/$/, "")}/send`, {
+        method: "POST",
+        headers: {
+          // The shared secret lives in its own header: when the service is
+          // private, Cloud Run owns Authorization for its IAM check, so a
+          // secret placed there would be displaced by the Google token.
+          "X-Mailer-Secret": secret,
+          "Content-Type": "application/json",
+          ...(googleToken
+            ? { Authorization: `Bearer ${googleToken}` }
+            : {}),
+        },
+        body: JSON.stringify(body),
+        // A Cloud Run cold start plus the mailer's own pacing can take a few
+        // seconds; give it room but never hang a request handler forever.
+        signal: AbortSignal.timeout(30_000),
+      });
+    } catch (error) {
+      // Network-level failure: cold-start timeout, DNS, connection reset, or
+      // our own AbortSignal firing. None of these say whether the mailer
+      // actually delivered, which is exactly why every attempt carries the same
+      // idempotencyKey — the mailer collapses the repeat instead of re-sending.
+      lastError = error instanceof Error ? error : new Error(String(error));
+      if (attempt < MAX_ATTEMPTS) {
+        await new Promise((r) => setTimeout(r, 500 * 2 ** (attempt - 1)));
+        continue;
+      }
+      break;
+    }
+
+    if (res.ok) {
+      return (await res.json()) as SendEmailResult;
+    }
+
+    const detail = await res.text();
+    lastError = new Error(`mailer responded ${res.status}: ${detail}`);
+
+    // The mailer marks rate limits and upstream faults as retryable; a 400 or
+    // 401 is a bug or misconfiguration and will fail identically next time.
+    let retryable = res.status === 429 || res.status >= 500;
+    try {
+      const parsed = JSON.parse(detail) as { retryable?: boolean };
+      if (typeof parsed.retryable === "boolean") retryable = parsed.retryable;
+    } catch {
+      // Non-JSON error body — fall back to the status-based guess above.
+    }
+
+    if (!retryable || attempt === MAX_ATTEMPTS) break;
+    await new Promise((r) => setTimeout(r, 500 * 2 ** (attempt - 1)));
   }
 
-  try {
-    const info = await transporter.sendMail({
-      from: `"Texas Jury Study" <${process.env.SMTP_FROM || process.env.SMTP_USER}>`, // sender address
-      to, // list of receivers
-      subject, // Subject line
-      html, // html body
-    });
+  throw lastError;
+}
 
-    console.log("Email sent: %s", info.messageId);
-    return info;
+export async function sendEmail({
+  to,
+  subject,
+  html,
+}: SendEmailOptions): Promise<SendEmailResult> {
+  const url = process.env.MAILER_URL;
+  const secret = process.env.MAILER_SHARED_SECRET;
+
+  // Deliberately throws rather than returning quietly. lib/env.ts only runs at
+  // build time (it is imported from next.config.ts), so it cannot catch a
+  // missing value in a deployed function — swallowing this would mean mail
+  // silently stops with nothing in the logs.
+  if (!url || !secret) {
+    throw new Error(
+      "MAILER_URL and MAILER_SHARED_SECRET must be set to send email."
+    );
+  }
+
+  // Generated once per call, so all MAX_ATTEMPTS share it.
+  const idempotencyKey = randomUUID();
+
+  await acquireSlot();
+  try {
+    const result = await postToMailer(
+      { to, subject, html, idempotencyKey },
+      url,
+      secret
+    );
+    console.log("Email sent: %s", result.id);
+    return result;
   } catch (error) {
-    console.error("Error sending email via Nodemailer:", error);
+    console.error(`Error sending email to ${to} via mailer service:`, error);
     throw error;
+  } finally {
+    releaseSlot();
   }
 }
 
