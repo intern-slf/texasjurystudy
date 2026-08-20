@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyEmailActionToken } from "@/lib/emailActionToken";
 import { updateInviteStatus } from "@/lib/participant/updateInviteStatus";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import {
+  HOURLY_RATE_CENTS,
+  WAITLIST_WAIT_FEE_CENTS,
+  WAITLIST_HOLD_MINUTES,
+  formatCents,
+} from "@/lib/participant/waitlist";
 
 export const runtime = "nodejs";
 
@@ -30,6 +36,9 @@ export async function GET(req: NextRequest) {
   }
 
   const { inviteId, action } = payload;
+  // Second leg of the waitlist-consent flow. The first click renders the offer
+  // and writes nothing; these come back from the two buttons on that page.
+  const confirm = req.nextUrl.searchParams.get("confirm");
 
   try {
     const { data: row, error } = await supabaseAdmin
@@ -49,7 +58,23 @@ export async function GET(req: NextRequest) {
       return html(alreadyRespondedPage(row.invite_status, magicLink));
     }
 
-    const result = await updateInviteStatus(inviteId, action);
+    // They read the offer and turned it down. Recorded as a decline that knows
+    // *why*, so the roster shows "Declined — waitlist offer".
+    if (confirm === "decline") {
+      await updateInviteStatus(inviteId, "declined", { waitlistOfferDeclined: true });
+      return html(waitlistOfferDeclinedPage(magicLink));
+    }
+
+    const result = await updateInviteStatus(inviteId, action, {
+      confirmWaitlist: confirm === "waitlist",
+    });
+
+    // Seats went while the invitation sat in their inbox. Show the terms and
+    // let them choose — nothing has been written at this point.
+    if (result && "needsWaitlistConsent" in result && result.needsWaitlistConsent) {
+      return html(waitlistOfferPage(token, result));
+    }
+
     if (result && "blocked" in result && result.blocked) {
       if (result.reason === "missing_profile") {
         return html(missingProfilePage((result as { missing?: string[] }).missing ?? [], magicLink));
@@ -61,6 +86,12 @@ export async function GET(req: NextRequest) {
         return html(sessionStartedPage(magicLink));
       }
       return html(sessionFullPage(magicLink));
+    }
+    // The seats were gone, so this accept took a reserve slot instead. Never
+    // show "You're In!" here — they are not in, and the hold rules and the two
+    // payment outcomes are the whole point of the slot.
+    if (result && "waitlisted" in result && result.waitlisted) {
+      return html(waitlistedPage(magicLink));
     }
     return html(successPage(action, magicLink));
   } catch (err) {
@@ -180,6 +211,141 @@ function sessionFullPage(dashboardUrl: string): string {
     <p style="margin:0 0 8px;font-size:16px;color:#3F3E38;line-height:1.6;">Thank you for your interest, but this session has already reached its participant capacity.</p>
     <p style="margin:0 0 28px;font-size:14px;color:#54524A;">Don't worry — you will be considered for the next available session that matches your profile.</p>
     <a href="${dashboardUrl}" style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;background-color:#012A68;text-decoration:none;border-radius:6px;">Go to Dashboard</a>
+  `);
+}
+
+/**
+ * The consent step. Reached when someone accepts an invitation that was written
+ * while seats were free, but the session has since filled. Nothing is written
+ * until they pick one of the two buttons.
+ */
+function waitlistOfferPage(
+  token: string,
+  offer: {
+    position: number | null;
+    sessionDate: string | null;
+    sessionHours: number;
+    seatPayoutCents: number;
+    waitFeeCents: number;
+    hourlyRateCents: number;
+    holdMinutes: number;
+  },
+): string {
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
+  const joinLink = `${appUrl}/api/email-action?token=${encodeURIComponent(token)}&confirm=waitlist`;
+  const declineLink = `${appUrl}/api/email-action?token=${encodeURIComponent(token)}&confirm=decline`;
+
+  const dateStr = offer.sessionDate
+    ? new Date(offer.sessionDate).toLocaleDateString("en-US", {
+        weekday: "long", year: "numeric", month: "long", day: "numeric",
+      })
+    : "this session";
+
+  const hourly = formatCents(offer.hourlyRateCents);
+  const waitFee = formatCents(offer.waitFeeCents);
+  // Rate *and* the concrete total, so "$30 an hour" is not left as arithmetic.
+  const totalHint =
+    offer.sessionHours > 0
+      ? ` &mdash; about <strong>${formatCents(offer.seatPayoutCents)}</strong> for this ${formatHours(offer.sessionHours)} session`
+      : "";
+
+  return page("Waitlist Spot Available", `
+    <div style="width:64px;height:64px;border-radius:50%;background-color:#FBF0DD;border:2px solid #AD8A37;margin:0 auto 20px;font-size:28px;line-height:64px;">⏳</div>
+    <h1 style="margin:0 0 12px;font-size:24px;font-weight:700;color:#6E5418;">This Session Is Now Full</h1>
+    <p style="margin:0 0 20px;font-size:16px;color:#3F3E38;line-height:1.6;">
+      Since we sent your invitation, every seat for <strong>${dateStr}</strong> has been taken. We can offer you a <strong>waitlist spot</strong> instead. It is paid either way, but it is <strong>not</strong> a confirmed seat &mdash; please read what it involves before deciding.
+    </p>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#FBF0DD;border-left:4px solid #AD8A37;border-radius:6px;margin:0 0 20px;text-align:left;">
+      <tr>
+        <td style="padding:16px 20px;">
+          <p style="margin:0 0 10px;font-size:11px;font-weight:700;color:#854d0e;text-transform:uppercase;letter-spacing:0.08em;">If You Take the Waitlist Spot</p>
+          <p style="margin:0 0 8px;font-size:14px;color:#6E5418;">&bull;&nbsp; Join the Zoom meeting at the start time, the same as a confirmed participant.</p>
+          <p style="margin:0 0 8px;font-size:14px;color:#6E5418;">&bull;&nbsp; Hold in the waiting room for up to <strong>${offer.holdMinutes} minutes</strong>.</p>
+          <p style="margin:0 0 8px;font-size:14px;color:#6E5418;">&bull;&nbsp; You are admitted <strong>only</strong> if a confirmed participant does not show up.</p>
+          <p style="margin:0;font-size:14px;color:#6E5418;">&bull;&nbsp; If no spot opens in that time, you are free to leave.</p>
+        </td>
+      </tr>
+    </table>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#E3EFE6;border-left:4px solid #2D6A3E;border-radius:6px;margin:0 0 24px;text-align:left;">
+      <tr>
+        <td style="padding:16px 20px;">
+          <p style="margin:0 0 10px;font-size:11px;font-weight:700;color:#2D6A3E;text-transform:uppercase;letter-spacing:0.08em;">What You Would Be Paid</p>
+          <p style="margin:0 0 8px;font-size:14px;color:#2D6A3E;"><strong>If you are called in:</strong> ${hourly} per hour${totalHint}, exactly the same as a confirmed participant.</p>
+          <p style="margin:0;font-size:14px;color:#2D6A3E;"><strong>If you wait and are not called in:</strong> <strong>${waitFee}</strong> for holding the spot.</p>
+        </td>
+      </tr>
+    </table>
+
+    <p style="margin:0 0 16px;font-size:15px;font-weight:600;color:#3F3E38;">Would you like the waitlist spot?</p>
+
+    <table role="presentation" cellpadding="0" cellspacing="0" align="center" style="margin:0 auto 12px;">
+      <tr>
+        <td style="border-radius:6px;background-color:#2D6A3E;padding:0 6px;">
+          <a href="${joinLink}" style="display:inline-block;padding:14px 30px;font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;">Yes, add me to the waitlist</a>
+        </td>
+        <td style="width:12px;">&nbsp;</td>
+        <td style="border-radius:6px;border:1px solid #C32130;padding:0 6px;">
+          <a href="${declineLink}" style="display:inline-block;padding:14px 30px;font-size:15px;font-weight:700;color:#C32130;text-decoration:none;">No thanks</a>
+        </td>
+      </tr>
+    </table>
+
+    <p style="margin:16px 0 0;font-size:13px;color:#54524A;">Nothing has been recorded yet &mdash; your answer is only saved when you choose one of the buttons above.</p>
+  `);
+}
+
+/** "3-hour" / "90-minute" — keeps the payout sentence readable. */
+function formatHours(hours: number): string {
+  if (Number.isInteger(hours)) return `${hours}-hour`;
+  const minutes = Math.round(hours * 60);
+  return minutes % 60 === 0 ? `${minutes / 60}-hour` : `${minutes}-minute`;
+}
+
+function waitlistOfferDeclinedPage(dashboardUrl: string): string {
+  return page("Invitation Declined", `
+    <div style="width:64px;height:64px;border-radius:50%;background-color:#F9E9EA;border:2px solid #C32130;margin:0 auto 20px;font-size:28px;line-height:64px;">✕</div>
+    <h1 style="margin:0 0 12px;font-size:24px;font-weight:700;color:#C32130;">No Problem &mdash; You&rsquo;re Not on the Waitlist</h1>
+    <p style="margin:0 0 8px;font-size:16px;color:#3F3E38;line-height:1.6;">We have recorded that you did not want the waitlist spot for this session. You have not been added to it, and nothing is expected of you.</p>
+    <p style="margin:0 0 28px;font-size:14px;color:#54524A;">This does not affect future invitations &mdash; you remain a full member of the panel and we will be in touch about the next session that matches your profile.</p>
+    <a href="${dashboardUrl}" style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;background-color:#012A68;text-decoration:none;border-radius:6px;">Go to Dashboard</a>
+  `);
+}
+
+function waitlistedPage(dashboardUrl: string): string {
+  const hourly = formatCents(HOURLY_RATE_CENTS);
+  const waitFee = formatCents(WAITLIST_WAIT_FEE_CENTS);
+
+  return page("You're on the Waitlist", `
+    <div style="width:64px;height:64px;border-radius:50%;background-color:#FBF0DD;border:2px solid #AD8A37;margin:0 auto 20px;font-size:28px;line-height:64px;">⏳</div>
+    <h1 style="margin:0 0 12px;font-size:26px;font-weight:700;color:#6E5418;">You're on the Waitlist</h1>
+    <p style="margin:0 0 20px;font-size:16px;color:#3F3E38;line-height:1.6;">
+      Thank you for accepting. This session had already reached its participant capacity, so you have a <strong>waitlist spot</strong> rather than a confirmed seat. Waitlist spots are paid &mdash; here is how it works.
+    </p>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#FBF0DD;border-left:4px solid #AD8A37;border-radius:6px;margin:0 0 20px;text-align:left;">
+      <tr>
+        <td style="padding:16px 20px;">
+          <p style="margin:0 0 8px;font-size:14px;color:#6E5418;">&bull;&nbsp; Join the Zoom meeting at the session start time, the same as a confirmed participant.</p>
+          <p style="margin:0 0 8px;font-size:14px;color:#6E5418;">&bull;&nbsp; Wait in the Zoom waiting room for up to <strong>${WAITLIST_HOLD_MINUTES} minutes</strong>.</p>
+          <p style="margin:0 0 8px;font-size:14px;color:#6E5418;">&bull;&nbsp; If someone does not show up, you will be admitted and take part in the full session.</p>
+          <p style="margin:0;font-size:14px;color:#6E5418;">&bull;&nbsp; If no spot opens in that time, you are free to leave.</p>
+        </td>
+      </tr>
+    </table>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#E3EFE6;border-left:4px solid #2D6A3E;border-radius:6px;margin:0 0 28px;text-align:left;">
+      <tr>
+        <td style="padding:16px 20px;">
+          <p style="margin:0 0 6px;font-size:14px;color:#2D6A3E;"><strong>If you are called in:</strong> ${hourly} per hour for the full session, the same as any confirmed participant.</p>
+          <p style="margin:0;font-size:14px;color:#2D6A3E;"><strong>If you wait and are not called in:</strong> ${waitFee} for holding the spot.</p>
+        </td>
+      </tr>
+    </table>
+
+    <p style="margin:0 0 20px;font-size:14px;color:#54524A;">We have emailed you these details as well, along with the Zoom link when it is ready.</p>
+    <a href="${dashboardUrl}" style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;background-color:#012A68;text-decoration:none;border-radius:6px;">View My Dashboard</a>
   `);
 }
 

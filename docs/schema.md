@@ -217,11 +217,11 @@ CREATE TABLE public.session_participants (
   struck_at timestamp with time zone,
   struck_by uuid,
   waitlist_position integer,              -- 1-based reserve slot, in accept order
-  waitlist_outcome text,                  -- called_in | waited_out (NULL = undecided)
+  waitlist_outcome text,                  -- called_in | waited_out | offer_declined (NULL = undecided)
   waitlist_outcome_at timestamp with time zone,
   payout_cents integer,                   -- what this person is owed for the session
   CONSTRAINT session_participants_pkey PRIMARY KEY (id),
-  CONSTRAINT session_participants_waitlist_outcome_check CHECK (waitlist_outcome IS NULL OR waitlist_outcome IN ('called_in', 'waited_out')),
+  CONSTRAINT session_participants_waitlist_outcome_check CHECK (waitlist_outcome IS NULL OR waitlist_outcome IN ('called_in', 'waited_out', 'offer_declined')),
   CONSTRAINT session_participants_struck_by_fkey FOREIGN KEY (struck_by) REFERENCES auth.users(id),
   CONSTRAINT session_participants_session_id_fkey FOREIGN KEY (session_id) REFERENCES public.sessions(id),
   CONSTRAINT session_participants_participant_id_fkey FOREIGN KEY (participant_id) REFERENCES auth.users(id),

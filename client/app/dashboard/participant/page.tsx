@@ -11,6 +11,8 @@ import {
   WAITLIST_WAIT_FEE_CENTS,
   WAITLIST_HOLD_MINUTES,
   formatCents,
+  sessionLengthHours,
+  seatPayoutCents,
 } from "@/lib/participant/waitlist";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
@@ -25,10 +27,12 @@ type InviteSession = {
 export default async function ParticipantDashboard({
   searchParams,
 }: {
-  searchParams: Promise<{ inviteId?: string; status?: string; sessionFull?: string; missingProfile?: string; inactive?: string; sessionStarted?: string }>;
+  searchParams: Promise<{ inviteId?: string; status?: string; sessionFull?: string; missingProfile?: string; inactive?: string; sessionStarted?: string; waitlisted?: string; waitlistOffer?: string; waitlistDeclined?: string }>;
 }) {
   noStore();
-  const { inviteId, status, sessionFull, missingProfile, inactive, sessionStarted } = await searchParams;
+  const { inviteId, status, sessionFull, missingProfile, inactive, sessionStarted, waitlisted, waitlistOffer, waitlistDeclined } = await searchParams;
+  /** Invite id currently being offered a waitlist slot, if any. */
+  const offerFor = waitlistOffer ?? null;
   const supabase = await createClient();
 
   /* =========================
@@ -136,6 +140,36 @@ export default async function ParticipantDashboard({
         </div>
       )}
 
+      {/* TURNED DOWN A WAITLIST OFFER */}
+      {waitlistDeclined === "1" && (
+        <div className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-5 py-4 text-slate-700 shadow-sm">
+          <span className="text-xl">✓</span>
+          <div>
+            <p className="font-semibold text-sm">No problem — you&apos;re not on the waitlist.</p>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Nothing is expected of you for this session, and it doesn&apos;t affect future invitations.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* ACCEPTED ONTO THE WAITLIST */}
+      {waitlisted === "1" && (
+        <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900 shadow-sm">
+          <span className="text-xl">⏳</span>
+          <div>
+            <p className="font-semibold text-sm">You&apos;re on the waitlist for this session.</p>
+            <p className="text-xs text-amber-800 mt-0.5 leading-relaxed">
+              It was already full, so you have a reserve spot rather than a confirmed seat. Join at
+              the start time and wait in the Zoom waiting room — if a spot opens you&apos;ll be
+              admitted and paid {formatCents(HOURLY_RATE_CENTS)} per hour for the full session. If
+              no spot opens within {WAITLIST_HOLD_MINUTES} minutes you may leave, and you&apos;ll
+              still be paid {formatCents(WAITLIST_WAIT_FEE_CENTS)} for waiting.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* SESSION ALREADY STARTED */}
       {sessionStarted === "1" && (
         <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-5 py-4 text-slate-700 shadow-sm">
@@ -224,6 +258,9 @@ export default async function ParticipantDashboard({
               // Invitations close when the first case begins. Declining stays
               // open; the server enforces the same rule in updateInviteStatus.
               const started = hasSessionStarted(session?.session_date, startTimes);
+              // Drives the concrete "about $90 for this session" figure on the
+              // waitlist offer, so the rate is not left as arithmetic.
+              const offerHours = sessionLengthHours(startTimes, endTimes);
 
               return (
                 <form
@@ -241,11 +278,56 @@ export default async function ParticipantDashboard({
                       <span className="max-w-[15rem] text-right text-xs italic text-slate-500">
                         This session has already started, so it can no longer be accepted.
                       </span>
+                    ) : offerFor === invite.id ? (
+                      /* Seats went while this invitation sat unanswered. Ask
+                         before committing them to a reserve slot. */
+                      <div className="max-w-md rounded-lg border border-amber-300 bg-amber-50 p-4">
+                        <p className="text-sm font-semibold text-amber-900">
+                          This session is now full — we can offer you a waitlist spot
+                        </p>
+                        <ul className="mt-2 space-y-1 text-xs leading-relaxed text-amber-900">
+                          <li>• Hold in the Zoom waiting room up to {WAITLIST_HOLD_MINUTES} minutes.</li>
+                          <li>• Admitted <strong>only</strong> if a confirmed participant doesn&apos;t show.</li>
+                          <li>
+                            • Called in: <strong>{formatCents(HOURLY_RATE_CENTS)}/hour</strong>
+                            {offerHours > 0
+                              ? <> — about <strong>{formatCents(seatPayoutCents(offerHours))}</strong> for this session</>
+                              : null}.
+                          </li>
+                          <li>• Not called in: <strong>{formatCents(WAITLIST_WAIT_FEE_CENTS)}</strong> for waiting.</li>
+                        </ul>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <button
+                            formAction={async () => {
+                              "use server";
+                              await updateInviteStatus(invite.id, "accepted", { confirmWaitlist: true });
+                              redirect("/dashboard/participant?waitlisted=1");
+                            }}
+                            className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700"
+                          >
+                            Yes, add me to the waitlist
+                          </button>
+                          <button
+                            formAction={async () => {
+                              "use server";
+                              await updateInviteStatus(invite.id, "declined", { waitlistOfferDeclined: true });
+                              redirect("/dashboard/participant?waitlistDeclined=1");
+                            }}
+                            className="rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-50"
+                          >
+                            No thanks
+                          </button>
+                        </div>
+                        <p className="mt-2 text-[11px] text-slate-500">Nothing is saved until you choose.</p>
+                      </div>
                     ) : (
                       <button
                         formAction={async () => {
                           "use server";
                           const result = await updateInviteStatus(invite.id, "accepted");
+                          if (result && "needsWaitlistConsent" in result && result.needsWaitlistConsent) {
+                            redirect(`/dashboard/participant?waitlistOffer=${invite.id}`);
+                          }
                           if (result && "blocked" in result && result.blocked) {
                             if (result.reason === "missing_profile") {
                               const missing = (result as { missing?: string[] }).missing ?? [];
@@ -258,6 +340,11 @@ export default async function ParticipantDashboard({
                               redirect("/dashboard/participant?sessionStarted=1");
                             }
                             redirect("/dashboard/participant?sessionFull=1");
+                          }
+                          // Seats were gone — they took a reserve slot, which
+                          // needs saying out loud rather than a silent refresh.
+                          if (result && "waitlisted" in result && result.waitlisted) {
+                            redirect("/dashboard/participant?waitlisted=1");
                           }
                           revalidatePath("/dashboard/participant");
                         }}

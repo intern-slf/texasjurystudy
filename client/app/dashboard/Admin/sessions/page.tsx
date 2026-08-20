@@ -679,6 +679,11 @@ export default async function SessionsPage({
                                 {isWaitlisted(p.invite_status) && p.waitlist_position
                                   ? ` #${p.waitlist_position}`
                                   : ""}
+                                {/* Refusing a reserve slot is not the same as
+                                    refusing the session — say which it was. */}
+                                {p.waitlist_outcome === "offer_declined" ? (
+                                  <span className="font-normal text-slate-400"> — waitlist offer</span>
+                                ) : null}
                               </span>
                               {p.waitlist_outcome === "called_in" && (
                                 <span
