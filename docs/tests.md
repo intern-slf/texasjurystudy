@@ -31,7 +31,7 @@ npx vitest run __tests__/<file>.test.ts # run a single file
 npx vitest run -t "<test name fragment>" # run by test name
 ```
 
-The suite has **one required environment variable** for the tokenized-email tests: `EMAIL_ACTION_SECRET`. CI sets it to `test-secret-for-ci-only`; locally any non-empty string works. Every other secret (Supabase URL / keys, SMTP config, app URL) is defaulted inside the test files themselves via `process.env.X ||= "..."`, so a fresh checkout passes without a `.env` file.
+The suite has **one required environment variable** for the tokenized-email tests: `EMAIL_ACTION_SECRET`. CI sets it to `test-secret-for-ci-only`; locally any non-empty string works. Every other secret (Supabase URL / keys, app URL) is defaulted inside the test files themselves via `process.env.X ||= "..."`, so a fresh checkout passes without a `.env` file. Mail config needs no default at all: the suite mocks `@/lib/mail` wholesale, so no test ever reaches the transport.
 
 ---
 

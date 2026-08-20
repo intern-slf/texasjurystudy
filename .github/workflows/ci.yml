@@ -50,9 +50,8 @@ jobs:
       NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
       SUPABASE_SERVICE_ROLE_KEY: placeholder-service-role-key
       NEXT_PUBLIC_APP_URL: https://example.com
-      SMTP_HOST: smtp.example.com
-      SMTP_USER: placeholder@example.com
-      SMTP_PASS: placeholder
+      MAILER_URL: https://mailer.example.com
+      MAILER_SHARED_SECRET: placeholder
       EMAIL_ACTION_SECRET: placeholder-ci-secret-not-used-at-runtime
     steps:
       - uses: actions/checkout@v4

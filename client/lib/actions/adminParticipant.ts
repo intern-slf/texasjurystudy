@@ -239,9 +239,10 @@ export async function sendReactivationEmails(userIds: string[]): Promise<Reactiv
         return true;
     });
 
-    // Fire the emails concurrently. The SMTP transporter is pooled
-    // (maxConnections), so this many sends run at once and the rest queue —
-    // far faster than awaiting one handshake per recipient in series.
+    // Fire the emails concurrently. sendEmail caps its own in-flight requests
+    // (MAX_IN_FLIGHT in lib/mail.ts) and the mailer service paces the actual
+    // Gmail API calls, so the excess queues rather than stampeding — far faster
+    // than awaiting one round trip per recipient in series.
     const outcomes = await Promise.allSettled(
         targets.map(async (row) => {
             if (!row.email) {
