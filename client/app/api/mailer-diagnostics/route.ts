@@ -11,6 +11,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
+import { getMailerAuthToken } from "@/lib/mailerAuth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -126,17 +127,29 @@ export async function GET(req: NextRequest) {
       report.stsExchange = { ok: true, status: res.status };
       report.verdict = "Token exchange succeeded — federation is working.";
 
-      // The step nothing has yet exercised: can this function actually reach
-      // the mailer, and does Cloud Run's IAM check accept a *federated access
-      // token* rather than an OIDC ID token? Probes /health, so no mail is
-      // sent. A thrown fetch here means DNS or egress, not authorisation.
-      const federated = (JSON.parse(text) as { access_token?: string })
-        .access_token;
-      const mailerUrl = (process.env.MAILER_URL ?? "").replace(/\/$/, "");
-      if (federated && mailerUrl) {
+      // Probe using the SAME token the mailer actually receives, by calling
+      // the production helper rather than duplicating its logic. Cloud Run
+      // rejects OAuth access tokens with 401 and requires an OIDC ID token,
+      // so this distinction is the whole ballgame: with
+      // MAILER_INVOKER_SERVICE_ACCOUNT set, getMailerAuthToken() mints an ID
+      // token; without it, it returns the access token that gets refused.
+      //
+      // Note 401s do NOT appear in Cloud Run's service logs, which is why this
+      // probe exists at all — the failure was invisible from the GCP side.
+      const mailerUrl = (process.env.MAILER_URL ?? "").trim().replace(/\/$/, "");
+      let probeToken: string | null = null;
+      try {
+        probeToken = await getMailerAuthToken();
+        report.probeTokenClaims = probeToken ? peekClaims(probeToken) : null;
+      } catch (err) {
+        report.probeTokenError =
+          err instanceof Error ? err.message : String(err);
+      }
+
+      if (probeToken && mailerUrl) {
         try {
           const probe = await fetch(`${mailerUrl}/health`, {
-            headers: { Authorization: `Bearer ${federated}` },
+            headers: { Authorization: `Bearer ${probeToken}` },
             signal: AbortSignal.timeout(15_000),
           });
           const probeBody = await probe.text();
