@@ -512,11 +512,21 @@ export default async function SessionsPage({
                       </span>
                       <SessionCapEditor sessionId={s.id} currentCap={s.participant_cap ?? 10} />
                       {(() => {
-                        const onWaitlist = sParticipants.filter((p) => isWaitlisted(p.invite_status));
-                        if (!onWaitlist.length) return null;
+                        // Always shown, even at 0, so the reserve capacity reads
+                        // alongside the seat count rather than appearing out of
+                        // nowhere once someone lands on it.
+                        const onWaitlist = sParticipants.filter((p) => isWaitlisted(p.invite_status)).length;
+                        const waitlistCap = s.waitlist_cap ?? DEFAULT_WAITLIST_CAP;
                         return (
-                          <span className="text-xs font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full">
-                            Waitlist: {onWaitlist.length}/{s.waitlist_cap ?? DEFAULT_WAITLIST_CAP}
+                          <span
+                            className={
+                              onWaitlist > 0
+                                ? "text-xs font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full"
+                                : "text-xs text-slate-500"
+                            }
+                            title="Reserve slots. Waitlisters hold in the Zoom waiting room and are never counted in the accepted seats."
+                          >
+                            Waitlist: {onWaitlist}/{waitlistCap}
                           </span>
                         );
                       })()}
