@@ -182,6 +182,29 @@ describe("case-lineage involvement classification", () => {
     expect((await getLineageParticipantIds(["c-1"], client)).sort()).toEqual(["p-1", "p-2"]);
   });
 
+  it("frees a waitlister who was never called into the meeting", async () => {
+    // They held a reserve slot and never sat on the case, so a follow-up can
+    // still draw them. Note the session is UPCOMING — an unanswered invite there
+    // would block, but a waitlist slot must not.
+    const client = lineage(
+      [{ id: "s-next", session_date: FUTURE }],
+      [{ participant_id: "p-1", session_id: "s-next", invite_status: "waitlisted" }]
+    );
+
+    const involvement = await getLineageParticipantInvolvement(["c-1"], client);
+    expect(involvement.get("p-1")).toBe("waitlisted");
+    expect(await getLineageParticipantIds(["c-1"], client)).toEqual([]);
+  });
+
+  it("blocks a waitlister who WAS called in, because the call-in makes them accepted", async () => {
+    const client = lineage(
+      [{ id: "s-past", session_date: PAST }],
+      [{ participant_id: "p-1", session_id: "s-past", invite_status: "accepted" }]
+    );
+
+    expect(await getLineageParticipantIds(["c-1"], client)).toEqual(["p-1"]);
+  });
+
   it("returns nothing for a case with no sessions", async () => {
     const client = lineage([], []);
     expect(await getLineageParticipantInvolvement(["c-1"], client)).toEqual(new Map());
@@ -197,12 +220,18 @@ describe("splitLineageInvolvement", () => {
       ["p-struck", "struck"],
       ["p-declined", "declined"],
       ["p-silent", "no-response"],
+      ["p-waiting", "waitlisted"],
     ]);
 
     const { blockedIds, priorInvolvement } = splitLineageInvolvement(involvement);
 
     expect(blockedIds.sort()).toEqual(["p-accepted", "p-live"]);
-    expect([...priorInvolvement.keys()].sort()).toEqual(["p-declined", "p-silent", "p-struck"]);
+    expect([...priorInvolvement.keys()].sort()).toEqual([
+      "p-declined",
+      "p-silent",
+      "p-struck",
+      "p-waiting",
+    ]);
     // Nobody may appear in both — a blocked row is never selectable.
     expect(blockedIds.some((id) => priorInvolvement.has(id))).toBe(false);
   });
@@ -213,5 +242,6 @@ describe("splitLineageInvolvement", () => {
     expect(isLineageBlocking("struck")).toBe(false);
     expect(isLineageBlocking("declined")).toBe(false);
     expect(isLineageBlocking("no-response")).toBe(false);
+    expect(isLineageBlocking("waitlisted")).toBe(false);
   });
 });

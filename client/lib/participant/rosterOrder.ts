@@ -6,15 +6,21 @@
    then the people who accepted and were struck. Alphabetical by the name as
    rendered ("First Last") inside each group.
 
+   Waitlisted people sit in their own group directly after accepted: they are
+   the reserve, not a seat, so they are never counted inside "Accepted: n/cap".
+
    Kept in one place because five screens render the same roster from five
    different row shapes — they agree only if they share this comparator.
 ========================= */
 
-export type RosterGroup = "accepted" | "declined" | "pending" | "struck";
+import { WAITLISTED_STATUS } from "@/lib/participant/waitlist";
+
+export type RosterGroup = "accepted" | "waitlisted" | "declined" | "pending" | "struck";
 
 /** Display order; the index doubles as the sort rank. */
 export const ROSTER_GROUP_ORDER: readonly RosterGroup[] = [
   "accepted",
+  "waitlisted",
   "declined",
   "pending",
   "struck",
@@ -38,6 +44,7 @@ export type RosterEntry = {
 export function rosterGroup(inviteStatus?: string | null, struck?: boolean): RosterGroup {
   if (struck) return "struck";
   if (inviteStatus === "accepted") return "accepted";
+  if (inviteStatus === WAITLISTED_STATUS) return "waitlisted";
   if (inviteStatus === "declined" || inviteStatus === "rejected") return "declined";
   return "pending";
 }
@@ -62,6 +69,8 @@ export function rosterStatusLabel(inviteStatus?: string | null, struck?: boolean
   switch (rosterGroup(inviteStatus, struck)) {
     case "accepted":
       return "Accepted";
+    case "waitlisted":
+      return "Waitlisted";
     case "declined":
       return "Declined";
     case "struck":

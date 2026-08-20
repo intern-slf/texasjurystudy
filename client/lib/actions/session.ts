@@ -2,9 +2,9 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { sendEmail, sendRescheduleEmail, sendSessionCreatedEmail, sendSessionCompletedEmail, sendPresenceConfirmedEmail, sendPresenceDeclinedEmail, sendZoomLinkEmail, sendPresenterInfoEmail, emailWrapper } from "@/lib/mail";
+import { sendEmail, sendRescheduleEmail, sendSessionCreatedEmail, sendSessionCompletedEmail, sendPresenceConfirmedEmail, sendPresenceDeclinedEmail, sendZoomLinkEmail, sendPresenterInfoEmail, sendWaitlistZoomLinkEmail, sendWaitlistCalledInEmail, sendWaitlistWaitedOutEmail, sendWaitlistConfirmationEmail, emailWrapper } from "@/lib/mail";
 import type { PresenterParticipantInfo, PresenterCaseInfo } from "@/lib/mail";
-import { checkAndNotifySessionFull } from "@/lib/participant/updateInviteStatus";
+import { checkAndNotifySessionFull, getSessionOccupancy } from "@/lib/participant/updateInviteStatus";
 import { recordBackoutStrike } from "@/lib/actions/participantFlags";
 import { generateEmailActionToken } from "@/lib/emailActionToken";
 import {
@@ -13,6 +13,18 @@ import {
   type LineageInvolvement,
 } from "@/lib/case-lineage";
 import { ACTIVE_STATUS, isActiveStatus, isParticipantActive } from "@/lib/participant/activeStatus";
+import { cooldownAfterSession } from "@/lib/participant/sessionStart";
+import {
+  WAITLISTED_STATUS,
+  HOURLY_RATE_CENTS,
+  WAITLIST_WAIT_FEE_CENTS,
+  WAITLIST_HOLD_MINUTES,
+  isWaitlisted,
+  assignSlot,
+  sessionLengthHours,
+  seatPayoutCents,
+  formatCents,
+} from "@/lib/participant/waitlist";
 import { NO_LOGIN_REASON, getAllIdsWithoutLogin, getIdsWithoutLogin } from "@/lib/participant/loginAccount";
 import { revalidatePath } from "next/cache";
 import { localToUTC, localToUTCTime } from "@/lib/timezone";
@@ -663,12 +675,13 @@ export async function rescheduleSession(
     day: "numeric",
   });
 
-  // 3. Notify accepted participants
+  // 3. Notify everyone holding a place — seated participants and waitlisters
+  //    alike, since a waitlister has committed to the same date and time.
   const { data: acceptedRows } = await supabase
     .from("session_participants")
     .select("participant_id")
     .eq("session_id", sessionId)
-    .eq("invite_status", "accepted");
+    .in("invite_status", ["accepted", WAITLISTED_STATUS]);
 
   for (const row of acceptedRows ?? []) {
     try {
@@ -754,9 +767,56 @@ export async function adminRespondOnBehalf(
     );
   }
 
+  // Accepting on someone's behalf takes a slot exactly as a self-accept does, so
+  // it goes through the same seat → waitlist → full assignment. Writing
+  // 'accepted' straight through would silently overfill the cap and never create
+  // a waitlist row.
+  let onBehalfSlot: "seat" | "waitlist" = "seat";
+  let onBehalfPosition: number | null = null;
+  let onBehalfHours = 0;
+
+  if (action === "accepted") {
+    const { data: caseTimeRows } = await supabase
+      .from("session_cases")
+      .select("start_time, end_time")
+      .eq("session_id", sessionId);
+
+    type CaseTimes = { start_time: string | null; end_time: string | null };
+    const times = (caseTimeRows ?? []) as CaseTimes[];
+    onBehalfHours = sessionLengthHours(
+      times.map((r) => r.start_time),
+      times.map((r) => r.end_time),
+    );
+
+    const occupancy = await getSessionOccupancy(sessionId);
+    const assigned = assignSlot(occupancy);
+    if (assigned === "full") {
+      throw new Error(
+        `This session is full — ${occupancy.acceptedCount}/${occupancy.participantCap} seats taken ` +
+        `and all ${occupancy.waitlistCap} waitlist slots used. Raise the participant cap or the ` +
+        `waitlist cap before adding anyone else.`
+      );
+    }
+    onBehalfSlot = assigned;
+    if (assigned === "waitlist") onBehalfPosition = occupancy.waitlistCount + 1;
+  }
+
+  const onBehalfWaitlisted = action === "accepted" && onBehalfSlot === "waitlist";
+
   const { error } = await supabase
     .from("session_participants")
-    .update({ invite_status: action, responded_at: new Date().toISOString() })
+    .update({
+      invite_status: onBehalfWaitlisted ? WAITLISTED_STATUS : action,
+      responded_at: new Date().toISOString(),
+      ...(action === "accepted"
+        ? {
+            waitlist_position: onBehalfPosition,
+            payout_cents: onBehalfWaitlisted
+              ? WAITLIST_WAIT_FEE_CENTS
+              : seatPayoutCents(onBehalfHours),
+          }
+        : {}),
+    })
     .eq("session_id", sessionId)
     .eq("participant_id", participantId);
 
@@ -793,6 +853,10 @@ export async function adminRespondOnBehalf(
     .eq("id", sessionId)
     .single();
 
+  // The status change is already committed. A mail failure must not surface as
+  // "the action failed" — that reads as though nothing happened, when in fact the
+  // participant has been seated or waitlisted.
+  try {
   if (email && session) {
     if (action === "accepted") {
       const { data: sc } = await supabase
@@ -806,7 +870,21 @@ export async function adminRespondOnBehalf(
         ? `${sc.start_time} – ${sc.end_time}`
         : "See your dashboard for details";
 
-      await sendPresenceConfirmedEmail(email, firstName, session.session_date, timeStr);
+      // Someone put on the waitlist must never receive a plain "you're confirmed"
+      // email — the hold rules and the two payment outcomes are the whole point.
+      if (onBehalfWaitlisted) {
+        await sendWaitlistConfirmationEmail(
+          email,
+          firstName,
+          session.session_date,
+          WAITLIST_HOLD_MINUTES,
+          formatCents(HOURLY_RATE_CENTS),
+          formatCents(WAITLIST_WAIT_FEE_CENTS),
+          timeStr,
+        );
+      } else {
+        await sendPresenceConfirmedEmail(email, firstName, session.session_date, timeStr);
+      }
 
       // If zoom link is already saved, send it immediately to the accepted participant
       if (session.zoom_link) {
@@ -831,12 +909,28 @@ export async function adminRespondOnBehalf(
           }
         }
 
-        await sendZoomLinkEmail(email, firstName, session.session_date, session.zoom_link, zoomTimeStr);
+        if (onBehalfWaitlisted) {
+          await sendWaitlistZoomLinkEmail(
+            email,
+            firstName,
+            session.session_date,
+            session.zoom_link,
+            WAITLIST_HOLD_MINUTES,
+            formatCents(HOURLY_RATE_CENTS),
+            formatCents(WAITLIST_WAIT_FEE_CENTS),
+            zoomTimeStr,
+          );
+        } else {
+          await sendZoomLinkEmail(email, firstName, session.session_date, session.zoom_link, zoomTimeStr);
+        }
         console.log(`[adminRespondOnBehalf] Sent zoom link email to ${email} (link already saved)`);
       }
     } else {
       await sendPresenceDeclinedEmail(email, firstName, session.session_date);
     }
+  }
+  } catch (emailErr) {
+    console.error("[adminRespondOnBehalf] Email failed (status change stands):", emailErr);
   }
 
   // Check if session is now full after admin acceptance
@@ -845,6 +939,192 @@ export async function adminRespondOnBehalf(
       await checkAndNotifySessionFull(sessionId);
     } catch (err) {
       console.error("[adminRespondOnBehalf] Session full check error:", err);
+    }
+  }
+
+  revalidatePath("/dashboard/Admin/sessions");
+}
+
+/* =========================
+   WAITLIST OUTCOMES
+
+   A waitlister holds a reserve slot: they join Zoom on time and wait in the
+   waiting room. The call-in itself happens in Zoom, so the app cannot observe
+   it — an admin records which of the two outcomes happened, and the payout
+   follows from that choice.
+
+     called in  -> flips to a real seat, paid the hourly rate for the FULL
+                   session length, and picks up the usual post-session cooldown
+     waited out -> stays 'waitlisted', paid the flat waiting fee, and keeps
+                   their eligibility for other sessions
+
+   Nothing here runs automatically. There is no scheduler in this app, and
+   guessing the outcome from the clock would invent payouts.
+========================= */
+
+/** Session date, case times and the participant's contact details in one hop. */
+async function loadWaitlistContext(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  sessionId: string,
+  participantId: string,
+) {
+  const [{ data: session }, { data: caseRows }, { data: inviteRow }] = await Promise.all([
+    supabase.from("sessions").select("session_date").eq("id", sessionId).single(),
+    supabase.from("session_cases").select("start_time, end_time").eq("session_id", sessionId),
+    supabase
+      .from("session_participants")
+      .select("invite_status, waitlist_outcome")
+      .eq("session_id", sessionId)
+      .eq("participant_id", participantId)
+      .maybeSingle(),
+  ]);
+
+  let email: string | null = null;
+  let firstName = "there";
+  const { data: jp } = await supabase
+    .from("jury_participants")
+    .select("email, first_name")
+    .eq("user_id", participantId)
+    .maybeSingle();
+  if (jp) {
+    email = jp.email;
+    firstName = jp.first_name || "there";
+  } else {
+    const { data: od } = await supabase
+      .from("oldData")
+      .select("email, first_name")
+      .eq("id", participantId)
+      .maybeSingle();
+    if (od) {
+      email = od.email;
+      firstName = od.first_name || "there";
+    }
+  }
+
+  type CaseTimes = { start_time: string | null; end_time: string | null };
+  const times = (caseRows ?? []) as CaseTimes[];
+
+  const sessionDate = (session?.session_date as string | undefined) ?? null;
+
+  return {
+    inviteRow: inviteRow as { invite_status: string | null; waitlist_outcome: string | null } | null,
+    sessionDate,
+    hours: sessionLengthHours(
+      times.map((r) => r.start_time),
+      times.map((r) => r.end_time),
+    ),
+    /** Day after the session ends, for the post-seat cooldown. Null if unreadable. */
+    cooldownAfterAt: cooldownAfterSession(
+      sessionDate,
+      times.map((r) => r.start_time),
+      times.map((r) => r.end_time),
+    ),
+    email,
+    firstName,
+  };
+}
+
+function longDate(date: string): string {
+  return new Date(date).toLocaleDateString("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+}
+
+/**
+ * Call a waitlisted participant into the meeting. Flips them to a real seat —
+ * this deliberately bypasses `participant_cap`, because the seat they are
+ * filling belongs to someone who did not show up and is not handed back
+ * automatically. The accepted count can therefore read above the cap.
+ */
+export async function callInWaitlistParticipant(sessionId: string, participantId: string) {
+  const supabase = await createClient();
+  const ctx = await loadWaitlistContext(supabase, sessionId, participantId);
+
+  if (!ctx.inviteRow || !isWaitlisted(ctx.inviteRow.invite_status)) {
+    throw new Error("This participant is not on the waitlist for this session.");
+  }
+
+  const payoutCents = seatPayoutCents(ctx.hours);
+
+  const { error } = await supabase
+    .from("session_participants")
+    .update({
+      invite_status: "accepted",
+      waitlist_outcome: "called_in",
+      waitlist_outcome_at: new Date().toISOString(),
+      payout_cents: payoutCents,
+    })
+    .eq("session_id", sessionId)
+    .eq("participant_id", participantId);
+
+  if (error) throw error;
+
+  // They have now taken a seat, so the post-session cooldown applies — the same
+  // one a self-accept sets. Waitlisting alone never sets it.
+  if (ctx.cooldownAfterAt) {
+    const { error: cooldownErr } = await supabaseAdmin
+      .from("jury_participants")
+      .update({ eligible_after_at: ctx.cooldownAfterAt })
+      .eq("user_id", participantId);
+    if (cooldownErr) console.error("[callInWaitlist] Cooldown update failed:", cooldownErr.message);
+  }
+
+  if (ctx.email && ctx.sessionDate) {
+    try {
+      await sendWaitlistCalledInEmail(
+        ctx.email,
+        ctx.firstName,
+        longDate(ctx.sessionDate),
+        formatCents(payoutCents),
+        formatCents(HOURLY_RATE_CENTS),
+      );
+    } catch (err) {
+      console.error("[callInWaitlist] Email failed:", err);
+    }
+  }
+
+  revalidatePath("/dashboard/Admin/sessions");
+  revalidatePath("/dashboard/Admin", "layout");
+}
+
+/**
+ * Record that a waitlister held the full window and was never called in. They
+ * stay 'waitlisted' — they did not sit on the case — and are paid the flat fee.
+ */
+export async function markWaitlistWaitedOut(sessionId: string, participantId: string) {
+  const supabase = await createClient();
+  const ctx = await loadWaitlistContext(supabase, sessionId, participantId);
+
+  if (!ctx.inviteRow || !isWaitlisted(ctx.inviteRow.invite_status)) {
+    throw new Error("This participant is not on the waitlist for this session.");
+  }
+
+  const { error } = await supabase
+    .from("session_participants")
+    .update({
+      waitlist_outcome: "waited_out",
+      waitlist_outcome_at: new Date().toISOString(),
+      payout_cents: WAITLIST_WAIT_FEE_CENTS,
+    })
+    .eq("session_id", sessionId)
+    .eq("participant_id", participantId);
+
+  if (error) throw error;
+
+  if (ctx.email && ctx.sessionDate) {
+    try {
+      await sendWaitlistWaitedOutEmail(
+        ctx.email,
+        ctx.firstName,
+        longDate(ctx.sessionDate),
+        formatCents(WAITLIST_WAIT_FEE_CENTS),
+        WAITLIST_HOLD_MINUTES,
+      );
+    } catch (err) {
+      console.error("[markWaitlistWaitedOut] Email failed:", err);
     }
   }
 
@@ -1003,16 +1283,17 @@ export async function sendZoomLink(formData: FormData) {
     }
   }
 
-  // Fetch accepted participants
+  // Waitlisters need the link too — holding in the Zoom waiting room is the
+  // whole point of the slot — but they get the waitlist template, which spells
+  // out the hold window and the two payment outcomes.
   const { data: participants } = await supabase
     .from("session_participants")
-    .select("participant_id")
+    .select("participant_id, invite_status")
     .eq("session_id", sessionId)
-    .eq("invite_status", "accepted");
+    .in("invite_status", ["accepted", WAITLISTED_STATUS]);
 
   if (!participants?.length) return;
 
-  // Send email to each accepted participant
   for (const p of participants) {
     try {
       const { data: userData } = await supabaseAdmin.auth.admin.getUserById(p.participant_id);
@@ -1022,7 +1303,20 @@ export async function sendZoomLink(formData: FormData) {
         userData?.user?.user_metadata?.full_name?.split(" ")[0] ||
         "Participant";
 
-      if (email) {
+      if (!email) continue;
+
+      if (isWaitlisted(p.invite_status)) {
+        await sendWaitlistZoomLinkEmail(
+          email,
+          firstName,
+          sessionDate,
+          zoomLink,
+          WAITLIST_HOLD_MINUTES,
+          formatCents(HOURLY_RATE_CENTS),
+          formatCents(WAITLIST_WAIT_FEE_CENTS),
+          timeStr,
+        );
+      } else {
         await sendZoomLinkEmail(email, firstName, sessionDate, zoomLink, timeStr);
       }
     } catch (e) {

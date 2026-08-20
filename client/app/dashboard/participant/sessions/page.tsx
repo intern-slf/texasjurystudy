@@ -7,6 +7,14 @@ import { unstable_noStore as noStore, revalidatePath } from "next/cache";
 import { getPendingInvites } from "@/lib/participant/getPendingInvites";
 import { updateInviteStatus } from "@/lib/participant/updateInviteStatus";
 import { hasSessionStarted } from "@/lib/participant/sessionStart";
+import {
+  WAITLISTED_STATUS,
+  HOURLY_RATE_CENTS,
+  WAITLIST_WAIT_FEE_CENTS,
+  WAITLIST_HOLD_MINUTES,
+  isWaitlisted,
+  formatCents,
+} from "@/lib/participant/waitlist";
 
 export default async function ParticipantSessionsPage({
   searchParams,
@@ -39,11 +47,13 @@ export default async function ParticipantSessionsPage({
   /* =========================
      FETCH ACCEPTED SESSIONS
   ========================= */
+  // Waitlisted rows are included: the person committed to the date, holds the
+  // Zoom link, and would otherwise see nothing here at all.
   const { data: acceptedInvites } = await supabaseAdmin
     .from("session_participants")
-    .select("id, session_id, sessions(session_date, zoom_link, session_cases(start_time, end_time, cases(title)))")
+    .select("id, session_id, invite_status, sessions(session_date, zoom_link, session_cases(start_time, end_time, cases(title)))")
     .eq("participant_id", participant.user_id)
-    .eq("invite_status", "accepted");
+    .in("invite_status", ["accepted", WAITLISTED_STATUS]);
 
   const fmtCt = (t: string) => {
     const [h, m] = t.split(":");
@@ -97,6 +107,7 @@ export default async function ParticipantSessionsPage({
         timeRange,
         caseTitles,
         zoomLink,
+        waitlisted: isWaitlisted(inv.invite_status),
         isPast: new Date(date) < today,
       }];
     })
@@ -284,9 +295,12 @@ function SessionCard({
     timeRange: string;
     caseTitles: string[];
     zoomLink?: string | null;
+    /** Holding a reserve slot rather than a confirmed seat. */
+    waitlisted?: boolean;
   };
   isPast?: boolean;
 }) {
+  const waitlisted = Boolean(session.waitlisted);
   return (
     <div
       className={`border rounded-xl p-5 space-y-3 ${
@@ -324,13 +338,33 @@ function SessionCard({
         </div>
         <span
           className={`shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full ${
-            isPast ? "bg-slate-200 text-slate-600" : "bg-blue-600 text-white"
+            isPast
+              ? "bg-slate-200 text-slate-600"
+              : waitlisted
+              ? "bg-amber-500 text-white"
+              : "bg-blue-600 text-white"
           }`}
         >
-          {isPast ? "Completed" : "Confirmed"}
+          {isPast ? "Completed" : waitlisted ? "Waitlisted" : "Confirmed"}
         </span>
       </div>
 
+      {/* A waitlister holds a reserve slot, so the rules and the two possible
+          payments are spelled out wherever they see the session. */}
+      {waitlisted && !isPast && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+          <p className="text-xs font-semibold text-amber-900">
+            You are on the waitlist for this session.
+          </p>
+          <p className="mt-1 text-xs leading-relaxed text-amber-800">
+            Join at the start time and wait in the Zoom waiting room. If a confirmed participant
+            does not show up you will be admitted and paid the standard{" "}
+            {formatCents(HOURLY_RATE_CENTS)} per hour for the full session. If no spot opens within{" "}
+            {WAITLIST_HOLD_MINUTES} minutes you are free to leave, and you will still be paid{" "}
+            {formatCents(WAITLIST_WAIT_FEE_CENTS)} for waiting.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

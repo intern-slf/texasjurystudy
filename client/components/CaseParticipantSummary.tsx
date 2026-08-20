@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { sortRoster, rosterGroup, rosterStatusLabel } from "@/lib/participant/rosterOrder";
+import { sortRoster, rosterGroup, rosterStatusLabel, type RosterGroup } from "@/lib/participant/rosterOrder";
+import { isWaitlisted } from "@/lib/participant/waitlist";
 
 interface Participant {
   id: string;
@@ -100,9 +101,14 @@ export default function CaseParticipantSummary({ caseId }: Props) {
         struck: Boolean(uniqueMap.get(id)?.struck_at),
       }));
 
+      // Requestee-facing: waitlisters are the firm's reserve, not participants on
+      // this case. They only surface here once called in, at which point their
+      // invite_status is 'accepted' and they come through normally.
+      const seated = result.filter((p) => !isWaitlisted(p.invite_status));
+
       // Accepted → declined → pending → struck, alphabetical inside each group.
       setParticipants(
-        sortRoster(result, (p) => ({
+        sortRoster(seated, (p) => ({
           name: `${p.first_name} ${p.last_name}`.trim(),
           inviteStatus: p.invite_status,
           struck: p.struck,
@@ -124,7 +130,13 @@ export default function CaseParticipantSummary({ caseId }: Props) {
 
   // Counted off the same grouping the list is ordered by, so a struck participant
   // is not also counted among the people who accepted.
-  const counts = { accepted: 0, declined: 0, pending: 0, struck: 0 };
+  const counts: Record<RosterGroup, number> = {
+    accepted: 0,
+    waitlisted: 0,
+    declined: 0,
+    pending: 0,
+    struck: 0,
+  };
   for (const p of participants) counts[rosterGroup(p.invite_status, p.struck)]++;
   const { accepted, declined, pending, struck } = counts;
 
@@ -160,6 +172,7 @@ export default function CaseParticipantSummary({ caseId }: Props) {
                 <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
                   {
                     accepted: "bg-green-50 text-green-700",
+                    waitlisted: "bg-blue-50 text-blue-700",
                     declined: "bg-red-50 text-red-700",
                     struck: "bg-orange-50 text-orange-700",
                     pending: "bg-slate-100 text-slate-600",

@@ -14,6 +14,13 @@ import {
 } from "@/lib/filter-utils";
 import { getLineageInvolvementForCases, splitLineageInvolvement } from "@/lib/case-lineage";
 import { sortRoster, rosterStatusLabel } from "@/lib/participant/rosterOrder";
+import {
+  WAITLISTED_STATUS,
+  DEFAULT_WAITLIST_CAP,
+  WAITLIST_HOLD_MINUTES,
+  isWaitlisted,
+  formatCents,
+} from "@/lib/participant/waitlist";
 import { ACTIVE_STATUS } from "@/lib/participant/activeStatus";
 import { getAllIdsWithoutLogin } from "@/lib/participant/loginAccount";
 import InviteMoreModal, { type Candidate } from "@/components/InviteMoreModal";
@@ -265,7 +272,7 @@ export default async function SessionsPage({
 
   const { data: sessions } = await supabase
     .from("sessions")
-    .select("id, session_date, created_by, completion_notification_enabled, completion_email_sent, zoom_link, participant_cap, session_full_notified")
+    .select("id, session_date, created_by, completion_notification_enabled, completion_email_sent, zoom_link, participant_cap, waitlist_cap, session_full_notified")
     .order("session_date", { ascending: false });
 
   /* =========================
@@ -332,15 +339,20 @@ export default async function SessionsPage({
 
       const { data: rawSParticipants } = await supabase
         .from("session_participants")
-        .select("participant_id, invite_status, struck_at")
+        .select("participant_id, invite_status, struck_at, waitlist_position, waitlist_outcome, payout_cents")
         .eq("session_id", s.id);
 
       // Deduplicate by participant_id (keep the latest status — last row wins)
       const participantMap = new Map<string, typeof rawSParticipants extends (infer T)[] | null ? T : never>();
       for (const p of rawSParticipants ?? []) {
         const existing = participantMap.get(p.participant_id);
-        // Prefer accepted/declined over pending/null
-        if (!existing || p.invite_status === "accepted" || p.invite_status === "declined") {
+        // Prefer a settled status (accepted / declined / waitlisted) over pending/null
+        if (
+          !existing ||
+          p.invite_status === "accepted" ||
+          p.invite_status === "declined" ||
+          p.invite_status === WAITLISTED_STATUS
+        ) {
           participantMap.set(p.participant_id, p);
         }
       }
@@ -491,11 +503,23 @@ export default async function SessionsPage({
                     <div className="text-xs text-slate-500">
                       Session ID: {s.id}
                     </div>
-                    <div className="flex items-center gap-3 mt-1">
+                    <div className="flex items-center gap-3 mt-1 flex-wrap">
                       <span className="text-xs text-slate-500">
+                        {/* Counts seats only. Waitlisters are the reserve and are
+                            never folded into this number; a called-in waitlister
+                            can push it past the cap, which is expected. */}
                         Accepted: {sParticipants.filter((p) => p.invite_status === "accepted").length}/{s.participant_cap ?? 10}
                       </span>
                       <SessionCapEditor sessionId={s.id} currentCap={s.participant_cap ?? 10} />
+                      {(() => {
+                        const onWaitlist = sParticipants.filter((p) => isWaitlisted(p.invite_status));
+                        if (!onWaitlist.length) return null;
+                        return (
+                          <span className="text-xs font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full">
+                            Waitlist: {onWaitlist.length}/{s.waitlist_cap ?? DEFAULT_WAITLIST_CAP}
+                          </span>
+                        );
+                      })()}
                       {s.session_full_notified && (
                         <span className="text-xs font-semibold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
                           Session Full
@@ -623,13 +647,43 @@ export default async function SessionsPage({
                             </Link>
 
                             <div className="flex items-center gap-2">
+                              {/* What this person is owed. Written when the amount
+                                  becomes determinate — on accept for a seat, on the
+                                  recorded outcome for a waitlister. */}
+                              {typeof p.payout_cents === "number" && (
+                                <span
+                                  className="text-xs font-semibold text-slate-500"
+                                  title={
+                                    p.waitlist_outcome === "waited_out"
+                                      ? `Waiting fee — held the slot for the full ${WAITLIST_HOLD_MINUTES} minutes and was not called in`
+                                      : p.waitlist_outcome === "called_in"
+                                      ? "Called in from the waitlist — paid the full session rate"
+                                      : "Session payment"
+                                  }
+                                >
+                                  {formatCents(p.payout_cents)}
+                                </span>
+                              )}
                               <span className="text-xs font-semibold">
                                 {rosterStatusLabel(p.invite_status, Boolean(p.struck_at))}
+                                {isWaitlisted(p.invite_status) && p.waitlist_position
+                                  ? ` #${p.waitlist_position}`
+                                  : ""}
                               </span>
+                              {p.waitlist_outcome === "called_in" && (
+                                <span
+                                  className="text-[10px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded"
+                                  title="Was on the waitlist and was called into the meeting"
+                                >
+                                  From waitlist
+                                </span>
+                              )}
                               <ParticipantActionsMenu
                                 sessionId={s.id}
                                 participantId={p.participant_id}
                                 participantName={`${detail?.first_name ?? ""} ${detail?.last_name ?? ""}`.trim()}
+                                inviteStatus={p.invite_status}
+                                waitlistOutcome={p.waitlist_outcome}
                               />
                             </div>
                           </div>

@@ -212,11 +212,16 @@ CREATE TABLE public.session_participants (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   session_id uuid,
   participant_id uuid,
-  invite_status text,
+  invite_status text, -- pending | accepted | declined | rejected | waitlisted
   responded_at timestamp with time zone,
   struck_at timestamp with time zone,
   struck_by uuid,
+  waitlist_position integer,              -- 1-based reserve slot, in accept order
+  waitlist_outcome text,                  -- called_in | waited_out (NULL = undecided)
+  waitlist_outcome_at timestamp with time zone,
+  payout_cents integer,                   -- what this person is owed for the session
   CONSTRAINT session_participants_pkey PRIMARY KEY (id),
+  CONSTRAINT session_participants_waitlist_outcome_check CHECK (waitlist_outcome IS NULL OR waitlist_outcome IN ('called_in', 'waited_out')),
   CONSTRAINT session_participants_struck_by_fkey FOREIGN KEY (struck_by) REFERENCES auth.users(id),
   CONSTRAINT session_participants_session_id_fkey FOREIGN KEY (session_id) REFERENCES public.sessions(id),
   CONSTRAINT session_participants_participant_id_fkey FOREIGN KEY (participant_id) REFERENCES auth.users(id),
@@ -234,6 +239,7 @@ CREATE TABLE public.sessions (
   completion_notification_enabled boolean DEFAULT false,
   zoom_link text,
   participant_cap integer DEFAULT 10,
+  waitlist_cap integer NOT NULL DEFAULT 2, -- reserve slots offered once seats fill
   session_full_notified boolean DEFAULT false,
   CONSTRAINT sessions_pkey PRIMARY KEY (id),
   CONSTRAINT sessions_created_by_fkey FOREIGN KEY (created_by) REFERENCES auth.users(id)
