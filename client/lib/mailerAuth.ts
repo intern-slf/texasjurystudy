@@ -35,6 +35,29 @@ interface CachedToken {
   expiresAtMs: number;
 }
 
+/**
+ * Reads Vercel's OIDC token.
+ *
+ * `process.env.VERCEL_OIDC_TOKEN` is NOT a reliable source in production: the
+ * token is request-scoped and refreshed per invocation, so on a deployed
+ * function the variable is simply absent. Reading it was the original bug —
+ * every send threw before reaching the mailer, and Next.js masked the message
+ * in production builds so it surfaced only as a generic render error.
+ *
+ * The env var is still worth checking as a fallback, because `vercel env pull`
+ * does populate it for local development.
+ */
+async function readVercelOidcToken(): Promise<string | null> {
+  try {
+    const { getVercelOidcToken } = await import("@vercel/functions/oidc");
+    const token = await getVercelOidcToken();
+    if (token) return token;
+  } catch {
+    // Not inside a Vercel request context — fall through to the env var.
+  }
+  return process.env.VERCEL_OIDC_TOKEN ?? null;
+}
+
 let cached: CachedToken | null = null;
 
 function cacheFor(token: string, lifetimeSeconds: number): string {
@@ -124,12 +147,12 @@ export async function getMailerAuthToken(): Promise<string | null> {
   const audience = process.env.GCP_WORKLOAD_IDENTITY_AUDIENCE;
   if (!audience) return null;
 
-  const oidcToken = process.env.VERCEL_OIDC_TOKEN;
+  const oidcToken = await readVercelOidcToken();
   if (!oidcToken) {
     throw new Error(
-      "GCP_WORKLOAD_IDENTITY_AUDIENCE is set but VERCEL_OIDC_TOKEN is missing. " +
-        "Enable Settings -> Security -> OIDC Federation on the Vercel project, " +
-        "or set MAILER_ID_TOKEN for local development."
+      "GCP_WORKLOAD_IDENTITY_AUDIENCE is set but no Vercel OIDC token is " +
+        "available. Check Settings -> Security -> OIDC Federation on the " +
+        "Vercel project, or set MAILER_ID_TOKEN for local development."
     );
   }
 
