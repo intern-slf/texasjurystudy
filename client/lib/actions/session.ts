@@ -472,6 +472,9 @@ async function inviteParticipantsInner(
                 <p style="margin:0;font-size:14px;color:#475569;">
                   <strong>About your payment:</strong> payment for this session is sent to the PayPal username on your profile. PayPal treats it as a &ldquo;service&rdquo; payment and takes a processing fee out of it, so the amount that reaches you is about <strong>$2 to $3 less</strong> than the session amount. That fee is PayPal&rsquo;s, not ours.
                 </p>
+                <p style="margin:10px 0 0;font-size:13px;color:#64748b;">
+                  <strong>Please note:</strong> seats are filled in the order people reply. If this session fills up before you respond, we may be able to offer you a paid <strong>waitlist spot</strong> instead of a seat &mdash; you will be shown exactly what that involves and can accept or decline it separately.
+                </p>
               </td>
             </tr>
           </table>
@@ -815,7 +818,9 @@ export async function adminRespondOnBehalf(
               ? WAITLIST_WAIT_FEE_CENTS
               : seatPayoutCents(onBehalfHours),
           }
-        : {}),
+        : // Declining ends any claim on the session — drop the amount and the
+          // slot, or a former waitlister keeps showing as owed after saying no.
+          { payout_cents: null, waitlist_position: null }),
     })
     .eq("session_id", sessionId)
     .eq("participant_id", participantId);
