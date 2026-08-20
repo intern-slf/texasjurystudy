@@ -1007,30 +1007,60 @@ describe("Sessions", () => {
       expect(state.captured.some((c) => c.table === "jury_participants")).toBe(false);
     });
 
-    it("Accepting once the seats are gone lands on the waitlist, not a refusal", async () => {
-      state.participantEmails.set("p-1", "wait@test.local");
-      state.responses = [
-        { data: { session_id: "s-1", participant_id: "p-1" }, error: null },
-        ...notStartedYet(),
-        // Seats full, waitlist still has room
-        ...occupancy({ cap: 10, accepted: 10, waitlistCap: 2, waitlisted: 0 }),
-        {
-          data: {
-            paypal_username: "p1",
-            driver_license_number: "DL123",
-            driver_license_image_url: "http://img/dl",
-            reactivation_status: "yes",
-          },
-          error: null,
+    /** Seats gone, waitlist still open, profile in order. */
+    const readyForWaitlist = (waitlisted = 0) => [
+      { data: { session_id: "s-1", participant_id: "p-1" }, error: null },
+      ...notStartedYet(),
+      ...occupancy({ cap: 10, accepted: 10, waitlistCap: 2, waitlisted }),
+      {
+        data: {
+          paypal_username: "p1",
+          driver_license_number: "DL123",
+          driver_license_image_url: "http://img/dl",
+          reactivation_status: "yes",
         },
-        { data: [], error: null }, // main update — short-circuit the side effects
-      ];
+        error: null,
+      },
+    ];
+
+    it("Accepting once the seats are gone ASKS first and writes nothing", async () => {
+      // The invitation was written while seats were free, so a bare accept must
+      // not silently commit them to a reserve slot and its flat fee.
+      state.responses = [...readyForWaitlist()];
 
       const result = await updateInviteStatus("invite-w1", "accepted");
 
-      // Not a block — they got a slot. But the caller MUST be able to tell it
-      // apart from a seat, or the accept page says "You're In!" to someone who
-      // is not in.
+      expect(result).toMatchObject({
+        needsWaitlistConsent: true,
+        position: 1,
+        waitFeeCents: 1000,
+        hourlyRateCents: 3000,
+      });
+      // 09:00 → 12:00 = 3 hrs, so the offer can quote a concrete total.
+      expect((result as { seatPayoutCents: number }).seatPayoutCents).toBe(9000);
+
+      // Nothing was written — that is the whole point of the gate.
+      const update = state.captured.find(
+        (c) =>
+          c.table === "session_participants" &&
+          c.ops.some((o) => o.op === "update")
+      );
+      expect(update).toBeUndefined();
+    });
+
+    it("Confirming the offer writes the reserve slot", async () => {
+      state.participantEmails.set("p-1", "wait@test.local");
+      state.responses = [
+        ...readyForWaitlist(),
+        { data: [], error: null }, // main update — short-circuit the side effects
+      ];
+
+      const result = await updateInviteStatus("invite-w1", "accepted", {
+        confirmWaitlist: true,
+      });
+
+      // The caller MUST be able to tell this apart from a seat, or the accept
+      // page says "You're In!" to someone who is not in.
       expect(result).toEqual({ waitlisted: true, position: 1 });
 
       const updateCall = state.captured.find(
@@ -1047,6 +1077,51 @@ describe("Sessions", () => {
       // Holding a slot is worth the flat waiting fee until an admin records the
       // real outcome — never the seat rate.
       expect(upd.payload.payout_cents).toBe(1000);
+    });
+
+    it("Turning down the offer declines, and records that it was the waitlist", async () => {
+      state.responses = [{ data: [], error: null }];
+
+      await updateInviteStatus("invite-w1", "declined", {
+        waitlistOfferDeclined: true,
+      });
+
+      const updateCall = state.captured.find(
+        (c) =>
+          c.table === "session_participants" &&
+          c.ops.some((o) => o.op === "update")
+      )!;
+      const upd = updateCall.ops.find((o) => o.op === "update") as {
+        op: "update";
+        payload: Record<string, unknown>;
+      };
+      expect(upd.payload.invite_status).toBe("declined");
+      // Refusing a reserve slot is not the same as refusing the session.
+      expect(upd.payload.waitlist_outcome).toBe("offer_declined");
+      // They hold no slot and are owed nothing.
+      expect(upd.payload.waitlist_position).toBeNull();
+      expect(upd.payload.payout_cents).toBeNull();
+    });
+
+    it("A plain decline records no waitlist reason but still clears the money", async () => {
+      state.responses = [{ data: [], error: null }];
+
+      await updateInviteStatus("invite-plain", "declined");
+
+      const updateCall = state.captured.find(
+        (c) =>
+          c.table === "session_participants" &&
+          c.ops.some((o) => o.op === "update")
+      )!;
+      const upd = updateCall.ops.find((o) => o.op === "update") as {
+        op: "update";
+        payload: Record<string, unknown>;
+      };
+      expect(upd.payload.waitlist_outcome).toBeUndefined();
+      // Regression: a waitlister who later declined kept the $10 waiting fee on
+      // their row and showed as still owed after saying no.
+      expect(upd.payload.payout_cents).toBeNull();
+      expect(upd.payload.waitlist_position).toBeNull();
     });
 
     it("Takes the second waitlist slot when one is already filled", async () => {
@@ -1066,7 +1141,7 @@ describe("Sessions", () => {
         { data: [], error: null },
       ];
 
-      await updateInviteStatus("invite-w2", "accepted");
+      await updateInviteStatus("invite-w2", "accepted", { confirmWaitlist: true });
 
       const updateCall = state.captured.find(
         (c) =>

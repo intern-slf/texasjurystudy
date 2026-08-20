@@ -14,15 +14,19 @@ import {
   WAITLIST_HOLD_MINUTES,
   isWaitlisted,
   formatCents,
+  sessionLengthHours,
+  seatPayoutCents,
 } from "@/lib/participant/waitlist";
 
 export default async function ParticipantSessionsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ sessionFull?: string; missingProfile?: string; sessionStarted?: string; waitlisted?: string }>;
+  searchParams: Promise<{ sessionFull?: string; missingProfile?: string; sessionStarted?: string; waitlisted?: string; waitlistOffer?: string; waitlistDeclined?: string }>;
 }) {
   noStore();
-  const { sessionFull, missingProfile, sessionStarted, waitlisted } = await searchParams;
+  const { sessionFull, missingProfile, sessionStarted, waitlisted, waitlistOffer, waitlistDeclined } = await searchParams;
+  /** Invite id currently being offered a waitlist slot, if any. */
+  const offerFor = waitlistOffer ?? null;
   const supabase = await createClient();
 
   const {
@@ -135,6 +139,19 @@ export default async function ParticipantSessionsPage({
         </div>
       )}
 
+      {/* TURNED DOWN A WAITLIST OFFER */}
+      {waitlistDeclined === "1" && (
+        <div className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-5 py-4 text-slate-700 shadow-sm">
+          <span className="text-xl">✓</span>
+          <div>
+            <p className="font-semibold text-sm">No problem — you&apos;re not on the waitlist.</p>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Nothing is expected of you for this session, and it doesn&apos;t affect future invitations.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* ACCEPTED ONTO THE WAITLIST */}
       {waitlisted === "1" && (
         <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900 shadow-sm">
@@ -209,6 +226,9 @@ export default async function ParticipantSessionsPage({
             // Invitations close when the first case begins. Declining stays
             // open; the server enforces the same rule in updateInviteStatus.
             const started = hasSessionStarted(date, starts);
+            // Drives the concrete "about $90 for this session" figure on the
+            // waitlist offer, so the rate is not left as arithmetic.
+            const sessionHoursFor = sessionLengthHours(starts, ends);
 
             return (
               <form
@@ -230,11 +250,59 @@ export default async function ParticipantSessionsPage({
                     <span className="text-xs italic text-amber-800">
                       This session has already started, so it can no longer be accepted.
                     </span>
+                  ) : offerFor === invite.id ? (
+                    /* Seats went while this invitation sat unanswered. Ask before
+                       committing them to a reserve slot — the invitation promised
+                       a seat, so a silent waitlist would be a bait and switch. */
+                    <div className="w-full rounded-lg border border-amber-300 bg-white p-4">
+                      <p className="text-sm font-semibold text-amber-900">
+                        This session is now full — we can offer you a waitlist spot
+                      </p>
+                      <ul className="mt-2 space-y-1 text-xs leading-relaxed text-amber-900">
+                        <li>• Join Zoom at the start time and hold in the waiting room up to {WAITLIST_HOLD_MINUTES} minutes.</li>
+                        <li>• You are admitted <strong>only</strong> if a confirmed participant does not show up.</li>
+                        <li>
+                          • Called in: <strong>{formatCents(HOURLY_RATE_CENTS)}/hour</strong>
+                          {sessionHoursFor > 0
+                            ? <> — about <strong>{formatCents(seatPayoutCents(sessionHoursFor))}</strong> for this session</>
+                            : null}.
+                        </li>
+                        <li>• Not called in: <strong>{formatCents(WAITLIST_WAIT_FEE_CENTS)}</strong> for waiting.</li>
+                      </ul>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <button
+                          formAction={async () => {
+                            "use server";
+                            await updateInviteStatus(invite.id, "accepted", { confirmWaitlist: true });
+                            redirect("/dashboard/participant/sessions?waitlisted=1");
+                          }}
+                          className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700"
+                        >
+                          Yes, add me to the waitlist
+                        </button>
+                        <button
+                          formAction={async () => {
+                            "use server";
+                            await updateInviteStatus(invite.id, "declined", { waitlistOfferDeclined: true });
+                            redirect("/dashboard/participant/sessions?waitlistDeclined=1");
+                          }}
+                          className="rounded-lg border border-red-300 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-50"
+                        >
+                          No thanks
+                        </button>
+                      </div>
+                      <p className="mt-2 text-[11px] text-slate-500">
+                        Nothing is saved until you choose.
+                      </p>
+                    </div>
                   ) : (
                     <button
                       formAction={async () => {
                         "use server";
                         const result = await updateInviteStatus(invite.id, "accepted");
+                        if (result && "needsWaitlistConsent" in result && result.needsWaitlistConsent) {
+                          redirect(`/dashboard/participant/sessions?waitlistOffer=${invite.id}`);
+                        }
                         if (result && "blocked" in result && result.blocked) {
                           if (result.reason === "missing_profile") {
                             const missing = (result as { missing?: string[] }).missing ?? [];

@@ -261,7 +261,8 @@ describe("API Route Handlers", () => {
       expect(html).toContain("In!"); // "You're In!" headline
       expect(updateInviteStatusMock).toHaveBeenCalledWith(
         "invite-accept-1",
-        "accepted"
+        "accepted",
+        { confirmWaitlist: false }
       );
     });
 
@@ -283,7 +284,8 @@ describe("API Route Handlers", () => {
       expect(html).toContain("Invitation Declined");
       expect(updateInviteStatusMock).toHaveBeenCalledWith(
         "invite-decline-1",
-        "declined"
+        "declined",
+        { confirmWaitlist: false }
       );
     });
 

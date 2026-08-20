@@ -83,9 +83,21 @@ export async function getSessionOccupancy(sessionId: string) {
   };
 }
 
+export type InviteResponseOptions = {
+  /**
+   * The participant has been shown the waitlist offer and agreed to it. Without
+   * this, an accept that would land on the waitlist stops short and returns
+   * `needsWaitlistConsent` instead of writing anything.
+   */
+  confirmWaitlist?: boolean;
+  /** They were offered a waitlist slot and turned it down. Recorded on the row. */
+  waitlistOfferDeclined?: boolean;
+};
+
 export async function updateInviteStatus(
   sessionParticipantId: string,
-  status: "accepted" | "declined"
+  status: "accepted" | "declined",
+  options: InviteResponseOptions = {},
 ) {
   console.log(`[updateInviteStatus] Updating ${sessionParticipantId} to ${status}`);
 
@@ -168,6 +180,26 @@ export async function updateInviteStatus(
       if (missing.length > 0) {
         return { blocked: true, reason: "missing_profile", missing } as const;
       }
+
+      // Last gate, and deliberately last: the invitation was written while seats
+      // were still free, so someone clicking Accept expects a seat. If the
+      // session has filled since, do NOT quietly put them on the waitlist —
+      // return the terms and let them decide. Nothing has been written yet.
+      //
+      // Placed after the active and profile checks so we never pitch a waitlist
+      // slot to someone who would be bounced anyway.
+      if (slot === "waitlist" && !options.confirmWaitlist) {
+        return {
+          needsWaitlistConsent: true,
+          position: waitlistPosition,
+          sessionDate: (sessionRow?.session_date as string | undefined) ?? null,
+          sessionHours,
+          seatPayoutCents: seatPayoutCents(sessionHours),
+          waitFeeCents: WAITLIST_WAIT_FEE_CENTS,
+          hourlyRateCents: HOURLY_RATE_CENTS,
+          holdMinutes: WAITLIST_HOLD_MINUTES,
+        } as const;
+      }
     }
   }
 
@@ -187,6 +219,24 @@ export async function updateInviteStatus(
             payout_cents: isWaitlistAccept
               ? WAITLIST_WAIT_FEE_CENTS
               : seatPayoutCents(sessionHours),
+          }
+        : {}),
+      // Declining ends any claim on this session. Clear the money and the slot:
+      // someone who was holding a waitlist place carried the waiting fee on their
+      // row, and leaving it behind would show them as still owed after they said
+      // no. Frees the position number for the next person too.
+      ...(status === "declined"
+        ? {
+            payout_cents: null,
+            waitlist_position: null,
+            // Refusing a reserve slot is not the same as refusing the session,
+            // and the roster should be able to say so.
+            ...(options.waitlistOfferDeclined
+              ? {
+                  waitlist_outcome: "offer_declined",
+                  waitlist_outcome_at: new Date().toISOString(),
+                }
+              : {}),
           }
         : {}),
     })
@@ -427,9 +477,17 @@ export async function checkAndNotifySessionFull(sessionId: string) {
       }
 
       // Mark their invite as declined since session is full
+      // Same rule as every other decline path: declined ⇒ owed nothing, holds
+      // no slot. These rows are pending so it is already true, but keeping the
+      // write uniform means the invariant can't drift here later.
       await supabaseAdmin
         .from("session_participants")
-        .update({ invite_status: "declined", responded_at: new Date().toISOString() })
+        .update({
+          invite_status: "declined",
+          responded_at: new Date().toISOString(),
+          payout_cents: null,
+          waitlist_position: null,
+        })
         .eq("session_id", sessionId)
         .eq("participant_id", row.participant_id);
     } catch (err) {
