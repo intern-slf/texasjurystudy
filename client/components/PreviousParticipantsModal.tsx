@@ -13,9 +13,11 @@ import {
 } from "lucide-react";
 import { Badge } from "./ui/badge";
 import { sortRoster, rosterGroup, rosterStatusLabel, type RosterGroup } from "@/lib/participant/rosterOrder";
+import { isWaitlisted } from "@/lib/participant/waitlist";
 
 const BADGE_VARIANT: Record<RosterGroup, "default" | "outline" | "destructive" | "secondary"> = {
     accepted: "default",
+    waitlisted: "secondary",
     declined: "destructive",
     pending: "outline",
     struck: "secondary",
@@ -150,12 +152,16 @@ export default function PreviousParticipantsModal({ caseId, ancestorIds }: Props
                         // RawParticipant carries its columns behind an index
                         // signature, which a spread drops — restate the two the
                         // ordering and badge depend on so they stay typed.
-                        const merged = (session?.session_participants ?? []).map((p) => ({
-                            ...p,
-                            invite_status: typeof p.invite_status === "string" ? p.invite_status : null,
-                            struck_at: typeof p.struck_at === "string" ? p.struck_at : null,
-                            jury_participants: (p.participant_id && juryDetailsMap[p.participant_id]) || null
-                        }));
+                        const merged = (session?.session_participants ?? [])
+                            // Requestee-facing: waitlisters stay hidden until called
+                            // in, at which point their status is 'accepted'.
+                            .filter((p) => !isWaitlisted(typeof p.invite_status === "string" ? p.invite_status : null))
+                            .map((p) => ({
+                                ...p,
+                                invite_status: typeof p.invite_status === "string" ? p.invite_status : null,
+                                struck_at: typeof p.struck_at === "string" ? p.struck_at : null,
+                                jury_participants: (p.participant_id && juryDetailsMap[p.participant_id]) || null
+                            }));
 
                         return {
                             ...sc,

@@ -147,6 +147,10 @@ const sendInviteAcceptedConfirmationEmailSpy = vi.fn(async () => undefined);
 const sendInviteDeclinedConfirmationEmailSpy = vi.fn(async () => undefined);
 const sendSessionFullEmailSpy = vi.fn(async () => undefined);
 const sendZoomLinkEmailSpy = vi.fn(async () => undefined);
+const sendWaitlistConfirmationEmailSpy = vi.fn(async () => undefined);
+const sendWaitlistZoomLinkEmailSpy = vi.fn(async () => undefined);
+const sendWaitlistCalledInEmailSpy = vi.fn(async () => undefined);
+const sendWaitlistWaitedOutEmailSpy = vi.fn(async () => undefined);
 
 vi.mock("@/lib/mail", () => ({
   sendEmail: (args: SendEmailArgs) => sendEmailSpy(args),
@@ -164,6 +168,14 @@ vi.mock("@/lib/mail", () => ({
     sendInviteDeclinedConfirmationEmailSpy(...(args as [])),
   sendSessionFullEmail: (...args: unknown[]) =>
     sendSessionFullEmailSpy(...(args as [])),
+  sendWaitlistConfirmationEmail: (...args: unknown[]) =>
+    sendWaitlistConfirmationEmailSpy(...(args as [])),
+  sendWaitlistZoomLinkEmail: (...args: unknown[]) =>
+    sendWaitlistZoomLinkEmailSpy(...(args as [])),
+  sendWaitlistCalledInEmail: (...args: unknown[]) =>
+    sendWaitlistCalledInEmailSpy(...(args as [])),
+  sendWaitlistWaitedOutEmail: (...args: unknown[]) =>
+    sendWaitlistWaitedOutEmailSpy(...(args as [])),
   sendApprovalEmail: vi.fn(async () => undefined),
   sendRejectionEmail: vi.fn(async () => undefined),
   // Referenced at import by adminParticipant.ts (pulled in via participantFlags);
@@ -193,6 +205,10 @@ describe("Sessions", () => {
     sendInviteDeclinedConfirmationEmailSpy.mockClear();
     sendSessionFullEmailSpy.mockClear();
     sendZoomLinkEmailSpy.mockClear();
+    sendWaitlistConfirmationEmailSpy.mockClear();
+    sendWaitlistZoomLinkEmailSpy.mockClear();
+    sendWaitlistCalledInEmailSpy.mockClear();
+    sendWaitlistWaitedOutEmailSpy.mockClear();
   });
 
   // -------------------------------------------------------------------------
@@ -775,13 +791,32 @@ describe("Sessions", () => {
 
     /**
      * The session-start gate runs first on every accept: a `sessions` row for
-     * the date, then the `session_cases` list for the earliest start time. A
-     * far-future date holds the gate open so a test can reach the check it is
-     * actually about. Declining skips this entirely.
+     * the date, then the `session_cases` list for the case times. A far-future
+     * date holds the gate open so a test can reach the check it is actually
+     * about. Declining skips this entirely.
+     *
+     * The times also set the session length, and therefore the payout: 09:00 →
+     * 12:00 is 3 hours.
      */
     const notStartedYet = () => [
       { data: { session_date: "2999-01-01" }, error: null },
-      { data: [{ start_time: "09:00:00" }], error: null },
+      { data: [{ start_time: "09:00:00", end_time: "12:00:00" }], error: null },
+    ];
+
+    /**
+     * getSessionOccupancy, which runs next: the caps row, then the accepted
+     * count, then the waitlist count. Defaults leave both seats and waitlist
+     * wide open.
+     */
+    const occupancy = (
+      opts: { cap?: number; waitlistCap?: number; accepted?: number; waitlisted?: number } = {}
+    ) => [
+      {
+        data: { participant_cap: opts.cap ?? 10, waitlist_cap: opts.waitlistCap ?? 2 },
+        error: null,
+      },
+      { count: opts.accepted ?? 0, error: null },
+      { count: opts.waitlisted ?? 0, error: null },
     ];
 
     it("pending → accepted", async () => {
@@ -793,10 +828,8 @@ describe("Sessions", () => {
         },
         // 2-3. session-start gate — session not under way yet
         ...notStartedYet(),
-        // 4. isSessionFull → session row
-        { data: { participant_cap: 10 }, error: null },
-        // 5. isSessionFull → count
-        { count: 0, error: null },
+        // 4-6. occupancy — seats and waitlist both open
+        ...occupancy(),
         // 6. profile fetch (active panel member, profile complete)
         {
           data: {
@@ -849,8 +882,8 @@ describe("Sessions", () => {
       state.responses = [
         { data: { session_id: "s-1", participant_id: "p-1" }, error: null },
         ...notStartedYet(),
-        { data: { participant_cap: 1 }, error: null },
-        { count: 1, error: null }, // already at cap
+        // seats gone AND both waitlist slots taken -> nothing left to offer
+        ...occupancy({ cap: 1, accepted: 1, waitlistCap: 2, waitlisted: 2 }),
       ];
 
       const result = await updateInviteStatus("invite-3", "accepted");
@@ -869,8 +902,7 @@ describe("Sessions", () => {
       state.responses = [
         { data: { session_id: "s-1", participant_id: "p-1" }, error: null },
         ...notStartedYet(),
-        { data: { participant_cap: 10 }, error: null },
-        { count: 0, error: null },
+        ...occupancy(),
         // Active panel member, but profile missing both DL and PayPal
         {
           data: {
@@ -905,8 +937,7 @@ describe("Sessions", () => {
       state.responses = [
         { data: { session_id: "s-1", participant_id: "p-1" }, error: null },
         ...notStartedYet(),
-        { data: { participant_cap: 10 }, error: null },
-        { count: 0, error: null },
+        ...occupancy(),
         // Profile is complete, but they never confirmed they are still interested
         {
           data: {
@@ -937,8 +968,7 @@ describe("Sessions", () => {
       state.responses = [
         { data: { session_id: "s-1", participant_id: "p-1" }, error: null },
         ...notStartedYet(),
-        { data: { participant_cap: 10 }, error: null },
-        { count: 0, error: null },
+        ...occupancy(),
         {
           data: {
             paypal_username: null,
@@ -975,6 +1005,111 @@ describe("Sessions", () => {
       );
       expect(update).toBeUndefined();
       expect(state.captured.some((c) => c.table === "jury_participants")).toBe(false);
+    });
+
+    it("Accepting once the seats are gone lands on the waitlist, not a refusal", async () => {
+      state.participantEmails.set("p-1", "wait@test.local");
+      state.responses = [
+        { data: { session_id: "s-1", participant_id: "p-1" }, error: null },
+        ...notStartedYet(),
+        // Seats full, waitlist still has room
+        ...occupancy({ cap: 10, accepted: 10, waitlistCap: 2, waitlisted: 0 }),
+        {
+          data: {
+            paypal_username: "p1",
+            driver_license_number: "DL123",
+            driver_license_image_url: "http://img/dl",
+            reactivation_status: "yes",
+          },
+          error: null,
+        },
+        { data: [], error: null }, // main update — short-circuit the side effects
+      ];
+
+      const result = await updateInviteStatus("invite-w1", "accepted");
+
+      // Not a block — they got a slot.
+      expect(result).toBeUndefined();
+
+      const updateCall = state.captured.find(
+        (c) =>
+          c.table === "session_participants" &&
+          c.ops.some((o) => o.op === "update")
+      )!;
+      const upd = updateCall.ops.find((o) => o.op === "update") as {
+        op: "update";
+        payload: Record<string, unknown>;
+      };
+      expect(upd.payload.invite_status).toBe("waitlisted");
+      expect(upd.payload.waitlist_position).toBe(1);
+      // Holding a slot is worth the flat waiting fee until an admin records the
+      // real outcome — never the seat rate.
+      expect(upd.payload.payout_cents).toBe(1000);
+    });
+
+    it("Takes the second waitlist slot when one is already filled", async () => {
+      state.responses = [
+        { data: { session_id: "s-1", participant_id: "p-2" }, error: null },
+        ...notStartedYet(),
+        ...occupancy({ cap: 10, accepted: 10, waitlistCap: 2, waitlisted: 1 }),
+        {
+          data: {
+            paypal_username: "p2",
+            driver_license_number: "DL2",
+            driver_license_image_url: "http://img/dl2",
+            reactivation_status: "yes",
+          },
+          error: null,
+        },
+        { data: [], error: null },
+      ];
+
+      await updateInviteStatus("invite-w2", "accepted");
+
+      const updateCall = state.captured.find(
+        (c) =>
+          c.table === "session_participants" &&
+          c.ops.some((o) => o.op === "update")
+      )!;
+      const upd = updateCall.ops.find((o) => o.op === "update") as {
+        op: "update";
+        payload: Record<string, unknown>;
+      };
+      expect(upd.payload.invite_status).toBe("waitlisted");
+      expect(upd.payload.waitlist_position).toBe(2);
+    });
+
+    it("A seat records the hourly payout for the session length", async () => {
+      state.responses = [
+        { data: { session_id: "s-1", participant_id: "p-3" }, error: null },
+        ...notStartedYet(), // 09:00 → 12:00 = 3 hours
+        ...occupancy(),
+        {
+          data: {
+            paypal_username: "p3",
+            driver_license_number: "DL3",
+            driver_license_image_url: "http://img/dl3",
+            reactivation_status: "yes",
+          },
+          error: null,
+        },
+        { data: [], error: null },
+      ];
+
+      await updateInviteStatus("invite-seat", "accepted");
+
+      const updateCall = state.captured.find(
+        (c) =>
+          c.table === "session_participants" &&
+          c.ops.some((o) => o.op === "update")
+      )!;
+      const upd = updateCall.ops.find((o) => o.op === "update") as {
+        op: "update";
+        payload: Record<string, unknown>;
+      };
+      expect(upd.payload.invite_status).toBe("accepted");
+      expect(upd.payload.payout_cents).toBe(9000); // 3 hrs × $30
+      expect(upd.payload.waitlist_position).toBeNull();
     });
 
     it("Declining still works after the session has started", async () => {

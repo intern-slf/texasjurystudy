@@ -837,6 +837,276 @@ export async function sendZoomLinkEmail(
   });
 }
 
+/* =========================
+   WAITLIST EMAILS
+
+   A waitlister accepted after the session filled up. They hold a reserve slot:
+   they join Zoom on time, wait in the waiting room, and are admitted only if a
+   seat opens. The four templates below cover the whole arc — landing on the
+   waitlist, the Zoom link with hold instructions, being called in, and being
+   thanked for waiting. Kept separate from the seated-participant templates so
+   the terms are never implied to someone who does not have a seat.
+========================= */
+
+export async function sendWaitlistConfirmationEmail(
+  to: string,
+  firstName: string,
+  sessionDate: string,
+  holdMinutes: number,
+  hourlyRate: string,
+  waitFee: string,
+  timeStr?: string,
+) {
+  const html = emailWrapper(`
+    <h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#1e3a8a;">You're on the Waitlist</h2>
+    <p style="margin:0 0 20px;font-size:15px;color:#475569;">
+      Hi ${escHtml(firstName)}, thank you for accepting. This session had already reached its participant capacity, so you have been placed on the <strong>waitlist</strong> for <strong>${sessionDate}</strong>. Waitlist spots are paid — please read how it works below.
+    </p>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#eff6ff;border-left:4px solid #2563eb;border-radius:6px;margin:0 0 24px;">
+      <tr>
+        <td style="padding:16px 20px;${timeStr ? "border-bottom:1px solid #bfdbfe;" : ""}">
+          <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#1e40af;text-transform:uppercase;letter-spacing:0.08em;">Session Date</p>
+          <p style="margin:0;font-size:16px;font-weight:700;color:#1e3a8a;">${sessionDate}</p>
+        </td>
+      </tr>
+      ${timeStr ? `
+      <tr>
+        <td style="padding:16px 20px;">
+          <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#1e40af;text-transform:uppercase;letter-spacing:0.08em;">Session Time</p>
+          <p style="margin:0;font-size:16px;font-weight:700;color:#1e3a8a;">${timeStr}</p>
+        </td>
+      </tr>` : ''}
+    </table>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#fef9c3;border-left:4px solid #ca8a04;border-radius:6px;margin:0 0 24px;">
+      <tr>
+        <td style="padding:16px 20px;">
+          <p style="margin:0 0 10px;font-size:11px;font-weight:700;color:#854d0e;text-transform:uppercase;letter-spacing:0.08em;">How the Waitlist Works</p>
+          <table role="presentation" cellpadding="0" cellspacing="0">
+            <tr><td style="padding:0 0 8px;font-size:14px;color:#854d0e;">&bull;&nbsp; Join the Zoom meeting at the session start time, exactly like a confirmed participant.</td></tr>
+            <tr><td style="padding:0 0 8px;font-size:14px;color:#854d0e;">&bull;&nbsp; You will be held in the Zoom waiting room for up to <strong>${holdMinutes} minutes</strong>.</td></tr>
+            <tr><td style="padding:0 0 8px;font-size:14px;color:#854d0e;">&bull;&nbsp; If a confirmed participant does not show up, you will be admitted and take part in the full session.</td></tr>
+            <tr><td style="padding:0;font-size:14px;color:#854d0e;">&bull;&nbsp; If no spot opens within ${holdMinutes} minutes, you are free to leave.</td></tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f0fdf4;border-left:4px solid #16a34a;border-radius:6px;margin:0 0 28px;">
+      <tr>
+        <td style="padding:16px 20px;">
+          <p style="margin:0 0 10px;font-size:11px;font-weight:700;color:#15803d;text-transform:uppercase;letter-spacing:0.08em;">What You Are Paid</p>
+          <p style="margin:0 0 8px;font-size:14px;color:#15803d;">
+            <strong>If you are called into the session:</strong> the standard rate of <strong>${hourlyRate} per hour</strong> for the full session length — the same as any confirmed participant.
+          </p>
+          <p style="margin:0;font-size:14px;color:#15803d;">
+            <strong>If you wait the full ${holdMinutes} minutes and are not called in:</strong> <strong>${waitFee}</strong> for holding the slot.
+          </p>
+        </td>
+      </tr>
+    </table>
+
+    <table role="presentation" cellpadding="0" cellspacing="0">
+      <tr>
+        <td style="border-radius:6px;background-color:#2563eb;">
+          <a href="${process.env.NEXT_PUBLIC_APP_URL}/dashboard/participant"
+             style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:6px;">
+            View My Dashboard
+          </a>
+        </td>
+      </tr>
+    </table>
+  `);
+
+  await sendEmail({
+    to,
+    subject: `You're on the Waitlist for ${sessionDate} | Texas Jury Study`,
+    html,
+  });
+}
+
+export async function sendWaitlistZoomLinkEmail(
+  to: string,
+  firstName: string,
+  sessionDate: string,
+  zoomLink: string,
+  holdMinutes: number,
+  hourlyRate: string,
+  waitFee: string,
+  timeStr?: string,
+) {
+  const html = emailWrapper(`
+    <h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#1e3a8a;">Your Waitlist Zoom Link</h2>
+    <p style="margin:0 0 20px;font-size:15px;color:#475569;">
+      Hi ${escHtml(firstName)}, you are on the <strong>waitlist</strong> for the session on <strong>${sessionDate}</strong>. Use the link below to join at the start time and wait to be admitted.
+    </p>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#eff6ff;border-left:4px solid #2563eb;border-radius:6px;margin:0 0 24px;">
+      <tr>
+        <td style="padding:16px 20px;${timeStr ? "border-bottom:1px solid #bfdbfe;" : ""}">
+          <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#1e40af;text-transform:uppercase;letter-spacing:0.08em;">Session Date</p>
+          <p style="margin:0;font-size:16px;font-weight:700;color:#1e3a8a;">${sessionDate}</p>
+        </td>
+      </tr>
+      ${timeStr ? `
+      <tr>
+        <td style="padding:16px 20px;">
+          <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#1e40af;text-transform:uppercase;letter-spacing:0.08em;">Session Time</p>
+          <p style="margin:0;font-size:16px;font-weight:700;color:#1e3a8a;">${timeStr}</p>
+        </td>
+      </tr>` : ''}
+    </table>
+
+    <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 24px;">
+      <tr>
+        <td style="border-radius:6px;background-color:#2563eb;">
+          <a href="${zoomLink}"
+             style="display:inline-block;padding:14px 32px;font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:6px;">
+            Join Zoom Meeting
+          </a>
+        </td>
+      </tr>
+    </table>
+
+    <p style="margin:0 0 24px;font-size:13px;color:#64748b;">
+      Or copy this link into your browser:<br/>
+      <span style="color:#2563eb;word-break:break-all;">${zoomLink}</span>
+    </p>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#fef9c3;border-left:4px solid #ca8a04;border-radius:6px;margin:0 0 24px;">
+      <tr>
+        <td style="padding:16px 20px;">
+          <p style="margin:0 0 10px;font-size:11px;font-weight:700;color:#854d0e;text-transform:uppercase;letter-spacing:0.08em;">As a Waitlist Participant</p>
+          <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 10px;">
+            <tr><td style="padding:0 0 6px;font-size:14px;color:#854d0e;">&bull;&nbsp; Join at the start time and stay in the waiting room — do not leave early.</td></tr>
+            <tr><td style="padding:0 0 6px;font-size:14px;color:#854d0e;">&bull;&nbsp; You will be admitted only if a confirmed participant does not show up.</td></tr>
+            <tr><td style="padding:0 0 6px;font-size:14px;color:#854d0e;">&bull;&nbsp; If you have not been admitted after <strong>${holdMinutes} minutes</strong>, you may leave — you will still be paid <strong>${waitFee}</strong> for waiting.</td></tr>
+            <tr><td style="padding:0;font-size:14px;color:#854d0e;">&bull;&nbsp; If you are admitted, you are paid the full rate of <strong>${hourlyRate} per hour</strong> for the session.</td></tr>
+          </table>
+          <p style="margin:0;font-size:14px;font-weight:700;color:#854d0e;">
+            Join from a computer with a working camera and audio. If you are admitted without them, you cannot take part and will not receive the session payment.
+          </p>
+        </td>
+      </tr>
+    </table>
+  `);
+
+  await sendEmail({
+    to,
+    subject: `Waitlist Zoom Link for ${sessionDate} | Texas Jury Study`,
+    html,
+  });
+}
+
+export async function sendWaitlistCalledInEmail(
+  to: string,
+  firstName: string,
+  sessionDate: string,
+  payoutAmount: string,
+  hourlyRate: string,
+) {
+  const html = emailWrapper(`
+    <h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#15803d;">You're In — Thank You for Waiting</h2>
+    <p style="margin:0 0 20px;font-size:15px;color:#475569;">
+      Hi ${escHtml(firstName)}, a spot opened in the session on <strong>${sessionDate}</strong> and you were called in from the waitlist. You are now a full participant in that session.
+    </p>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f0fdf4;border-left:4px solid #16a34a;border-radius:6px;margin:0 0 24px;">
+      <tr>
+        <td style="padding:16px 20px;">
+          <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#15803d;text-transform:uppercase;letter-spacing:0.08em;">Your Payment for This Session</p>
+          <p style="margin:0 0 6px;font-size:24px;font-weight:700;color:#15803d;">${payoutAmount}</p>
+          <p style="margin:0;font-size:13px;color:#15803d;">
+            The standard rate of ${hourlyRate} per hour for the full session length — the waitlist waiting fee no longer applies.
+          </p>
+        </td>
+      </tr>
+    </table>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#eff6ff;border-left:4px solid #2563eb;border-radius:6px;margin:0 0 28px;">
+      <tr>
+        <td style="padding:14px 20px;">
+          <p style="margin:0;font-size:14px;color:#1e40af;">
+            <strong>About your payment:</strong> it is sent to the PayPal username on your profile. PayPal treats it as a &ldquo;service&rdquo; payment and takes a processing fee, so the amount that reaches you is about <strong>$2 to $3 less</strong>. That fee is PayPal&rsquo;s, not ours.
+          </p>
+        </td>
+      </tr>
+    </table>
+
+    <table role="presentation" cellpadding="0" cellspacing="0">
+      <tr>
+        <td style="border-radius:6px;background-color:#2563eb;">
+          <a href="${process.env.NEXT_PUBLIC_APP_URL}/dashboard/participant"
+             style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:6px;">
+            View My Dashboard
+          </a>
+        </td>
+      </tr>
+    </table>
+  `);
+
+  await sendEmail({
+    to,
+    subject: `You Were Called Into the Session on ${sessionDate} | Texas Jury Study`,
+    html,
+  });
+}
+
+export async function sendWaitlistWaitedOutEmail(
+  to: string,
+  firstName: string,
+  sessionDate: string,
+  waitFee: string,
+  holdMinutes: number,
+) {
+  const html = emailWrapper(`
+    <h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#1e3a8a;">Thank You for Waiting</h2>
+    <p style="margin:0 0 20px;font-size:15px;color:#475569;">
+      Hi ${escHtml(firstName)}, every confirmed participant showed up for the session on <strong>${sessionDate}</strong>, so no spot opened and you were not called in. Thank you for holding your waitlist slot — that reliability is exactly what makes the waitlist work.
+    </p>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f0fdf4;border-left:4px solid #16a34a;border-radius:6px;margin:0 0 24px;">
+      <tr>
+        <td style="padding:16px 20px;">
+          <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#15803d;text-transform:uppercase;letter-spacing:0.08em;">Your Waiting Payment</p>
+          <p style="margin:0 0 6px;font-size:24px;font-weight:700;color:#15803d;">${waitFee}</p>
+          <p style="margin:0;font-size:13px;color:#15803d;">
+            For holding the waitlist slot for the full ${holdMinutes} minutes.
+          </p>
+        </td>
+      </tr>
+    </table>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#eff6ff;border-left:4px solid #2563eb;border-radius:6px;margin:0 0 28px;">
+      <tr>
+        <td style="padding:14px 20px;">
+          <p style="margin:0;font-size:14px;color:#1e40af;">
+            Payment is sent to the PayPal username on your profile, and you remain fully eligible for upcoming sessions — waiting does not use up your turn.
+          </p>
+        </td>
+      </tr>
+    </table>
+
+    <table role="presentation" cellpadding="0" cellspacing="0">
+      <tr>
+        <td style="border-radius:6px;background-color:#2563eb;">
+          <a href="${process.env.NEXT_PUBLIC_APP_URL}/dashboard/participant"
+             style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:6px;">
+            View My Dashboard
+          </a>
+        </td>
+      </tr>
+    </table>
+  `);
+
+  await sendEmail({
+    to,
+    subject: `Thank You for Waiting — Session on ${sessionDate} | Texas Jury Study`,
+    html,
+  });
+}
+
 // Escape user-supplied text before interpolating into the email HTML.
 function escHtml(value: string | null | undefined): string {
   return (value ?? "")

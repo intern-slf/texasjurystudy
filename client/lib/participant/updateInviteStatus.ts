@@ -1,12 +1,35 @@
 "use server";
 
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { sendInviteAcceptedConfirmationEmail, sendInviteDeclinedConfirmationEmail, sendSessionFullEmail, sendZoomLinkEmail } from "@/lib/mail";
+import {
+  sendInviteAcceptedConfirmationEmail,
+  sendInviteDeclinedConfirmationEmail,
+  sendSessionFullEmail,
+  sendZoomLinkEmail,
+  sendWaitlistConfirmationEmail,
+  sendWaitlistZoomLinkEmail,
+} from "@/lib/mail";
 import { isActiveStatus } from "@/lib/participant/activeStatus";
-import { hasSessionStarted } from "@/lib/participant/sessionStart";
+import { hasSessionStarted, cooldownAfterSession } from "@/lib/participant/sessionStart";
+import {
+  WAITLISTED_STATUS,
+  DEFAULT_WAITLIST_CAP,
+  HOURLY_RATE_CENTS,
+  WAITLIST_WAIT_FEE_CENTS,
+  WAITLIST_HOLD_MINUTES,
+  assignSlot,
+  sessionLengthHours,
+  seatPayoutCents,
+  formatCents,
+} from "@/lib/participant/waitlist";
 
 /* =========================
    CHECK IF SESSION HAS REACHED ITS PARTICIPANT CAP
+
+   Seats only — waitlisted rows are the reserve, not a seat, so they never count
+   toward the cap. A struck participant DOES still count: they took the seat and
+   the seat is not handed back automatically, so the cap arithmetic is unchanged
+   by the strike system.
 ========================= */
 export async function isSessionFull(sessionId: string): Promise<boolean> {
   const { data: session } = await supabaseAdmin
@@ -26,11 +49,52 @@ export async function isSessionFull(sessionId: string): Promise<boolean> {
   return (count ?? 0) >= cap;
 }
 
+/* =========================
+   SEAT / WAITLIST / FULL
+
+   Reads both caps and both counts in one place so the accept path, the session
+   page and the full-sweep all agree on where a session currently stands.
+========================= */
+export async function getSessionOccupancy(sessionId: string) {
+  const { data: session } = await supabaseAdmin
+    .from("sessions")
+    .select("participant_cap, waitlist_cap")
+    .eq("id", sessionId)
+    .single();
+
+  const [{ count: acceptedCount }, { count: waitlistCount }] = await Promise.all([
+    supabaseAdmin
+      .from("session_participants")
+      .select("*", { count: "exact", head: true })
+      .eq("session_id", sessionId)
+      .eq("invite_status", "accepted"),
+    supabaseAdmin
+      .from("session_participants")
+      .select("*", { count: "exact", head: true })
+      .eq("session_id", sessionId)
+      .eq("invite_status", WAITLISTED_STATUS),
+  ]);
+
+  return {
+    participantCap: session?.participant_cap ?? 10,
+    waitlistCap: session?.waitlist_cap ?? DEFAULT_WAITLIST_CAP,
+    acceptedCount: acceptedCount ?? 0,
+    waitlistCount: waitlistCount ?? 0,
+  };
+}
+
 export async function updateInviteStatus(
   sessionParticipantId: string,
   status: "accepted" | "declined"
 ) {
   console.log(`[updateInviteStatus] Updating ${sessionParticipantId} to ${status}`);
+
+  // Which slot this accept landed in. Seats fill first; once the cap is reached
+  // the next arrivals take waitlist slots, and only when those are gone is the
+  // accept refused outright.
+  let slot: "seat" | "waitlist" = "seat";
+  let waitlistPosition: number | null = null;
+  let sessionHours = 0;
 
   // 0. If accepting, check the session hasn't started, then active panel status,
   //    session capacity and required profile fields. Declining stays open at
@@ -45,7 +109,7 @@ export async function updateInviteStatus(
     if (inviteRow) {
       // Checked first: once the first case is under way there is nothing left to
       // accept, so none of the other gates are worth reporting.
-      const [{ data: sessionRow }, { data: startRows }] = await Promise.all([
+      const [{ data: sessionRow }, { data: caseRows }] = await Promise.all([
         supabaseAdmin
           .from("sessions")
           .select("session_date")
@@ -53,22 +117,35 @@ export async function updateInviteStatus(
           .single(),
         supabaseAdmin
           .from("session_cases")
-          .select("start_time")
+          .select("start_time, end_time")
           .eq("session_id", inviteRow.session_id),
       ]);
 
+      type CaseTimes = { start_time: string | null; end_time: string | null };
+      const times = (caseRows ?? []) as CaseTimes[];
+
       const started = hasSessionStarted(
         sessionRow?.session_date,
-        (startRows ?? []).map((r: { start_time: string | null }) => r.start_time),
+        times.map((r) => r.start_time),
       );
       if (started) {
         return { blocked: true, reason: "session_started" } as const;
       }
 
-      const isFull = await isSessionFull(inviteRow.session_id);
-      if (isFull) {
+      sessionHours = sessionLengthHours(
+        times.map((r) => r.start_time),
+        times.map((r) => r.end_time),
+      );
+
+      const occupancy = await getSessionOccupancy(inviteRow.session_id);
+      const assigned = assignSlot(occupancy);
+      if (assigned === "full") {
         return { blocked: true, reason: "session_full" } as const;
       }
+      slot = assigned;
+      // 1-based, and taken from the live count rather than a stored max so a
+      // waitlister who withdraws frees their number for the next person.
+      if (slot === "waitlist") waitlistPosition = occupancy.waitlistCount + 1;
 
       const { data: profile } = await supabaseAdmin
         .from("jury_participants")
@@ -83,6 +160,7 @@ export async function updateInviteStatus(
         return { blocked: true, reason: "inactive" } as const;
       }
 
+      // Waitlisters are paid too, so the same profile requirements apply.
       const missing: string[] = [];
       if (!profile?.driver_license_number || !profile?.driver_license_image_url) missing.push("dl");
       if (!profile?.paypal_username) missing.push("paypal");
@@ -93,12 +171,24 @@ export async function updateInviteStatus(
     }
   }
 
+  const isWaitlistAccept = status === "accepted" && slot === "waitlist";
+
   // 1. Update invite status in session_participants and get the row back
   const { data: updatedRows, error } = await supabaseAdmin
     .from("session_participants")
     .update({
-      invite_status: status,
+      invite_status: isWaitlistAccept ? WAITLISTED_STATUS : status,
       responded_at: new Date().toISOString(),
+      ...(status === "accepted"
+        ? {
+            waitlist_position: waitlistPosition,
+            // A seat is worth the hourly rate for the session; a waitlist slot is
+            // worth the waiting fee until an admin records the real outcome.
+            payout_cents: isWaitlistAccept
+              ? WAITLIST_WAIT_FEE_CENTS
+              : seatPayoutCents(sessionHours),
+          }
+        : {}),
     })
     .eq("id", sessionParticipantId)
     .select("session_id, participant_id");
@@ -129,29 +219,28 @@ export async function updateInviteStatus(
 
       if (!session || !sessionCases?.length) return;
 
-      const latestEndTime = sessionCases
-        .map((sc) => sc.end_time as string)
-        .sort((a, b) => a.localeCompare(b))
-        .at(-1)!;
+      // Cooldown is for people who actually took a seat. A waitlister has not
+      // used up their turn, so they stay eligible for other sessions until (and
+      // unless) they are called into this one.
+      if (!isWaitlistAccept) {
+        const eligibleAfterAt = cooldownAfterSession(
+          session.session_date as string,
+          sessionCases.map((sc) => sc.start_time as string),
+          sessionCases.map((sc) => sc.end_time as string),
+        );
 
-      const sessionDateStr = (session.session_date as string).split("T")[0];
+        if (eligibleAfterAt) {
+          console.log("Cooldown set to:", eligibleAfterAt);
 
-      // Treat session date + end time as local time (admin enters local time)
-      const eligibleDate = new Date(`${sessionDateStr}T${latestEndTime}`);
+          const { error: cooldownErr } = await supabaseAdmin
+            .from("jury_participants")
+            .update({ eligible_after_at: eligibleAfterAt })
+            .eq("user_id", participant_id);
 
-      eligibleDate.setDate(eligibleDate.getDate() + 1);
-
-      const eligibleAfterAt = eligibleDate.toISOString();
-
-      console.log("Cooldown set to:", eligibleAfterAt);
-
-      const { error: cooldownErr } = await supabaseAdmin
-        .from("jury_participants")
-        .update({ eligible_after_at: eligibleAfterAt })
-        .eq("user_id", participant_id);
-
-      if (cooldownErr) {
-        console.error("Cooldown update failed:", cooldownErr.message);
+          if (cooldownErr) {
+            console.error("Cooldown update failed:", cooldownErr.message);
+          }
+        }
       }
 
       // Send acceptance confirmation email
@@ -175,17 +264,47 @@ export async function updateInviteStatus(
             starts.length && ends.length
               ? `${formatCentralTime(starts[0])} – ${formatCentralTime(ends[ends.length - 1])} CT`
               : "See your dashboard for details";
-          await sendInviteAcceptedConfirmationEmail(email, session.session_date as string, timeStr);
 
-          // If zoom link is already saved, send it immediately to the new participant
-          if (session.zoom_link) {
-            const firstName =
-              userData?.user?.user_metadata?.first_name ||
-              userData?.user?.user_metadata?.full_name?.split(" ")[0] ||
-              "Participant";
+          const firstName =
+            userData?.user?.user_metadata?.first_name ||
+            userData?.user?.user_metadata?.full_name?.split(" ")[0] ||
+            "Participant";
 
-            await sendZoomLinkEmail(email, firstName, session.session_date as string, session.zoom_link, timeStr);
-            console.log(`[updateInviteStatus] Sent zoom link email to ${email} (link already saved)`);
+          // A waitlister gets the waitlist arc instead of the seated one — they
+          // must be told the hold rules and the two payment outcomes, and must
+          // never receive a plain "You're In" confirmation.
+          if (isWaitlistAccept) {
+            await sendWaitlistConfirmationEmail(
+              email,
+              firstName,
+              session.session_date as string,
+              WAITLIST_HOLD_MINUTES,
+              formatCents(HOURLY_RATE_CENTS),
+              formatCents(WAITLIST_WAIT_FEE_CENTS),
+              timeStr,
+            );
+
+            if (session.zoom_link) {
+              await sendWaitlistZoomLinkEmail(
+                email,
+                firstName,
+                session.session_date as string,
+                session.zoom_link,
+                WAITLIST_HOLD_MINUTES,
+                formatCents(HOURLY_RATE_CENTS),
+                formatCents(WAITLIST_WAIT_FEE_CENTS),
+                timeStr,
+              );
+              console.log(`[updateInviteStatus] Sent waitlist zoom link to ${email} (link already saved)`);
+            }
+          } else {
+            await sendInviteAcceptedConfirmationEmail(email, session.session_date as string, timeStr);
+
+            // If zoom link is already saved, send it immediately to the new participant
+            if (session.zoom_link) {
+              await sendZoomLinkEmail(email, firstName, session.session_date as string, session.zoom_link, timeStr);
+              console.log(`[updateInviteStatus] Sent zoom link email to ${email} (link already saved)`);
+            }
           }
         }
       } catch (emailErr) {
@@ -221,35 +340,32 @@ export async function updateInviteStatus(
    CHECK IF SESSION IS FULL & NOTIFY PENDING PARTICIPANTS
 ========================= */
 export async function checkAndNotifySessionFull(sessionId: string) {
-  // 1. Get session info including cap and notification flag
+  // 1. Get session info including the notification flag
   const { data: session } = await supabaseAdmin
     .from("sessions")
-    .select("session_date, participant_cap, session_full_notified")
+    .select("session_date, session_full_notified")
     .eq("id", sessionId)
     .single();
 
   if (!session) return;
-
-  const cap = session.participant_cap ?? 10; // default 10
   if (session.session_full_notified) return; // already notified
 
-  // 2. Count accepted participants
-  const { count: acceptedCount } = await supabaseAdmin
-    .from("session_participants")
-    .select("*", { count: "exact", head: true })
-    .eq("session_id", sessionId)
-    .eq("invite_status", "accepted");
+  // 2. "Full" now means both the seats AND the waitlist are gone. Sweeping at
+  //    the seat cap alone would decline everyone still pending, leaving nobody
+  //    who could ever accept into a waitlist slot.
+  const occupancy = await getSessionOccupancy(sessionId);
+  if (occupancy.acceptedCount < occupancy.participantCap) return; // seats left
+  if (occupancy.waitlistCount < occupancy.waitlistCap) return; // waitlist slots left
 
-  if ((acceptedCount ?? 0) < cap) return; // not full yet
-
-  // 3. Get all participants for this session, then filter out accepted/declined/rejected
+  // 3. Get all participants for this session, then filter out anyone who has
+  //    already landed somewhere — accepted, declined, or on the waitlist.
   const { data: allRows } = await supabaseAdmin
     .from("session_participants")
     .select("participant_id, invite_status")
     .eq("session_id", sessionId);
 
   const pendingRows = (allRows ?? []).filter(
-    (r) => !["accepted", "declined", "rejected"].includes(r.invite_status ?? "")
+    (r) => !["accepted", "declined", "rejected", WAITLISTED_STATUS].includes(r.invite_status ?? "")
   );
 
   if (!pendingRows?.length) {
@@ -318,5 +434,9 @@ export async function checkAndNotifySessionFull(sessionId: string) {
     .update({ session_full_notified: true })
     .eq("id", sessionId);
 
-  console.log(`[sessionFull] Session ${sessionId} is full (${acceptedCount}/${cap}). Notified ${pendingRows.length} pending participants.`);
+  console.log(
+    `[sessionFull] Session ${sessionId} is full — seats ${occupancy.acceptedCount}/${occupancy.participantCap}, ` +
+      `waitlist ${occupancy.waitlistCount}/${occupancy.waitlistCap}. ` +
+      `Notified ${pendingRows.length} pending participants.`
+  );
 }

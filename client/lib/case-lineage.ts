@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { WAITLISTED_STATUS } from "@/lib/participant/waitlist";
 
 /**
  * Represents a single node in the follow-up case linked list.
@@ -262,12 +263,18 @@ export async function getFullCaseChain(caseId: string): Promise<CaseChainNode[]>
                          them until they answer stops the same person accepting
                          two sessions in one chain
 
+   A waitlister is NOT spent: they held a reserve slot and only saw the case if
+   they were called into the meeting — and a call-in flips the row to 'accepted',
+   which blocks on its own. A row still marked 'waitlisted' therefore means they
+   never sat, so a follow-up can still draw them.
+
    Everything else is surfaced as history (see `isLineageBlocking`) so an admin
    can see the prior invite without being stopped by it.
 ========================= */
 export type LineageInvolvement =
   | "accepted"
   | "pending-upcoming"
+  | "waitlisted"
   | "struck"
   | "declined"
   | "no-response";
@@ -293,8 +300,9 @@ export function splitLineageInvolvement(involvement: Map<string, LineageInvolvem
 
 /** Highest wins when one person appears on several cases in the same chain. */
 const INVOLVEMENT_RANK: Record<LineageInvolvement, number> = {
-  accepted: 4,
-  "pending-upcoming": 3,
+  accepted: 5,
+  "pending-upcoming": 4,
+  waitlisted: 3,
   struck: 2,
   declined: 1,
   "no-response": 0,
@@ -308,6 +316,9 @@ function classifyInvolvement(
   // backed out or never showed, so they never actually sat on the case.
   if (row.struck_at) return "struck";
   if (row.invite_status === "accepted") return "accepted";
+  // Checked before the pending fallback: an unanswered invite to an upcoming
+  // session blocks, but a waitlist slot on that same session does not.
+  if (row.invite_status === WAITLISTED_STATUS) return "waitlisted";
   if (row.invite_status === "declined" || row.invite_status === "rejected") return "declined";
   return isUpcoming ? "pending-upcoming" : "no-response";
 }

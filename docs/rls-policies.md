@@ -17,7 +17,9 @@ All four previously UNRESTRICTED tables now have RLS enabled and policies attach
 | `session_participants` | 🟩 RLS enabled | F3 closed — admin FOR ALL + scoped participant/requestee access |
 | `oldData` | 🟩 RLS enabled | F4 closed — admin + requestee SELECT, no write policies (writes blocked) |
 
-Remaining work is policy refinement (see Findings table at bottom): scope-tightening on `jury_participants` (F14), column-scoping `session_participants` UPDATE (F19), duplicate-policy cleanup (F17/F22), data-model confirmations (F16, F18, F20), and **F21 (new, HIGH) — `case_drive_links` exposes every case's Google Drive URLs to all authenticated users.**
+Remaining work is policy refinement (see Findings table at bottom): scope-tightening on `jury_participants` (F14), duplicate-policy cleanup (F17/F22), data-model confirmations (F16, F18, F20), and **F21 (HIGH) — `case_drive_links` exposes every case's Google Drive URLs to all authenticated users.**
+
+F19 and F24 are **closed** (2026-08-20): the un-column-scoped participant UPDATE on `session_participants` — which the waitlist's `payout_cents` column had turned into a self-serve payout hole — was dropped outright after an audit showed no code path used it.
 
 ---
 
@@ -116,7 +118,7 @@ Matches recommendation. No general-authenticated SELECT — narrower than the "a
 
 ### 🟩 `session_participants` — RLS enabled (2026-05-17)
 
-**This is the most participant-PII-sensitive table that got newly enabled.** See F19 (open) — participant UPDATE policy is not yet column-scoped.
+**This is the most participant-PII-sensitive table that got newly enabled.** The participant UPDATE policy was dropped 2026-08-20 (F19/F24) — participants now have SELECT only, and every write goes through the service role.
 
 **Code access:**
 - Admin: full CRUD in `client/lib/actions/session.ts` (L118, L398, L455, L477, L723, L833, L965)
@@ -142,11 +144,11 @@ Matches recommendation. No general-authenticated SELECT — narrower than the "a
 | admin can manage session_participants | ALL | authenticated | `is_admin()` | `is_admin()` |
 | participants can read own session invites | SELECT | public | `participant_id = auth.uid()` | — |
 | requestee can read session participants of own cases | SELECT | public | `EXISTS (session_cases sc JOIN cases c WHERE sc.session_id = session_participants.session_id AND c.user_id = auth.uid())` | — |
-| participants can update own invite | UPDATE | public | `participant_id = auth.uid()` | `participant_id = auth.uid()` |
+| ~~participants can update own invite~~ | ~~UPDATE~~ | ~~public~~ | ~~`participant_id = auth.uid()`~~ | **Dropped 2026-08-20 — F19/F24** |
 
 **Diffs from recommendation:**
 - Requestee SELECT keys only on `c.user_id`, not `c.requestee_id` — same gap as F16. Requestees who didn't *create* the case can't see participants.
-- Participant UPDATE is row-scoped but not column-scoped — see F19 (participant could rewrite `session_id`, `participant_id`, etc.).
+- Participant UPDATE was row-scoped but not column-scoped — dropped 2026-08-20, see F19/F24. Participants have no write access to this table at all now; the RSVP flow writes via the service role.
 
 ---
 
@@ -460,10 +462,11 @@ The other 13 sites were verified unaffected: participant self-service (`Particip
 | F16 | 🟨 MED | `cases` has both `user_id` and `requestee_id` columns; all existing policies key on `user_id`. If an admin ever assigns a case to a requestee who didn't create it, that requestee is locked out. Confirm data-model intent. | | Open |
 | F17 | 🟨 MED | Duplicate-policy cleanup needed: `cases` (16 policies, ~10 redundant), `confidentiality_agreements` (2 dup INSERT + 2 dup SELECT), `jury_participants` (dup INSERT, dup UPDATE), `session_participants` (dup UPDATE), `sessions` (3 dup INSERT), `roles` (1 dup SELECT). | | Open |
 | F18 | ⬜ INFO | `reviewer` role appears in `jury_participants` "requestee can read" policy but doesn't exist in `roles.role` CHECK constraint (only allows `participant`, `requestee`, `admin`, `blacklisted`). Dead or planned role — confirm. | | Open |
-| F19 | 🟨 MED | `session_participants` "participants can update own invite" allows UPDATE on *all* columns of own row, not just `invite_status`/`responded_at`. A participant could change `session_id` on their own row from devtools (realistic exploit small — they'd need a valid session UUID). Fix later with column-level grants. | | Open |
+| F19 | ✅ CLOSED | `session_participants` "participants can update own invite" allowed UPDATE on *all* columns of own row, not just `invite_status`/`responded_at`. Originally rated MED (a participant could rewrite `session_id`, but needed a valid session UUID); escalated to HIGH once the waitlist added `payout_cents` — see F24. Closed 2026-08-20 by dropping the policy rather than column-scoping it: no code path used it. | | Closed 2026-08-20 — see F24 |
 | F20 | ✅ CLOSED | `profiles` table dropped 2026-05-22. Not needed — `auth.users` (via `supabaseAdmin`) is the source of truth; all 4 read sites refactored to use it directly. | | Closed |
 | F21 | 🟥 HIGH | `case_drive_links` "Authenticated users can view drive links" has `USING (true)` — any authenticated user (incl. participants) can read every case's Google Drive URLs. Drop this policy; the per-owner `ALL` policy already covers the legit requestee read. Add an admin SELECT + a case-scoped requestee SELECT if cross-requestee reads are needed. (Found 2026-05-17 during dashboard policy dump.) | | Open |
 | F22 | 🟨 MED | Audit dump (2026-05-17) confirmed F17 duplicates concretely: `cases` has 4 dup INSERTs + 2 dup admin SELECT + 2 dup own-row SELECT + 2 dup own-row UPDATE; `case_documents` has 2 dup admin SELECT; `confidentiality_agreements` has 2 dup INSERT + 2 dup SELECT; `jury_participants` has 2 dup INSERT; `roles` has 2 dup own-row SELECT. Drop the older/redundant duplicates in a single cleanup pass. | | Open |
+| F24 | ✅ CLOSED | **F19 exposed money (was 🟥 HIGH).** The waitlist work (2026-08-20) added `payout_cents`, `waitlist_outcome`, `waitlist_outcome_at` and `waitlist_position` to `session_participants`. That table's "participants can update own invite" policy was row-scoped but **not column-scoped** (F19), so a participant could PATCH their own invite row from devtools and set their own payout — `payout_cents = 999999`, or flip `waitlist_outcome` to `called_in` to claim the full session rate instead of the waiting fee. **Fixed by dropping the policy** (`20260820_session_participants_drop_participant_update.sql`), which a call-site audit showed to be entirely unused: every participant-facing write to this table goes through the service role (`updateInviteStatus.ts`, `app/api/email-action/route.ts`), and no client component writes to it at all. Participants keep their SELECT policy, so they can still read their own invite and see what they are owed. The migration also sweeps any other non-admin UPDATE policy on the table, covering the unnamed duplicate recorded in F17/F22. **This also closes F19** — there is no longer a participant UPDATE policy to column-scope. Note the fix could *not* be `REVOKE UPDATE ... FROM authenticated`: admins are also `authenticated` and reach this table through the RLS-scoped client, so column grants cannot separate them; RLS can. | | Closed 2026-08-20 — verify with `SELECT policyname, cmd, qual FROM pg_policies WHERE tablename = 'session_participants'`; only admin-guarded write policies should remain |
 | F23 | ✅ CLOSED | **Storage RLS wide open (was 🟥 HIGH).** First storage dump (2026-06-09): all 4 buckets private + RLS on, but 7 of 8 `storage.objects` policies were `bucket_id`-only with no owner/role check → any authenticated user could read/update/delete **every** file in `id-documents` (driver licenses) and `case-documents` (confidential case files). Confirms the UNVERIFIED `id-documents` note from the magic-link auth review. Fixed: dropped the 7 broad policies, kept the `owner`-scoped ALL policy, added admin-only SELECT for both buckets. Code-trace of all 14 storage call-sites found one functional regression (admin overwrite of an existing participant license via the anon-client edit form) → closed by an admin UPDATE policy on `id-documents` (migration `20260609_storage_admin_update_id_documents.sql`). See **Storage buckets** section above. | | Closed 2026-06-09 — verified via `pg_policies` dump: only 4 scoped policies remain (owner-ALL, admin SELECT ×2, admin UPDATE on `id-documents`); all 7 wide-open policies gone |
 
 ---

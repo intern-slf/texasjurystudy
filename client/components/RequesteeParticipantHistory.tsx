@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
 import { sortRoster, rosterGroup, rosterStatusLabel } from "@/lib/participant/rosterOrder";
+import { isWaitlisted } from "@/lib/participant/waitlist";
 
 interface ChainParticipant {
   id: string;
@@ -162,6 +163,10 @@ export default function RequesteeParticipantHistory({ caseId, currentCaseId }: P
 
         for (const sid of caseSessions) {
           for (const sp of participantsBySession[sid] ?? []) {
+            // Requestee-facing: the reserve list is the firm's business. A
+            // waitlister only appears here once called in, which flips their
+            // invite_status to 'accepted'.
+            if (isWaitlisted(sp.invite_status)) continue;
             if (seenPIds.has(sp.participant_id)) continue;
             seenPIds.add(sp.participant_id);
             const d = detailsMap[sp.participant_id];
@@ -259,6 +264,7 @@ export default function RequesteeParticipantHistory({ caseId, currentCaseId }: P
   const inviteStatusBadge = (status: string, struck = false) => {
     const tone = {
       accepted: "bg-green-50 text-green-700",
+      waitlisted: "bg-blue-50 text-blue-700",
       declined: "bg-red-50 text-red-700",
       struck: "bg-orange-50 text-orange-700",
       pending: "bg-slate-100 text-slate-600",

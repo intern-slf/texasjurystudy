@@ -23,6 +23,11 @@ const COPY: Partial<Record<LineageInvolvement, { label: string; title: string }>
     title:
       "Accepted an earlier case in this follow-up chain, then backed out or did not attend. They never sat on the case, so they can be invited again.",
   },
+  waitlisted: {
+    label: "Previously invited — waitlisted",
+    title:
+      "Held a waitlist slot on an earlier case in this follow-up chain and was not called into the meeting. They never sat on the case, so they can be invited again.",
+  },
 };
 
 export default function PriorInvolvementBadge({

@@ -4,6 +4,14 @@ import Link from "next/link";
 import { getPendingInvites } from "@/lib/participant/getPendingInvites";
 import { updateInviteStatus } from "@/lib/participant/updateInviteStatus";
 import { hasSessionStarted } from "@/lib/participant/sessionStart";
+import { supabaseAdmin } from "@/lib/supabase/admin";
+import {
+  WAITLISTED_STATUS,
+  HOURLY_RATE_CENTS,
+  WAITLIST_WAIT_FEE_CENTS,
+  WAITLIST_HOLD_MINUTES,
+  formatCents,
+} from "@/lib/participant/waitlist";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { unstable_noStore as noStore } from "next/cache";
@@ -91,6 +99,26 @@ export default async function ParticipantDashboard({
      FETCH INVITES
      ========================= */
   const pendingInvites = await getPendingInvites(participant.user_id);
+
+  // Waitlisted invites are not "pending" — the person already answered — so they
+  // would otherwise fall through to the "no active sessions" onboarding block
+  // despite holding a slot and a Zoom link.
+  const { data: waitlistRows } = await supabaseAdmin
+    .from("session_participants")
+    .select("id, sessions(session_date)")
+    .eq("participant_id", participant.user_id)
+    .eq("invite_status", WAITLISTED_STATUS);
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const waitlistedSessions = (waitlistRows ?? [])
+    .map((row) => {
+      const session = (Array.isArray(row.sessions) ? row.sessions[0] : row.sessions) as
+        | { session_date?: string | null }
+        | null
+        | undefined;
+      return { id: row.id, date: session?.session_date ?? "" };
+    })
+    .filter((s) => s.date && s.date.slice(0, 10) >= todayStr);
 
   /* =========================
      DASHBOARD VIEW
@@ -257,8 +285,46 @@ export default async function ParticipantDashboard({
         </section>
       )}
 
+      {/* WAITLIST SLOTS */}
+      {waitlistedSessions.length > 0 && (
+        <section className="bg-white border rounded-xl p-6">
+          <h2 className="font-bold text-lg mb-4">Waitlist</h2>
+          <div className="space-y-4">
+            {waitlistedSessions.map((s) => (
+              <div key={s.id} className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-medium text-amber-900">
+                      {new Date(s.date).toLocaleDateString("en-US", {
+                        weekday: "long", year: "numeric", month: "long", day: "numeric",
+                      })}
+                    </p>
+                    <p className="mt-1 text-xs leading-relaxed text-amber-800">
+                      You are on the waitlist. Join at the start time and wait in the Zoom waiting
+                      room. If a spot opens you will be admitted and paid{" "}
+                      {formatCents(HOURLY_RATE_CENTS)} per hour for the full session. If no spot
+                      opens within {WAITLIST_HOLD_MINUTES} minutes you may leave, and you will
+                      still be paid {formatCents(WAITLIST_WAIT_FEE_CENTS)} for waiting.
+                    </p>
+                  </div>
+                  <span className="shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-500 text-white">
+                    Waitlisted
+                  </span>
+                </div>
+                <Link
+                  href="/dashboard/participant/sessions"
+                  className="mt-2 inline-block text-xs font-semibold text-amber-900 underline"
+                >
+                  View session details &rarr;
+                </Link>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* NO ACTIVE SESSIONS — ONBOARDING DIRECTIONS */}
-      {pendingInvites.length === 0 && (
+      {pendingInvites.length === 0 && waitlistedSessions.length === 0 && (
         <section className="bg-white border rounded-xl p-6 space-y-4">
           <h2 className="text-lg font-bold text-slate-800">
             Welcome to the Texas Jury Study!

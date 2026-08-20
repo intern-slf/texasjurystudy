@@ -53,16 +53,18 @@ describe("rosterStatusLabel", () => {
 });
 
 describe("sortRoster", () => {
-  it("orders accepted → declined → pending → struck", () => {
+  it("orders accepted → waitlisted → declined → pending → struck", () => {
     const rows: Row[] = [
       { name: "Anna Struck", inviteStatus: "accepted", struck: true },
       { name: "Anna Pending", inviteStatus: "pending" },
       { name: "Anna Declined", inviteStatus: "declined" },
+      { name: "Anna Waitlisted", inviteStatus: "waitlisted" },
       { name: "Anna Accepted", inviteStatus: "accepted" },
     ];
 
     expect(names(rows)).toEqual([
       "Anna Accepted",
+      "Anna Waitlisted",
       "Anna Declined",
       "Anna Pending",
       "Anna Struck",
@@ -70,7 +72,23 @@ describe("sortRoster", () => {
   });
 
   it("matches the declared group order", () => {
-    expect(ROSTER_GROUP_ORDER).toEqual(["accepted", "declined", "pending", "struck"]);
+    expect(ROSTER_GROUP_ORDER).toEqual([
+      "accepted",
+      "waitlisted",
+      "declined",
+      "pending",
+      "struck",
+    ]);
+  });
+
+  it("keeps the reserve out of the seated group", () => {
+    // Waitlisters must never be counted as accepted — the seat cap depends on it.
+    expect(rosterGroup("waitlisted")).toBe("waitlisted");
+    expect(rosterStatusLabel("waitlisted")).toBe("Waitlisted");
+  });
+
+  it("lets a strike outrank a waitlist slot", () => {
+    expect(rosterGroup("waitlisted", true)).toBe("struck");
   });
 
   it("sorts alphabetically inside a group, not across groups", () => {
