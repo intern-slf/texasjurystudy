@@ -175,7 +175,9 @@ export default async function ParticipantSessionsPage({
       )}
 
       {/* ACCEPTED ONTO THE WAITLIST */}
-      {waitlisted === "1" && (
+      {/* The redirect carries the delivery mode ("online" | "offline"), not a
+          flag — the banner below quotes that session's own hold window and fee. */}
+      {waitlisted && (
         <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900 shadow-sm">
           <span className="text-xl">⏳</span>
           <div>
@@ -214,7 +216,7 @@ export default async function ParticipantSessionsPage({
               Please update your{" "}
               {missingProfile.split(",").map((f, i, arr) => (
                 <span key={f}>
-                  {f === "dl" ? "Driver's License (number & photo)" : "PayPal username"}
+                  {f === "dl" ? "Texas State ID (number & photo)" : "PayPal username"}
                   {i < arr.length - 1 ? " and " : ""}
                 </span>
               ))}

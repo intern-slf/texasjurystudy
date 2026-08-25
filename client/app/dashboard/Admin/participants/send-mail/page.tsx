@@ -114,7 +114,7 @@ export default async function SendMailConfirmPage({
               </p>
               <p>
                 Click the button below to confirm. Afterwards you will be asked to upload
-                a valid Texas ID and confirm your PayPal account so we can send you
+                your Texas State ID and confirm your PayPal account so we can send you
                 payment for future sessions.
               </p>
               <div className="flex justify-center py-3">

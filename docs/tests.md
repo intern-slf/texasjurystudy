@@ -53,7 +53,7 @@ CI runs on every **pull request targeting `main`** and on every **push to `main`
 | `test-authentication` | Per-area shard: signup, password reset, middleware, confidentiality gate. | `npx vitest run __tests__/authentication.test.ts` |
 | `test-cases` | Per-area shard: case CRUD, approve/reject, archive/restore. | `npx vitest run __tests__/cases.test.ts` |
 | `test-sessions` | Per-area shard: session creation, invites, status updates. | `npx vitest run __tests__/sessions.test.ts` |
-| `test-delivery-mode` | Per-area shard: online vs in-person — pricing, payout, waitlist availability, no-mixing rule. | `npx vitest run __tests__/delivery-mode.test.ts` |
+| `test-delivery-mode` | Per-area shard: online vs in-person — pricing, payout, waitlist terms, no-mixing rule. | `npx vitest run __tests__/delivery-mode.test.ts` |
 | `test-rls` | Per-area shard: RLS policy intent (TypeScript simulator). | `npx vitest run __tests__/rls.test.ts` |
 | `test-documents-drive-links` | Per-area shard: case document upload/delete + drive links. | `npx vitest run __tests__/documents-drive-links.test.ts` |
 | `test-participants` | Per-area shard: participant profile actions (currently scaffolded). | `npx vitest run __tests__/participants.test.ts` |
@@ -196,7 +196,7 @@ Both Supabase clients (`server` and `admin`) share the same stateful mock so a s
 | `participant payout` | $30/hr vs $40/hr, scaled by session length; omitting the mode gives the online rate; a called-in waitlister is paid at the session's own rate; the flat waiting fee is **$10 online vs $30 in person** and is asserted flat (session length must not move it). |
 | `waitlist terms` | Both formats offer the **same number** of slots (the stored cap, default 2) — asserted across online, offline and null. What differs is the hold window (15 vs 30 min) and the waiting fee ($10 vs $30), each asserted against its named constant. |
 
-The write-side counterparts live in [sessions.test.ts](../client/__tests__/sessions.test.ts): the no-mixing rejection at `addCasesToSession`, the in-person seat payout, "a full in-person session turns people away instead of waitlisting them" (paired with an identical online session that *does* offer a slot, so the mode is proven to be doing the work), and the invite-email assertions for both formats.
+The write-side counterparts live in [sessions.test.ts](../client/__tests__/sessions.test.ts): the no-mixing rejection at `addCasesToSession`, the in-person seat payout ($40/hr), "a full in-person session offers a waitlist slot on IN-PERSON terms" (paired with an identical online session, so the mode is proven to be what changes the terms), "an in-person waitlist accept records the $30 waiting fee, not $10", and the invite-email assertions for both formats.
 
 ### 3.9 [rls.test.ts](../client/__tests__/rls.test.ts) — RLS policy intent (simulator)
 

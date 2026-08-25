@@ -1069,10 +1069,12 @@ export async function adminRespondOnBehalf(
 /* =========================
    WAITLIST OUTCOMES
 
-   A waitlister holds a reserve slot: they join Zoom on time and wait in the
-   waiting room. The call-in itself happens in Zoom, so the app cannot observe
-   it — an admin records which of the two outcomes happened, and the payout
-   follows from that choice.
+   A waitlister holds a reserve slot: online they join Zoom and sit in the
+   waiting room for 15 minutes; in person they arrive 15 minutes early and hold
+   on site for 30 minutes. Either way the call-in happens in the room or the
+   meeting, not in the app — an admin records which of the two outcomes
+   happened, and the payout follows from that choice at this session's own
+   terms (see waitlistHoldMinutes / waitlistWaitFeeCents).
 
      called in  -> flips to a real seat, paid the hourly rate for the FULL
                    session length, and picks up the usual post-session cooldown

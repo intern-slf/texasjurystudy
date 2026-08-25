@@ -119,8 +119,8 @@ export async function updateInviteStatus(
   let slot: "seat" | "waitlist" = "seat";
   let waitlistPosition: number | null = null;
   let sessionHours = 0;
-  // How the session is run. Decides the hourly rate, whether a waitlist exists
-  // at all, and which set of joining instructions goes out.
+  // How the session is run. Decides the hourly rate, the waitlist's hold window
+  // and waiting fee, and which set of joining instructions goes out.
   let deliveryMode: DeliveryMode = "online";
 
   // 0. If accepting, check the session hasn't started, then active panel status,

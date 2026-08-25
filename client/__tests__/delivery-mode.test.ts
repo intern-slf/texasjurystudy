@@ -33,8 +33,9 @@ import type { CaseFilters } from "@/lib/filter-utils";
    ONLINE vs IN-PERSON
 
    The mode lives on the case and decides three unrelated things — what the
-   requestee pays, what participants earn, and whether a waitlist exists. These
-   are the pure pieces; the writes and emails that consume them are covered in
+   requestee pays, what participants earn, and the waitlist's hold window and
+   waiting fee (both formats HAVE a waitlist; only the terms differ). These are
+   the pure pieces; the writes and emails that consume them are covered in
    sessions.test.ts.
 --------------------------------------------------------------------------- */
 
@@ -44,9 +45,10 @@ describe("normalizeDeliveryMode", () => {
     expect(normalizeDeliveryMode("offline")).toBe("offline");
   });
 
-  it("degrades anything unrecognised to online, never to the $10,000 rate", () => {
-    // A bad value must land on the cheaper, safer regime. Billing someone
-    // 12× because a column read back as "Offline" or null is unrecoverable.
+  it("degrades anything unrecognised to online, never to the in-person rate", () => {
+    // A bad value must land on the cheaper, safer regime. Billing someone the
+    // in-person rate because a column read back as "Offline" or null is
+    // unrecoverable — and the two are close enough that nobody would notice.
     for (const bad of [null, undefined, "", "Offline", "OFFLINE", "in-person", 0, {}]) {
       expect(normalizeDeliveryMode(bad)).toBe("online");
     }

@@ -321,13 +321,13 @@ export default function EditProfileForm({ participant, adminMode, onUpdate, onUp
     }
 
     if (!driverLicenseNumber?.trim()) {
-      setError("Driver's license / State ID number is required.");
+      setError("Texas State ID number is required.");
       setLoading(false);
       return;
     }
 
     if (!idFile && !participant.driver_license_image_url) {
-      setError("Please upload a photo of your driver's license / State ID.");
+      setError("Please upload a photo of your Texas State ID.");
       setLoading(false);
       return;
     }
@@ -632,17 +632,17 @@ export default function EditProfileForm({ participant, adminMode, onUpdate, onUp
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-2">
-            <Label>Driver&apos;s License / State ID Number <span className="text-red-500">*</span></Label>
+            <Label>Texas State ID Number <span className="text-red-500">*</span></Label>
             <Input
               value={driverLicenseNumber}
               onChange={(e) => setDriverLicenseNumber(e.target.value)}
               placeholder="e.g. 12345678 (TX format)"
               required
             />
-            <p className="text-xs text-slate-400">Enter your U.S. state-issued driver&apos;s license or ID card number</p>
+            <p className="text-xs text-slate-400">Enter the number on your Texas State ID</p>
           </div>
           <div className="space-y-2">
-            <Label>Upload Driver&apos;s License / State ID Photo <span className="text-red-500">*</span></Label>
+            <Label>Upload Texas State ID Photo <span className="text-red-500">*</span></Label>
             <div
               className={`relative border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-all duration-200 ${
                 idPreview || existingIdUrl

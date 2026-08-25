@@ -126,7 +126,7 @@ export default async function ParticipantDashboard({
 
   // Waitlisted invites are not "pending" — the person already answered — so they
   // would otherwise fall through to the "no active sessions" onboarding block
-  // despite holding a slot and a Zoom link.
+  // despite holding a slot and the joining details (a Zoom link, or an address).
   const { data: waitlistRows } = await supabaseAdmin
     .from("session_participants")
     .select("id, sessions(session_date, session_cases(cases(delivery_mode)))")
@@ -179,7 +179,9 @@ export default async function ParticipantDashboard({
       )}
 
       {/* ACCEPTED ONTO THE WAITLIST */}
-      {waitlisted === "1" && (
+      {/* The redirect carries the delivery mode ("online" | "offline"), not a
+          flag — the banner below quotes that session's own hold window and fee. */}
+      {waitlisted && (
         <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900 shadow-sm">
           <span className="text-xl">⏳</span>
           <div>
@@ -233,7 +235,7 @@ export default async function ParticipantDashboard({
               Please update your{" "}
               {missingProfile.split(",").map((f, i, arr) => (
                 <span key={f}>
-                  {f === "dl" ? "Driver's License (number & photo)" : "PayPal username"}
+                  {f === "dl" ? "Texas State ID (number & photo)" : "PayPal username"}
                   {i < arr.length - 1 ? " and " : ""}
                 </span>
               ))}

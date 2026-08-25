@@ -996,12 +996,14 @@ export async function sendSessionLocationEmail(
 /* =========================
    WAITLIST EMAILS
 
-   A waitlister accepted after the session filled up. They hold a reserve slot:
-   they join Zoom on time, wait in the waiting room, and are admitted only if a
-   seat opens. The four templates below cover the whole arc — landing on the
-   waitlist, the Zoom link with hold instructions, being called in, and being
-   thanked for waiting. Kept separate from the seated-participant templates so
-   the terms are never implied to someone who does not have a seat.
+   A waitlister accepted after the session filled up. They hold a reserve slot
+   and are admitted only if a seat opens — online by waiting in the Zoom waiting
+   room, in person by holding on site. The five templates below cover the whole
+   arc: landing on the waitlist, the joining details with hold instructions (a
+   Zoom link OR a venue address — sendWaitlistZoomLinkEmail and
+   sendWaitlistLocationEmail), being called in, and being thanked for waiting.
+   Kept separate from the seated-participant templates so the terms are never
+   implied to someone who does not have a seat.
 ========================= */
 
 export async function sendWaitlistConfirmationEmail(
@@ -1620,7 +1622,7 @@ export async function sendReactivationEmail(opts: {
           </p>
           <ul style="margin:0 0 12px 0;padding-left:20px;color:#7c2d12;font-size:14px;line-height:1.7;">
             <li><strong>PayPal username</strong> &mdash; we pay exclusively via PayPal</li>
-            <li><strong>Driver&rsquo;s License number and photo</strong> &mdash; to verify Texas residency</li>
+            <li><strong>Texas State ID number and photo</strong> &mdash; to verify Texas residency</li>
           </ul>
           <p style="margin:0 0 12px;font-size:14px;color:#7c2d12;line-height:1.7;">
             Please note: there is a 2&ndash;3 dollar deduction for payments processed

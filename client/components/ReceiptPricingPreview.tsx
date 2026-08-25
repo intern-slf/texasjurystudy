@@ -38,9 +38,9 @@ export default function ReceiptPricingPreview({
             <p className="text-sm font-medium text-slate-700">
               Receipt Value
             </p>
-            {/* Named on the summary line, not only in the expanded table: the
-                two rates differ by more than 10×, so which one produced this
-                number has to be visible without a click. */}
+            {/* Named on the summary line, not only in the expanded table:
+                $850/hr and $1,500/hr are close enough to misread, so which one
+                produced this number has to be visible without a click. */}
             <span
               className={`text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded ${
                 offline

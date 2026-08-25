@@ -33,7 +33,7 @@ export interface ReceiptPriceBreakdown {
 const ONLINE_BASE_COST_PER_HOUR_CENTS = 85_000; // $850 per hour, over Zoom
 /**
  * In-person focus groups are a different product: a booked room, staff on site,
- * and participants paid 3.3× more to travel. Priced per hour like the online
+ * and participants paid more to travel ($40/hr vs $30/hr). Priced per hour like the online
  * rate so `hours_requested` still drives the quote.
  */
 const OFFLINE_BASE_COST_PER_HOUR_CENTS = 150_000; // $1,500 per hour, in person

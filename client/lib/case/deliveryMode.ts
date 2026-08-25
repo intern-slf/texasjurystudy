@@ -65,7 +65,7 @@ export function joinDetailLabel(value: unknown): string {
  * cases yet and therefore no mode. Throws if the cases disagree: that state is
  * blocked at every write path and by a database trigger, so reaching it means
  * something is genuinely broken and must not be papered over with a guess — the
- * two branches pay participants 3.3× different amounts.
+ * two branches pay participants different rates and quote different waitlist terms.
  */
 export function sessionDeliveryMode(
   caseModes: readonly (string | null | undefined)[],

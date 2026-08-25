@@ -544,7 +544,7 @@ describe("Sessions", () => {
       // The hole this closes: with only one case attached, excluding the
       // outgoing case from the comparison would leave nothing to compare
       // against, and an online case would slide into an in-person session whose
-      // participants already accepted at $100/hr and were sent an address.
+      // participants already accepted at the in-person rate and were sent an address.
       state.responses = [...replaceGuard("online", ["offline"])];
 
       await expect(
@@ -1042,9 +1042,9 @@ describe("Sessions", () => {
      * waitlist count. Defaults are an online session with both seats and
      * waitlist wide open.
      *
-     * `deliveryMode: "offline"` forces the waitlist cap to 0 no matter what
-     * `waitlistCap` says — that is the point of it, so the two are deliberately
-     * separate knobs here.
+     * `deliveryMode: "offline"` does NOT change the cap — both formats offer the
+     * same number of slots. It changes the hold window and the waiting fee, so
+     * the two stay separate knobs here.
      */
     const occupancy = (
       opts: {
@@ -1445,9 +1445,11 @@ describe("Sessions", () => {
     /* ---------------------------------------------------------------------
        IN-PERSON SESSIONS
 
-       Two things change, and both are decided by the session's cases rather
-       than by anything on the session row: the hourly rate, and the fact that
-       there is no waitlist to overflow into.
+       Everything below is decided by the session's cases rather than by anything
+       on the session row: the hourly rate ($40 vs $30), and the waitlist's own
+       terms — 30 minutes and $30 in person against 15 minutes and $10 online.
+       Both formats have a waitlist; quoting one format's terms to the other is
+       the failure these tests exist to catch.
     --------------------------------------------------------------------- */
 
     it("A seat on an in-person session is paid the in-person rate", async () => {

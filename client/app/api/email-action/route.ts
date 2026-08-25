@@ -278,7 +278,7 @@ function waitlistOfferPage(
           <p style="margin:0 0 8px;font-size:14px;color:#6E5418;">&bull;&nbsp; ${isOffline(offer.deliveryMode)
             ? "Come to the venue 15 minutes before the start time, the same as a confirmed participant."
             : "Join the Zoom meeting at the start time, the same as a confirmed participant."}</p>
-          <p style="margin:0 0 8px;font-size:14px;color:#6E5418;">&bull;&nbsp; Hold in the waiting room for up to <strong>${offer.holdMinutes} minutes</strong>.</p>
+          <p style="margin:0 0 8px;font-size:14px;color:#6E5418;">&bull;&nbsp; ${isOffline(offer.deliveryMode) ? "Wait on site" : "Hold in the waiting room"} for up to <strong>${offer.holdMinutes} minutes</strong>.</p>
           <p style="margin:0 0 8px;font-size:14px;color:#6E5418;">&bull;&nbsp; You are admitted <strong>only</strong> if a confirmed participant does not show up.</p>
           <p style="margin:0;font-size:14px;color:#6E5418;">&bull;&nbsp; If no spot opens in that time, you are free to leave.</p>
         </td>
@@ -365,7 +365,7 @@ function waitlistedPage(dashboardUrl: string, deliveryMode: string): string {
       </tr>
     </table>
 
-    <p style="margin:0 0 20px;font-size:14px;color:#54524A;">We have emailed you these details as well, along with the Zoom link when it is ready.</p>
+    <p style="margin:0 0 20px;font-size:14px;color:#54524A;">We have emailed you these details as well, along with the ${offline ? "venue address" : "Zoom link"} when it is ready.</p>
     <a href="${dashboardUrl}" style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;background-color:#012A68;text-decoration:none;border-radius:6px;">View My Dashboard</a>
   `);
 }
@@ -394,7 +394,7 @@ function missingProfilePage(missing: string[], dashboardUrl: string): string {
   const hasDl = missing.includes("dl");
   const hasPaypal = missing.includes("paypal");
   const items = [
-    hasDl && "Driver&rsquo;s License number and photo",
+    hasDl && "Texas State ID number and photo",
     hasPaypal && "PayPal username",
   ].filter(Boolean).join(" and ");
 

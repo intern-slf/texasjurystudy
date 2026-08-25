@@ -42,7 +42,7 @@ export default async function EditProfilePage({
             Welcome back — please complete your response
           </p>
           <p className="mt-1 text-sm text-green-800">
-            To finish reactivating your profile, please upload a valid Texas ID
+            To finish reactivating your profile, please upload your Texas State ID
             and confirm your PayPal account below. Your response isn&rsquo;t
             complete until both are saved.
           </p>
