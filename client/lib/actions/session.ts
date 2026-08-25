@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { sendEmail, sendRescheduleEmail, sendSessionCreatedEmail, sendSessionCompletedEmail, sendPresenceConfirmedEmail, sendPresenceDeclinedEmail, sendZoomLinkEmail, sendPresenterInfoEmail, sendWaitlistZoomLinkEmail, sendWaitlistCalledInEmail, sendWaitlistWaitedOutEmail, sendWaitlistConfirmationEmail, emailWrapper } from "@/lib/mail";
+import { sendEmail, sendRescheduleEmail, sendSessionCreatedEmail, sendSessionCompletedEmail, sendPresenceConfirmedEmail, sendPresenceDeclinedEmail, sendZoomLinkEmail, sendSessionLocationEmail, sendPresenterInfoEmail, sendWaitlistZoomLinkEmail, sendWaitlistCalledInEmail, sendWaitlistWaitedOutEmail, sendWaitlistConfirmationEmail, emailWrapper } from "@/lib/mail";
 import type { PresenterParticipantInfo, PresenterCaseInfo } from "@/lib/mail";
 import { checkAndNotifySessionFull, getSessionOccupancy } from "@/lib/participant/updateInviteStatus";
 import { recordBackoutStrike } from "@/lib/actions/participantFlags";
@@ -23,8 +23,12 @@ import {
   assignSlot,
   sessionLengthHours,
   seatPayoutCents,
+  hourlyRateCents,
+  supportsWaitlist,
   formatCents,
 } from "@/lib/participant/waitlist";
+import { assertCasesShareDeliveryMode, isOffline } from "@/lib/case/deliveryMode";
+import { getSessionDeliveryModeOrDefault } from "@/lib/case/getSessionDeliveryMode";
 import { NO_LOGIN_REASON, getAllIdsWithoutLogin, getIdsWithoutLogin } from "@/lib/participant/loginAccount";
 import { revalidatePath } from "next/cache";
 import { localToUTC, localToUTCTime } from "@/lib/timezone";
@@ -61,6 +65,59 @@ export async function createSession(sessionDate: string) {
 /* =========================
    ATTACH CASES
 ========================= */
+
+/**
+ * Every case in a session must be run the same way — all in a room, or all over
+ * Zoom. A session has one venue, one set of joining instructions and one
+ * participant pay rate, so a mixed session cannot be described to anyone
+ * correctly. Checked before the write so the admin gets a sentence rather than
+ * a raw trigger error, and re-checked by the database for writes that never come
+ * through here.
+ *
+ * The cases already attached are compared in full, including one that is about
+ * to be swapped out. That is deliberate: a replacement has to match the session
+ * it is joining, and excluding the outgoing case would let the LAST case in a
+ * session be swapped for the other format — silently re-pricing a session whose
+ * participants have already accepted at one rate and been sent one venue.
+ * Changing a session's format means taking the case out and building a new
+ * session, not replacing it in place.
+ *
+ * Returns the mode the session now has, or null when nothing is attached.
+ */
+async function assertSessionDeliveryModeFits(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  sessionId: string,
+  incomingCaseIds: string[],
+) {
+  const { data: incomingRows } = incomingCaseIds.length
+    ? await supabase.from("cases").select("id, delivery_mode").in("id", incomingCaseIds)
+    : { data: [] };
+
+  const { data: attachedRows } = await supabase
+    .from("session_cases")
+    .select("case_id, cases(delivery_mode)")
+    .eq("session_id", sessionId);
+
+  type AttachedRow = {
+    case_id: string;
+    cases?: { delivery_mode?: string | null } | { delivery_mode?: string | null }[] | null;
+  };
+
+  const existing = ((attachedRows ?? []) as AttachedRow[])
+    // A case being re-attached to the session it is already in cannot conflict
+    // with itself; everything else already there constrains the incoming set.
+    .filter((r) => !incomingCaseIds.includes(r.case_id))
+    .map((r) => {
+      const c = Array.isArray(r.cases) ? r.cases[0] : r.cases;
+      return c?.delivery_mode ?? null;
+    });
+
+  return assertCasesShareDeliveryMode(
+    (incomingRows ?? []).map((c) => c.delivery_mode as string | null),
+    existing,
+  );
+}
+
 export async function addCasesToSession(
   sessionId: string,
   cases: { caseId: string; start: string; end: string }[],
@@ -68,6 +125,12 @@ export async function addCasesToSession(
   timezone?: string
 ) {
   const supabase = await createClient();
+
+  await assertSessionDeliveryModeFits(
+    supabase,
+    sessionId,
+    cases.map((c) => c.caseId),
+  );
 
   const tz = timezone || "UTC";
   const rows = cases.map((c) => ({
@@ -375,6 +438,13 @@ async function inviteParticipantsInner(
     }
   }
 
+  // An in-person invitation is a different ask: it costs the invitee a commute,
+  // it pays more, and there is no waitlist to fall back on if the seats go. All
+  // three have to be in the email, or people accept the wrong thing.
+  const deliveryMode = await getSessionDeliveryModeOrDefault(sessionId);
+  const offline = isOffline(deliveryMode);
+  const hourlyRate = formatCents(hourlyRateCents(deliveryMode));
+
   // Send invitation emails to each participant
   const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "");
 
@@ -438,7 +508,9 @@ async function inviteParticipantsInner(
             "@type": "Event",
             "name": "Texas Jury Study Session",
             "startDate": "${sessionDate || new Date().toISOString()}",
-            "location": { "@type": "Place", "name": "Remote (Secure Zoom)", "address": "Online" },
+            "location": ${offline
+              ? `{ "@type": "Place", "name": "In-Person (address to follow)", "address": "To be confirmed" }`
+              : `{ "@type": "Place", "name": "Remote (Secure Zoom)", "address": "Online" }`},
             "potentialAction": [
               { "@type": "RsvpAction", "handler": { "@type": "HttpActionHandler", "url": "${acceptLink}" }, "attendance": "http://schema.org/RsvpResponseYes" },
               { "@type": "RsvpAction", "handler": { "@type": "HttpActionHandler", "url": "${declineLink}" }, "attendance": "http://schema.org/RsvpResponseNo" }
@@ -459,21 +531,48 @@ async function inviteParticipantsInner(
               </td>
             </tr>
             <tr>
-              <td style="padding:12px 20px;">
+              <td style="padding:12px 20px;border-bottom:1px solid #e2e8f0;">
                 <p style="margin:0 0 2px;font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.08em;">Session Time</p>
                 <p style="margin:0;font-size:16px;font-weight:600;color:#1e293b;">${timeStr}</p>
               </td>
             </tr>
+            <tr>
+              <td style="padding:12px 20px;">
+                <p style="margin:0 0 2px;font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.08em;">Format</p>
+                <p style="margin:0;font-size:16px;font-weight:600;color:#1e293b;">
+                  ${offline ? "In-Person &mdash; you attend at a venue" : "Online &mdash; you join over Zoom"}
+                </p>
+              </td>
+            </tr>
           </table>
+
+          ${offline ? `
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f0fdf4;border-left:4px solid #16a34a;border-radius:6px;margin:0 0 24px;">
+            <tr>
+              <td style="padding:14px 20px;">
+                <p style="margin:0 0 8px;font-size:14px;color:#166534;">
+                  <strong>This session is held in person.</strong> You will need to travel to the venue, so please only accept if you can be there for the full session.
+                </p>
+                <p style="margin:0;font-size:13px;color:#166534;">
+                  We will email you the full address once you accept. Bring your <strong>Texas driver&rsquo;s license</strong> &mdash; the same one on your profile &mdash; and plan to arrive 15 minutes early.
+                </p>
+              </td>
+            </tr>
+          </table>` : ''}
 
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f8fafc;border-left:4px solid #94a3b8;border-radius:6px;margin:0 0 24px;">
             <tr>
               <td style="padding:14px 20px;">
+                <p style="margin:0 0 10px;font-size:14px;color:#475569;">
+                  <strong>What this pays:</strong> ${hourlyRate} per hour for the full scheduled session length.
+                </p>
                 <p style="margin:0;font-size:14px;color:#475569;">
                   <strong>About your payment:</strong> payment for this session is sent to the PayPal username on your profile. PayPal treats it as a &ldquo;service&rdquo; payment and takes a processing fee out of it, so the amount that reaches you is about <strong>$2 to $3 less</strong> than the session amount. That fee is PayPal&rsquo;s, not ours.
                 </p>
                 <p style="margin:10px 0 0;font-size:13px;color:#64748b;">
-                  <strong>Please note:</strong> seats are filled in the order people reply. If this session fills up before you respond, we may be able to offer you a paid <strong>waitlist spot</strong> instead of a seat &mdash; you will be shown exactly what that involves and can accept or decline it separately.
+                  ${offline
+                    ? `<strong>Please note:</strong> seats are filled in the order people reply, and there is no waitlist for in-person sessions. If this one fills up before you respond we will consider you for the next one.`
+                    : `<strong>Please note:</strong> seats are filled in the order people reply. If this session fills up before you respond, we may be able to offer you a paid <strong>waitlist spot</strong> instead of a seat &mdash; you will be shown exactly what that involves and can accept or decline it separately.`}
                 </p>
               </td>
             </tr>
@@ -569,10 +668,15 @@ export async function notifyRequesteesSessionCreated(
   // Fetch case titles and requestee user_ids
   const { data: caseRows } = await supabase
     .from("cases")
-    .select("id, title, user_id")
+    .select("id, title, user_id, delivery_mode")
     .in("id", caseIds);
 
   if (!caseRows?.length) return;
+
+  // Every case in a session shares a mode, so reading it off the first is
+  // enough — and the requestee is told which one, since an in-person session
+  // means travelling rather than clicking a link.
+  const offline = caseRows.some((c) => isOffline(c.delivery_mode));
 
   // Fetch session times
   const { data: sessionCaseRows } = await supabase
@@ -613,7 +717,7 @@ export async function notifyRequesteesSessionCreated(
       const { data: userData } = await supabaseAdmin.auth.admin.getUserById(requesteeId);
       const email = userData?.user?.email;
       if (email) {
-        await sendSessionCreatedEmail(email, titles, dateStr, timeStr, participantCount);
+        await sendSessionCreatedEmail(email, titles, dateStr, timeStr, participantCount, offline);
         console.log(`[notifyRequestees] Session created email sent to ${email}`);
       }
     } catch (e) {
@@ -777,6 +881,7 @@ export async function adminRespondOnBehalf(
   let onBehalfSlot: "seat" | "waitlist" = "seat";
   let onBehalfPosition: number | null = null;
   let onBehalfHours = 0;
+  let deliveryMode = await getSessionDeliveryModeOrDefault(sessionId);
 
   if (action === "accepted") {
     const { data: caseTimeRows } = await supabase
@@ -792,12 +897,19 @@ export async function adminRespondOnBehalf(
     );
 
     const occupancy = await getSessionOccupancy(sessionId);
+    deliveryMode = occupancy.deliveryMode;
     const assigned = assignSlot(occupancy);
     if (assigned === "full") {
+      // An in-person session has no waitlist to fall back on, so the only lever
+      // is the seat cap. Saying "all 0 waitlist slots used" would send an admin
+      // looking for a control that does not apply.
       throw new Error(
-        `This session is full — ${occupancy.acceptedCount}/${occupancy.participantCap} seats taken ` +
-        `and all ${occupancy.waitlistCap} waitlist slots used. Raise the participant cap or the ` +
-        `waitlist cap before adding anyone else.`
+        supportsWaitlist(deliveryMode)
+          ? `This session is full — ${occupancy.acceptedCount}/${occupancy.participantCap} seats taken ` +
+            `and all ${occupancy.waitlistCap} waitlist slots used. Raise the participant cap or the ` +
+            `waitlist cap before adding anyone else.`
+          : `This in-person session is full — ${occupancy.acceptedCount}/${occupancy.participantCap} seats taken. ` +
+            `In-person sessions have no waitlist, so raise the participant cap before adding anyone else.`
       );
     }
     onBehalfSlot = assigned;
@@ -816,7 +928,7 @@ export async function adminRespondOnBehalf(
             waitlist_position: onBehalfPosition,
             payout_cents: onBehalfWaitlisted
               ? WAITLIST_WAIT_FEE_CENTS
-              : seatPayoutCents(onBehalfHours),
+              : seatPayoutCents(onBehalfHours, deliveryMode),
           }
         : // Declining ends any claim on the session — drop the amount and the
           // slot, or a former waitlister keeps showing as owed after saying no.
@@ -854,9 +966,11 @@ export async function adminRespondOnBehalf(
 
   const { data: session } = await supabase
     .from("sessions")
-    .select("session_date, zoom_link")
+    .select("session_date, zoom_link, location")
     .eq("id", sessionId)
     .single();
+
+  const offline = isOffline(deliveryMode);
 
   // The status change is already committed. A mail failure must not surface as
   // "the action failed" — that reads as though nothing happened, when in fact the
@@ -877,58 +991,54 @@ export async function adminRespondOnBehalf(
 
       // Someone put on the waitlist must never receive a plain "you're confirmed"
       // email — the hold rules and the two payment outcomes are the whole point.
+      // Unreachable offline: those sessions have no waitlist slots to land in.
       if (onBehalfWaitlisted) {
         await sendWaitlistConfirmationEmail(
           email,
           firstName,
           session.session_date,
           WAITLIST_HOLD_MINUTES,
-          formatCents(HOURLY_RATE_CENTS),
+          formatCents(hourlyRateCents(deliveryMode)),
           formatCents(WAITLIST_WAIT_FEE_CENTS),
           timeStr,
         );
       } else {
-        await sendPresenceConfirmedEmail(email, firstName, session.session_date, timeStr);
+        await sendPresenceConfirmedEmail(email, firstName, session.session_date, timeStr, offline);
       }
 
-      // If zoom link is already saved, send it immediately to the accepted participant
-      if (session.zoom_link) {
-        const formatCentralTime = (t: string) => {
-          const [h, m] = t.split(":");
-          const d = new Date();
-          d.setUTCHours(parseInt(h), parseInt(m), 0, 0);
-          return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Chicago" });
-        };
+      // Whichever joining detail the session already carries goes out now. An
+      // in-person session has an address and no Zoom link; an online one the
+      // reverse.
+      const joinDetail = offline ? session.location : session.zoom_link;
+      if (joinDetail) {
+        const detailTimeStr = await sessionTimeString(supabase, sessionId);
 
-        const { data: sessionCaseRows } = await supabase
-          .from("session_cases")
-          .select("start_time, end_time")
-          .eq("session_id", sessionId);
-
-        let zoomTimeStr: string | undefined;
-        if (sessionCaseRows && sessionCaseRows.length > 0) {
-          const starts = sessionCaseRows.map((r) => r.start_time).filter(Boolean).sort();
-          const ends = sessionCaseRows.map((r) => r.end_time).filter(Boolean).sort();
-          if (starts.length && ends.length) {
-            zoomTimeStr = `${formatCentralTime(starts[0])} – ${formatCentralTime(ends[ends.length - 1])} CT`;
-          }
-        }
-
-        if (onBehalfWaitlisted) {
+        if (offline) {
+          await sendSessionLocationEmail(
+            email,
+            firstName,
+            session.session_date,
+            joinDetail,
+            detailTimeStr,
+            formatCents(hourlyRateCents(deliveryMode)),
+          );
+        } else if (onBehalfWaitlisted) {
           await sendWaitlistZoomLinkEmail(
             email,
             firstName,
             session.session_date,
-            session.zoom_link,
+            joinDetail,
             WAITLIST_HOLD_MINUTES,
-            formatCents(HOURLY_RATE_CENTS),
+            formatCents(hourlyRateCents(deliveryMode)),
             formatCents(WAITLIST_WAIT_FEE_CENTS),
-            zoomTimeStr,
+            detailTimeStr,
           );
         } else {
-          await sendZoomLinkEmail(email, firstName, session.session_date, session.zoom_link, zoomTimeStr);
+          await sendZoomLinkEmail(email, firstName, session.session_date, joinDetail, detailTimeStr);
         }
-        console.log(`[adminRespondOnBehalf] Sent zoom link email to ${email} (link already saved)`);
+        console.log(
+          `[adminRespondOnBehalf] Sent ${offline ? "location" : "zoom link"} email to ${email} (already saved)`,
+        );
       }
     } else {
       await sendPresenceDeclinedEmail(email, firstName, session.session_date);
@@ -973,7 +1083,7 @@ async function loadWaitlistContext(
   sessionId: string,
   participantId: string,
 ) {
-  const [{ data: session }, { data: caseRows }, { data: inviteRow }] = await Promise.all([
+  const [{ data: session }, { data: caseRows }, { data: inviteRow }, deliveryMode] = await Promise.all([
     supabase.from("sessions").select("session_date").eq("id", sessionId).single(),
     supabase.from("session_cases").select("start_time, end_time").eq("session_id", sessionId),
     supabase
@@ -982,6 +1092,7 @@ async function loadWaitlistContext(
       .eq("session_id", sessionId)
       .eq("participant_id", participantId)
       .maybeSingle(),
+    getSessionDeliveryModeOrDefault(sessionId),
   ]);
 
   let email: string | null = null;
@@ -1014,6 +1125,7 @@ async function loadWaitlistContext(
   return {
     inviteRow: inviteRow as { invite_status: string | null; waitlist_outcome: string | null } | null,
     sessionDate,
+    deliveryMode,
     hours: sessionLengthHours(
       times.map((r) => r.start_time),
       times.map((r) => r.end_time),
@@ -1048,11 +1160,20 @@ export async function callInWaitlistParticipant(sessionId: string, participantId
   const supabase = await createClient();
   const ctx = await loadWaitlistContext(supabase, sessionId, participantId);
 
+  // In-person sessions never create waitlisted rows, so a call-in here would be
+  // acting on data that should not exist — and would pay at whichever rate the
+  // row happened to be written with. Refuse rather than guess.
+  if (!supportsWaitlist(ctx.deliveryMode)) {
+    throw new Error(
+      "In-person sessions do not have a waitlist, so there is nobody to call in.",
+    );
+  }
+
   if (!ctx.inviteRow || !isWaitlisted(ctx.inviteRow.invite_status)) {
     throw new Error("This participant is not on the waitlist for this session.");
   }
 
-  const payoutCents = seatPayoutCents(ctx.hours);
+  const payoutCents = seatPayoutCents(ctx.hours, ctx.deliveryMode);
 
   const { error } = await supabase
     .from("session_participants")
@@ -1084,7 +1205,7 @@ export async function callInWaitlistParticipant(sessionId: string, participantId
         ctx.firstName,
         longDate(ctx.sessionDate),
         formatCents(payoutCents),
-        formatCents(HOURLY_RATE_CENTS),
+        formatCents(hourlyRateCents(ctx.deliveryMode)),
       );
     } catch (err) {
       console.error("[callInWaitlist] Email failed:", err);
@@ -1102,6 +1223,12 @@ export async function callInWaitlistParticipant(sessionId: string, participantId
 export async function markWaitlistWaitedOut(sessionId: string, participantId: string) {
   const supabase = await createClient();
   const ctx = await loadWaitlistContext(supabase, sessionId, participantId);
+
+  if (!supportsWaitlist(ctx.deliveryMode)) {
+    throw new Error(
+      "In-person sessions do not have a waitlist, so there is no waiting fee to record.",
+    );
+  }
 
   if (!ctx.inviteRow || !isWaitlisted(ctx.inviteRow.invite_status)) {
     throw new Error("This participant is not on the waitlist for this session.");
@@ -1249,12 +1376,46 @@ export async function sendCompletionNow(formData: FormData) {
 /* =========================
    SEND ZOOM LINK TO ACCEPTED PARTICIPANTS
 ========================= */
+/** "9:00 AM – 11:00 AM CT" spanning every case in the session, or undefined. */
+async function sessionTimeString(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  sessionId: string,
+): Promise<string | undefined> {
+  const { data: rows } = await supabase
+    .from("session_cases")
+    .select("start_time, end_time")
+    .eq("session_id", sessionId);
+
+  if (!rows?.length) return undefined;
+
+  const formatCentralTime = (t: string) => {
+    const [h, m] = t.split(":");
+    const d = new Date();
+    d.setUTCHours(parseInt(h), parseInt(m), 0, 0);
+    return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Chicago" });
+  };
+
+  const starts = rows.map((r) => r.start_time).filter(Boolean).sort();
+  const ends = rows.map((r) => r.end_time).filter(Boolean).sort();
+  if (!starts.length || !ends.length) return undefined;
+
+  return `${formatCentralTime(starts[0])} – ${formatCentralTime(ends[ends.length - 1])} CT`;
+}
+
 export async function sendZoomLink(formData: FormData) {
   const supabase = await createClient();
   const sessionId = formData.get("sessionId") as string;
   const zoomLink = (formData.get("zoomLink") as string)?.trim();
 
   if (!zoomLink) throw new Error("Zoom link is required");
+
+  // An in-person session has no Zoom meeting to join. Sending one would tell
+  // people to stay home for a session they are expected to travel to.
+  if (isOffline(await getSessionDeliveryModeOrDefault(sessionId))) {
+    throw new Error(
+      "This is an in-person session — send the venue location instead of a Zoom link.",
+    );
+  }
 
   // Fetch session date
   const { data: session } = await supabase
@@ -1266,27 +1427,7 @@ export async function sendZoomLink(formData: FormData) {
   if (!session) throw new Error("Session not found");
   const sessionDate = session.session_date as string;
 
-  // Fetch session case times to include in email
-  const { data: sessionCaseRows } = await supabase
-    .from("session_cases")
-    .select("start_time, end_time")
-    .eq("session_id", sessionId);
-
-  const formatCentralTime = (t: string) => {
-    const [h, m] = t.split(":");
-    const d = new Date();
-    d.setUTCHours(parseInt(h), parseInt(m), 0, 0);
-    return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Chicago" });
-  };
-
-  let timeStr: string | undefined;
-  if (sessionCaseRows && sessionCaseRows.length > 0) {
-    const starts = sessionCaseRows.map((r) => r.start_time).filter(Boolean).sort();
-    const ends   = sessionCaseRows.map((r) => r.end_time).filter(Boolean).sort();
-    if (starts.length && ends.length) {
-      timeStr = `${formatCentralTime(starts[0])} – ${formatCentralTime(ends[ends.length - 1])} CT`;
-    }
-  }
+  const timeStr = await sessionTimeString(supabase, sessionId);
 
   // Waitlisters need the link too — holding in the Zoom waiting room is the
   // whole point of the slot — but they get the waitlist template, which spells
@@ -1336,6 +1477,75 @@ export async function sendZoomLink(formData: FormData) {
 }
 
 /* =========================
+   SEND SESSION LOCATION (in-person)
+
+   The offline counterpart to sendZoomLink: the same shape, an address instead of
+   a URL. There is no waitlist branch because an in-person session never puts
+   anyone on a waitlist — see lib/participant/waitlist.
+========================= */
+export async function sendSessionLocation(formData: FormData) {
+  const supabase = await createClient();
+  const sessionId = formData.get("sessionId") as string;
+  const location = (formData.get("location") as string)?.trim();
+
+  if (!location) throw new Error("A location is required");
+
+  const mode = await getSessionDeliveryModeOrDefault(sessionId);
+  if (!isOffline(mode)) {
+    throw new Error(
+      "This is an online session — send the Zoom link instead of a location.",
+    );
+  }
+
+  const { data: session } = await supabase
+    .from("sessions")
+    .select("session_date")
+    .eq("id", sessionId)
+    .single();
+
+  if (!session) throw new Error("Session not found");
+  const sessionDate = session.session_date as string;
+
+  const timeStr = await sessionTimeString(supabase, sessionId);
+
+  // Persisted first, unlike the Zoom path. The address is what someone shows up
+  // to; if the mail loop dies halfway the admin must still be able to see what
+  // was sent and re-send, rather than have the field read empty.
+  const { error: saveError } = await supabase
+    .from("sessions")
+    .update({ location })
+    .eq("id", sessionId);
+  if (saveError) throw saveError;
+
+  const { data: participants } = await supabase
+    .from("session_participants")
+    .select("participant_id")
+    .eq("session_id", sessionId)
+    .eq("invite_status", "accepted");
+
+  const rate = formatCents(hourlyRateCents(mode));
+
+  for (const p of participants ?? []) {
+    try {
+      const { data: userData } = await supabaseAdmin.auth.admin.getUserById(p.participant_id);
+      const email = userData?.user?.email;
+      const firstName =
+        userData?.user?.user_metadata?.first_name ||
+        userData?.user?.user_metadata?.full_name?.split(" ")[0] ||
+        "Participant";
+
+      if (!email) continue;
+
+      await sendSessionLocationEmail(email, firstName, sessionDate, location, timeStr, rate);
+    } catch (e) {
+      console.error(`[sendSessionLocation] Failed for participant ${p.participant_id}:`, e);
+    }
+  }
+
+  revalidatePath("/dashboard/Admin/sessions");
+}
+
+/* =========================
    REPLACE CASE IN SESSION
 ========================= */
 export async function replaceCaseInSession(
@@ -1347,6 +1557,13 @@ export async function replaceCaseInSession(
   sessionDate: string
 ) {
   const supabase = await createClient();
+
+  // The replacement has to be the same format as the session it is joining —
+  // including when it is replacing the only case there, which is exactly the
+  // swap that would otherwise re-price a session out from under participants who
+  // already accepted. Checked BEFORE the delete below, so a rejected swap leaves
+  // the session exactly as it was rather than half-emptied.
+  await assertSessionDeliveryModeFits(supabase, sessionId, [newCaseId]);
 
   // 1. Remove old case from session
   await supabase
@@ -1678,14 +1895,16 @@ export async function notifyPresenterByEmail(
 ) {
   const supabase = await createClient();
 
-  // 1. Fetch session (zoom link, date)
+  // 1. Fetch session (joining details, date)
   const { data: session } = await supabase
     .from("sessions")
-    .select("session_date, zoom_link")
+    .select("session_date, zoom_link, location")
     .eq("id", sessionId)
     .single();
 
   if (!session) throw new Error("Session not found");
+
+  const deliveryMode = await getSessionDeliveryModeOrDefault(sessionId);
 
   const sessionDateStr = new Date(session.session_date).toLocaleDateString("en-US", {
     weekday: "long", year: "numeric", month: "long", day: "numeric",
@@ -1863,13 +2082,17 @@ export async function notifyPresenterByEmail(
     }
   }
 
-  // 6. Send email
+  // 6. Send email. An in-person session gets the address block instead of the
+  //    Zoom block — passing `offline` swaps the whole section, so a requestee is
+  //    never shown a "Zoom link not set yet" warning for a session that will
+  //    never have one.
   await sendPresenterInfoEmail(
     presenterEmail,
     sessionDateStr,
     session.zoom_link ?? null,
     cases,
     participants,
+    isOffline(deliveryMode) ? { location: (session.location as string | null) ?? null } : undefined,
   );
 
   // 7. Mark cases as submitted (preserve original "Notify Presenter" behavior)

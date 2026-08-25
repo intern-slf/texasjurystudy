@@ -114,6 +114,8 @@ Matches recommendation. Admin go-through-anon works via `is_admin()`. Requestee 
 
 Matches recommendation. No general-authenticated SELECT — narrower than the "any auth user can read" option from the recommendation, which is fine (requestee scope covers the actual reads).
 
+**Trigger (2026-08-25):** `session_cases_single_delivery_mode` (BEFORE INSERT OR UPDATE OF `session_id`, `case_id`) rejects attaching a case whose `cases.delivery_mode` differs from the cases already on that session — an in-person and an online case cannot share a session. It is **SECURITY DEFINER with `search_path` pinned to `public, pg_temp`**, deliberately: the check reads `cases` and `session_cases`, and if it ran with invoker rights a future narrowing of the `cases` SELECT policy would make the lookup return NULL and wave the conflict through. Read-only — it only SELECTs and RAISEs. The same reasoning applies to `cases_lock_scheduled_delivery_mode` on `cases`, which reads `session_cases`.
+
 ---
 
 ### 🟩 `session_participants` — RLS enabled (2026-05-17)
@@ -229,6 +231,8 @@ No INSERT/UPDATE/DELETE policies → writes blocked for anon/authenticated (corr
 | admin can update cases | UPDATE | authenticated | `is_admin` (EXISTS roles) | `is_admin` (EXISTS roles) |
 | user can soft update own cases | UPDATE | public | `auth.uid() = user_id` | — |
 | user can update own cases | UPDATE | public | `auth.uid() = user_id` | — |
+
+**Trigger (2026-08-25):** `cases_lock_scheduled_delivery_mode` (BEFORE UPDATE OF `delivery_mode`) rejects a format change on a case that is already attached to a session. SECURITY DEFINER with `search_path` pinned — see the note under `session_cases`. Writing the *same* value passes; only an actual change is blocked. Note that RLS lets a requestee UPDATE their own case row, so this trigger — not a policy — is what stops them re-pricing a booked session from $850/hr to $10,000/hr or vice versa. The app also drops the column from the update payload once the case is scheduled (`updateCase` in `client/app/dashboard/requestee/page.tsx`), so the trigger is the backstop rather than the error surface.
 
 **Diffs from recommendation:**
 - 4 redundant INSERT policies (all same WITH CHECK) — F17.

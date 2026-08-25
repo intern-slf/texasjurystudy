@@ -1,6 +1,7 @@
 import Link from "next/link";
 import LocalTimeRange from "@/components/LocalTimeRange";
 import { getCaseSessions } from "@/lib/case/getCaseSessions";
+import { deliveryModeLabel, isOffline } from "@/lib/case/deliveryMode";
 import ParticipantRoster from "@/components/ParticipantRoster";
 
 /**
@@ -75,7 +76,33 @@ export default async function CaseSessionsPanel({ caseId }: { caseId: string }) 
                 >
                   {s.isPast ? "Completed" : "Upcoming"}
                 </span>
-                {s.zoomLink ? (
+                <span
+                  className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${
+                    isOffline(s.deliveryMode)
+                      ? "bg-green-400/10 text-green-700 ring-green-400/20"
+                      : "bg-blue-400/10 text-blue-700 ring-blue-400/20"
+                  }`}
+                >
+                  {deliveryModeLabel(s.deliveryMode)}
+                </span>
+                {/* How people attend. An in-person session has an address and
+                    will never have a Zoom link, so showing "No Zoom link yet"
+                    for one would read as an outstanding task. */}
+                {isOffline(s.deliveryMode) ? (
+                  s.location ? (
+                    <a
+                      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(s.location)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs font-semibold text-green-700 hover:underline"
+                      title={s.location}
+                    >
+                      Location set
+                    </a>
+                  ) : (
+                    <span className="text-xs text-amber-600">No location yet</span>
+                  )
+                ) : s.zoomLink ? (
                   <a
                     href={s.zoomLink}
                     target="_blank"

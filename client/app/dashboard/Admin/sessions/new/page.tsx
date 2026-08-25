@@ -21,7 +21,8 @@ import {
   ParticipantRow,
   checkFilterMatch,
   attachMultiCaseScores,
-  sortParticipantsByMultiCaseMatch
+  sortParticipantsByMultiCaseMatch,
+  withCountyRestriction
 } from "@/lib/filter-utils";
 import {
   getAncestorCaseIds,
@@ -30,6 +31,14 @@ import {
   type LineageInvolvement,
 } from "@/lib/case-lineage";
 import BackButton from "@/components/BackButton";
+import Link from "next/link";
+import {
+  assertCasesShareDeliveryMode,
+  deliveryModeLabel,
+  isOffline,
+  sessionDeliveryModeOrDefault,
+} from "@/lib/case/deliveryMode";
+import { formatCents, hourlyRateCents } from "@/lib/participant/waitlist";
 import SelectAllParticipants from "@/components/SelectAllParticipants";
 import ShowMoreButton from "@/components/ShowMoreButton";
 import CheckboxRestorer from "@/components/CheckboxRestorer";
@@ -86,7 +95,7 @@ export default async function NewSessionPage({
   const { data: cases } = selectedIds.length
     ? await supabase
       .from("cases")
-      .select("id, title, scheduled_at, admin_scheduled_at, schedule_status, filters, county, participants_from_county, hours_requested")
+      .select("id, title, scheduled_at, admin_scheduled_at, schedule_status, filters, county, participants_from_county, hours_requested, delivery_mode")
       .in("id", selectedIds)
       .order("created_at", { ascending: false })
     : { data: [] };
@@ -102,19 +111,33 @@ export default async function NewSessionPage({
     county?: string | null;
     participants_from_county?: string | null;
     hours_requested?: number | null;
+    delivery_mode?: string | null;
   };
-  const filtersList = ((cases as CaseRow[] | null) || []).map((c) => {
-    const f = (c.filters ?? {}) as CaseFilters;
-    if (c.participants_from_county === "Yes" && c.county) {
-      if (!f.location) f.location = {};
-      const existing = f.location.county ?? [];
-      const countyVal = c.county;
-      if (!existing.some((v: string) => v.toLowerCase() === countyVal.toLowerCase())) {
-        f.location.county = [...existing, countyVal];
-      }
-    }
-    return f;
-  });
+
+  /* =========================
+     DELIVERY MODE
+
+     A session holds either in-person cases or online cases, never both — they
+     need different venues, different joining instructions and pay participants
+     at different rates. The picker on the cases page already locks the selection
+     to one format; this is the check that matters, because a hand-edited URL
+     reaches this page directly with whatever `selectedCases` it likes.
+
+     Rendered as a blocking screen rather than thrown: the admin has a selection
+     they can fix, and a stack trace does not tell them which cases clashed.
+  ========================= */
+  const caseRows = (cases as CaseRow[] | null) ?? [];
+  const offlineCases = caseRows.filter((c) => isOffline(c.delivery_mode));
+  const onlineCases = caseRows.filter((c) => !isOffline(c.delivery_mode));
+  const hasMixedModes = offlineCases.length > 0 && onlineCases.length > 0;
+  const sessionMode = sessionDeliveryModeOrDefault(caseRows.map((c) => c.delivery_mode ?? null));
+  const sessionIsOffline = !hasMixedModes && isOffline(sessionMode);
+
+  // withCountyRestriction folds the case's county into the location filter when
+  // the requestee asked for locals OR the case is in person — see filter-utils.
+  const filtersList = caseRows.map((c) =>
+    withCountyRestriction((c.filters ?? {}) as CaseFilters, c),
+  );
   const combinedFilters = combineCaseFilters(filtersList);
 
   // Enrich ageRanges with actual case titles
@@ -287,19 +310,34 @@ export default async function NewSessionPage({
     const tz = formData.get("tz") as string || "UTC";
     if (!date) throw new Error("Session date required");
 
-    const sessionId = await createSession(date);
-
-    const selectedCases = (cases ?? [])
+    const selectedCases = caseRows
       .map((c) => {
         const start = formData.get(`start_${c.id}`) as string;
         const end = formData.get(`end_${c.id}`) as string;
         if (!start || !end) return null;
-        return { caseId: c.id, start, end };
+        return { caseId: c.id, start, end, deliveryMode: c.delivery_mode ?? null };
       })
-      .filter(Boolean) as { caseId: string; start: string; end: string }[];
+      .filter(Boolean) as {
+        caseId: string;
+        start: string;
+        end: string;
+        deliveryMode: string | null;
+      }[];
+
+    // Checked BEFORE createSession. addCasesToSession rejects a mixed set too,
+    // but by then the session row exists and the throw would strand an empty
+    // session that still shows up on the sessions page.
+    assertCasesShareDeliveryMode(selectedCases.map((c) => c.deliveryMode));
+
+    const sessionId = await createSession(date);
 
     if (selectedCases.length) {
-      await addCasesToSession(sessionId, selectedCases, date, tz);
+      await addCasesToSession(
+        sessionId,
+        selectedCases.map(({ caseId, start, end }) => ({ caseId, start, end })),
+        date,
+        tz,
+      );
     }
 
     const selectedParticipants = formData.getAll("participants") as string[];
@@ -329,6 +367,77 @@ export default async function NewSessionPage({
      UI
   ========================= */
 
+  // Refuse the whole screen rather than letting the admin fill in times and
+  // pick participants for a session that cannot be saved. Reachable only by
+  // hand-editing the URL — the cases page locks the selection to one format.
+  if (hasMixedModes) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold">Create Session</h1>
+          <BackButton href="/dashboard/Admin" label="Back to Cases" />
+        </div>
+
+        <div className="rounded-xl border border-red-200 bg-red-50 p-6 space-y-4">
+          <div>
+            <p className="font-semibold text-red-800">
+              These cases cannot share a session.
+            </p>
+            <p className="text-sm text-red-700 mt-1">
+              A session has one venue, one set of joining instructions and one participant pay
+              rate, so in-person and online cases have to be scheduled separately. Go back and
+              select one format.
+            </p>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="rounded-lg border border-green-200 bg-white p-3">
+              <p className="text-xs font-bold uppercase tracking-wide text-green-700 mb-2">
+                In-Person ({offlineCases.length})
+              </p>
+              <ul className="space-y-1">
+                {offlineCases.map((c) => (
+                  <li key={c.id} className="text-sm text-slate-700">{c.title}</li>
+                ))}
+              </ul>
+            </div>
+            <div className="rounded-lg border border-blue-200 bg-white p-3">
+              <p className="text-xs font-bold uppercase tracking-wide text-blue-700 mb-2">
+                Online ({onlineCases.length})
+              </p>
+              <ul className="space-y-1">
+                {onlineCases.map((c) => (
+                  <li key={c.id} className="text-sm text-slate-700">{c.title}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-3">
+            <Link
+              href={`/dashboard/Admin/sessions/new?test_table=${testTable}&${offlineCases
+                .map((c) => `selectedCases=${encodeURIComponent(c.id)}`)
+                .join("&")}`}
+              className="px-4 py-2 rounded bg-green-600 text-white text-sm font-semibold hover:bg-green-700"
+            >
+              Continue with the {offlineCases.length} in-person case
+              {offlineCases.length === 1 ? "" : "s"}
+            </Link>
+            <Link
+              href={`/dashboard/Admin/sessions/new?test_table=${testTable}&${onlineCases
+                .map((c) => `selectedCases=${encodeURIComponent(c.id)}`)
+                .join("&")}`}
+              className="px-4 py-2 rounded bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700"
+            >
+              Continue with the {onlineCases.length} online case
+              {onlineCases.length === 1 ? "" : "s"}
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <form action={handleCreate} className="space-y-8">
       <TimezoneInput />
@@ -336,6 +445,33 @@ export default async function NewSessionPage({
         <h1 className="text-2xl font-bold">Create Session</h1>
         <BackButton href="/dashboard/Admin" label="Back to Cases" />
       </div>
+
+      {/* WHAT KIND OF SESSION THIS IS — the payout and the venue both hang off
+          it, so it is stated before any times or participants are chosen. */}
+      {caseRows.length > 0 && (
+        <div
+          className={`rounded-lg border px-4 py-3 text-sm ${
+            sessionIsOffline
+              ? "border-green-200 bg-green-50 text-green-900"
+              : "border-blue-200 bg-blue-50 text-blue-900"
+          }`}
+        >
+          <span className="font-semibold">{deliveryModeLabel(sessionMode)} session.</span>{" "}
+          {sessionIsOffline ? (
+            <>
+              Participants attend at a venue and are paid{" "}
+              {formatCents(hourlyRateCents("offline"))}/hr. There is no waitlist, and candidates
+              are restricted to each case&apos;s county because they have to travel there. You
+              will send the address from the sessions page once the venue is booked.
+            </>
+          ) : (
+            <>
+              Participants join over Zoom and are paid {formatCents(hourlyRateCents("online"))}/hr.
+              You will send the Zoom link from the sessions page.
+            </>
+          )}
+        </div>
+      )}
 
       {/* DEBUG */}
       {/* <details open className="border border-yellow-300 bg-yellow-50 rounded p-3 text-xs">

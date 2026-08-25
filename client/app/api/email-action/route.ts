@@ -8,6 +8,8 @@ import {
   WAITLIST_HOLD_MINUTES,
   formatCents,
 } from "@/lib/participant/waitlist";
+import { isOffline } from "@/lib/case/deliveryMode";
+import { getSessionDeliveryModeOrDefault } from "@/lib/case/getSessionDeliveryMode";
 
 export const runtime = "nodejs";
 
@@ -43,7 +45,7 @@ export async function GET(req: NextRequest) {
   try {
     const { data: row, error } = await supabaseAdmin
       .from("session_participants")
-      .select("invite_status, participant_id")
+      .select("invite_status, participant_id, session_id")
       .eq("id", inviteId)
       .single();
 
@@ -93,7 +95,12 @@ export async function GET(req: NextRequest) {
     if (result && "waitlisted" in result && result.waitlisted) {
       return html(waitlistedPage(magicLink));
     }
-    return html(successPage(action, magicLink));
+    // What arrives next differs by format — an address to travel to, or a Zoom
+    // link. Looked up only on this path so a decline costs no extra query.
+    const offline =
+      action === "accepted" &&
+      isOffline(await getSessionDeliveryModeOrDefault(row.session_id));
+    return html(successPage(action, magicLink, offline));
   } catch (err) {
     console.error("[email-action] Error updating invite status:", err);
     return html(errorPage("Something Went Wrong", "We could not update your response. Please try again or contact support."), 500);
@@ -177,13 +184,20 @@ function page(title: string, content: string): string {
 </html>`;
 }
 
-function successPage(action: "accepted" | "declined", dashboardUrl: string): string {
+function successPage(
+  action: "accepted" | "declined",
+  dashboardUrl: string,
+  /** In-person sessions send an address, not a link — and require travel. */
+  offline = false,
+): string {
   const isAccepted = action === "accepted";
   const color = isAccepted ? "#2D6A3E" : "#C32130";
   const bgColor = isAccepted ? "#E3EFE6" : "#F9E9EA";
   const headline = isAccepted ? "You're In!" : "Invitation Declined";
   const message = isAccepted
-    ? "Thank you for accepting. We look forward to seeing you at the session. You will receive a Zoom link closer to the date."
+    ? offline
+      ? "Thank you for accepting. This session is held in person — we will email you the full address before the session date, so please plan your travel and bring your Texas driver&rsquo;s license, the same one on your profile."
+      : "Thank you for accepting. We look forward to seeing you at the session. You will receive a Zoom link closer to the date."
     : "We have recorded your response. Thank you for letting us know — we hope to see you at a future session.";
 
   return page(headline, `

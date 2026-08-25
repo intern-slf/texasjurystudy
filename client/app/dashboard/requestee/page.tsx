@@ -23,6 +23,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Calendar, Clock, AlertCircle, FileText, Upload, ArrowRight } from "lucide-react";
 import LocalDateTime from "@/components/LocalDateTime";
 import { TEXAS_COUNTIES } from "@/lib/constants/texas-counties";
+import {
+  deliveryModeLabel,
+  isOffline,
+  normalizeDeliveryMode,
+} from "@/lib/case/deliveryMode";
+import { baseRatePerHourCents, formatCents } from "@/lib/receipt-pricing";
 
 const TIMEFRAME_TO_DAYS: Record<string, number> = {
   "Within a Week": 7,
@@ -30,6 +36,15 @@ const TIMEFRAME_TO_DAYS: Record<string, number> = {
   "Within a Month": 30,
   "Within 3 Months": 90,
 };
+
+/**
+ * Whether this case is already attached to a session, which freezes its format.
+ * Reads the `session_cases (session_id)` rows joined onto the case query.
+ */
+function isCaseScheduled(c: Case): boolean {
+  const rows = c.session_cases as { session_id?: string | null }[] | null | undefined;
+  return Array.isArray(rows) && rows.length > 0;
+}
 
 // Define a proper interface for your case object to replace 'any'
 interface Case {
@@ -108,9 +123,13 @@ export default async function RequesteeDashboard({
   /* ===========================
       FETCH CASES (UPDATED QUERY)
       =========================== */
+  // `session_cases` rides along so the edit form knows whether the format is
+  // still changeable — once a case is scheduled its mode is frozen (a database
+  // trigger enforces it), because flipping it would move an in-flight session
+  // between price and payout regimes.
   let caseQuery = supabase
     .from("cases")
-    .select(`*, case_documents (id)`)
+    .select(`*, case_documents (id), session_cases (session_id)`)
     .eq("user_id", user.id)
     .order("created_at", { ascending: false });
 
@@ -205,6 +224,7 @@ export default async function RequesteeDashboard({
     const focusGroupType = formData.get("focus_group_type") as string;
     const caseType = formData.get("case_type") as string;
     const hoursRequested = formData.get("hours_requested") as string;
+    const deliveryMode = formData.get("delivery_mode") as string | null;
     const county = formData.get("county") as string;
     const participantsFromCounty = formData.get("participants_from_county") as string;
     const sessionCompletionTimeframe = formData.get("session_completion_timeframe") as string;
@@ -226,6 +246,23 @@ export default async function RequesteeDashboard({
       session_completion_timeframe: sessionCompletionTimeframe || null,
       preferred_day: preferredDay || null,
     };
+
+    // The format is only writable while the case is unscheduled — flipping it
+    // under a booked session would move it between price and payout regimes. The
+    // form omits the field once the case is in a session; this re-checks, so a
+    // replayed or hand-crafted POST is dropped here rather than surfacing the
+    // database trigger's rejection as a bare 500.
+    if (deliveryMode) {
+      const { data: scheduled } = await supabase
+        .from("session_cases")
+        .select("id")
+        .eq("case_id", caseId)
+        .limit(1);
+
+      if (!scheduled?.length) {
+        updatePayload.delivery_mode = normalizeDeliveryMode(deliveryMode);
+      }
+    }
 
     const days = TIMEFRAME_TO_DAYS[sessionCompletionTimeframe];
     if (days) {
@@ -357,6 +394,19 @@ export default async function RequesteeDashboard({
                             </CardDescription>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
+                          {/* Format is on the card, not buried in the edit
+                              panel — it is the single biggest driver of what
+                              this case costs. */}
+                          <Badge
+                            variant="outline"
+                            className={`font-medium ${
+                              isOffline(c.delivery_mode)
+                                ? "border-green-300 text-green-700 bg-green-50"
+                                : "border-blue-300 text-blue-700 bg-blue-50"
+                            }`}
+                          >
+                            {deliveryModeLabel(c.delivery_mode)}
+                          </Badge>
                           <CaseVideoGuide focusGroupType={c.focus_group_type as string | null | undefined} />
                           {c.admin_status === "rejected" ? (
                             <Badge variant="destructive" className="font-medium">
@@ -587,6 +637,45 @@ export default async function RequesteeDashboard({
                                         <option value="Opening Statement">Opening Statement</option>
                                         <option value="Other">Other</option>
                                     </select>
+                                </div>
+
+                                {/* FORMAT — editable only until the case is
+                                    scheduled. After that the session is built
+                                    around it: a venue or a Zoom link, and a
+                                    participant rate people have accepted on. */}
+                                <div className="space-y-2">
+                                    <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Format</label>
+                                    {isCaseScheduled(c) ? (
+                                        <>
+                                            <p className="flex h-10 w-full items-center rounded-md border border-input bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+                                                {deliveryModeLabel(c.delivery_mode)}
+                                                {isOffline(c.delivery_mode) ? " — venue to be confirmed" : " — over Zoom"}
+                                            </p>
+                                            <p className="text-xs text-muted-foreground">
+                                                Locked: this case is already scheduled into a session. Contact us if the
+                                                format needs to change.
+                                            </p>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <select
+                                                name="delivery_mode"
+                                                defaultValue={normalizeDeliveryMode(c.delivery_mode)}
+                                                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                            >
+                                                <option value="online">
+                                                    Online — {formatCents(baseRatePerHourCents("online"))}/hr
+                                                </option>
+                                                <option value="offline">
+                                                    In-Person — {formatCents(baseRatePerHourCents("offline"))}/hr
+                                                </option>
+                                            </select>
+                                            <p className="text-xs text-muted-foreground">
+                                                In-person focus groups are drawn from the county named below, since
+                                                participants have to travel to the venue.
+                                            </p>
+                                        </>
+                                    )}
                                 </div>
 
                                 <div className="space-y-2">

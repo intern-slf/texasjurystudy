@@ -14,9 +14,15 @@ import {
   WAITLIST_HOLD_MINUTES,
   isWaitlisted,
   formatCents,
+  hourlyRateCents,
   sessionLengthHours,
   seatPayoutCents,
 } from "@/lib/participant/waitlist";
+import {
+  deliveryModeLabel,
+  isOffline,
+  sessionDeliveryModeOrDefault,
+} from "@/lib/case/deliveryMode";
 
 export default async function ParticipantSessionsPage({
   searchParams,
@@ -55,7 +61,7 @@ export default async function ParticipantSessionsPage({
   // Zoom link, and would otherwise see nothing here at all.
   const { data: acceptedInvites } = await supabaseAdmin
     .from("session_participants")
-    .select("id, session_id, invite_status, sessions(session_date, zoom_link, session_cases(start_time, end_time, cases(title)))")
+    .select("id, session_id, invite_status, sessions(session_date, zoom_link, location, session_cases(start_time, end_time, cases(title, delivery_mode)))")
     .eq("participant_id", participant.user_id)
     .in("invite_status", ["accepted", WAITLISTED_STATUS]);
 
@@ -72,13 +78,25 @@ export default async function ParticipantSessionsPage({
   type SessionCaseRow = {
     start_time?: string | null;
     end_time?: string | null;
-    cases?: { title?: string | null } | { title?: string | null }[] | null;
+    cases?: CaseRow | CaseRow[] | null;
   };
+  type CaseRow = { title?: string | null; delivery_mode?: string | null };
   type SessionRow = {
     session_date?: string | null;
     zoom_link?: string | null;
+    /** Street address of an in-person session; the offline twin of zoom_link. */
+    location?: string | null;
     session_cases?: SessionCaseRow[] | null;
   };
+
+  /** The one mode shared by a session's cases — see lib/case/deliveryMode. */
+  const modeOf = (sessionCases: SessionCaseRow[]) =>
+    sessionDeliveryModeOrDefault(
+      sessionCases.map((c) => {
+        const detail = Array.isArray(c.cases) ? c.cases[0] : c.cases;
+        return detail?.delivery_mode ?? null;
+      }),
+    );
 
   const sessions = (acceptedInvites ?? [])
     .flatMap((inv) => {
@@ -100,7 +118,9 @@ export default async function ParticipantSessionsPage({
         })
         .filter(Boolean) as string[];
 
+      const deliveryMode = modeOf(sessionCases);
       const zoomLink: string | null = session?.zoom_link ?? null;
+      const location: string | null = session?.location ?? null;
 
       return [{
         sessionId: inv.session_id,
@@ -110,7 +130,9 @@ export default async function ParticipantSessionsPage({
         }),
         timeRange,
         caseTitles,
+        deliveryMode,
         zoomLink,
+        location,
         waitlisted: isWaitlisted(inv.invite_status),
         isPast: new Date(date) < today,
       }];
@@ -239,6 +261,20 @@ export default async function ParticipantSessionsPage({
                   <div>
                     <p className="font-semibold text-base text-amber-900">{displayDate}</p>
                     <p className="text-sm mt-0.5 text-amber-700">{timeRange}</p>
+                    {/* Accepting an in-person session commits them to a
+                        journey. Stated before the Accept button, not only in
+                        the invitation email. */}
+                    {(() => {
+                      const mode = modeOf(sessionCases);
+                      return (
+                        <p className="mt-1 text-xs text-amber-800">
+                          <span className="font-semibold">{deliveryModeLabel(mode)}</span>
+                          {isOffline(mode)
+                            ? ` — you attend at a venue, paid ${formatCents(hourlyRateCents(mode))}/hr. Address sent after you accept.`
+                            : ` — you join over Zoom, paid ${formatCents(hourlyRateCents(mode))}/hr.`}
+                        </p>
+                      );
+                    })()}
                   </div>
                   <span className="shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-600 text-white">
                     Pending
@@ -384,33 +420,80 @@ function SessionCard({
     displayDate: string;
     timeRange: string;
     caseTitles: string[];
+    deliveryMode?: string | null;
     zoomLink?: string | null;
+    /** Street address, for an in-person session. */
+    location?: string | null;
     /** Holding a reserve slot rather than a confirmed seat. */
     waitlisted?: boolean;
   };
   isPast?: boolean;
 }) {
   const waitlisted = Boolean(session.waitlisted);
+  const offline = isOffline(session.deliveryMode);
   return (
     <div
       className={`border rounded-xl p-5 space-y-3 ${
         isPast
           ? "border-slate-200 bg-slate-50 opacity-75"
+          : offline
+          ? "border-green-200 bg-green-50"
           : "border-blue-200 bg-blue-50"
       }`}
     >
       {/* Header row */}
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className={`font-semibold text-base ${isPast ? "text-slate-600" : "text-blue-900"}`}>
+          <p
+            className={`font-semibold text-base ${
+              isPast ? "text-slate-600" : offline ? "text-green-900" : "text-blue-900"
+            }`}
+          >
             {session.displayDate}
           </p>
-          <p className={`text-sm mt-0.5 ${isPast ? "text-slate-500" : "text-blue-700"}`}>
+          <p
+            className={`text-sm mt-0.5 ${
+              isPast ? "text-slate-500" : offline ? "text-green-700" : "text-blue-700"
+            }`}
+          >
             {session.timeRange}
           </p>
 
-          {/* Zoom link — only for upcoming sessions that have a link */}
-          {!isPast && session.zoomLink && (
+          {/* How to attend. An in-person session shows the address; an online
+              one the Zoom link. Never both — they are mutually exclusive, and
+              showing a stale Zoom link on an in-person session is how someone
+              ends up at their desk instead of at the venue. */}
+          {!isPast && offline && session.location && (
+            <div className="mt-2">
+              <p className="text-xs font-bold uppercase tracking-wide text-green-700">Where</p>
+              <p className="text-sm font-semibold text-green-900 whitespace-pre-line">
+                {session.location}
+              </p>
+              <a
+                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(session.location)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 mt-2 px-3 py-1.5 rounded-lg bg-green-600 text-white text-xs font-semibold hover:bg-green-700 transition-colors"
+              >
+                <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M12 21s7-5.686 7-11a7 7 0 1 0-14 0c0 5.314 7 11 7 11Z" fill="white" />
+                  <circle cx="12" cy="10" r="2.6" fill="#16a34a" />
+                </svg>
+                Get Directions
+              </a>
+              <p className="mt-2 text-xs text-green-800">
+                Arrive 15 minutes early and bring your Texas driver&apos;s license — the same one
+                on your profile.
+              </p>
+            </div>
+          )}
+          {!isPast && offline && !session.location && (
+            <p className="mt-2 text-xs text-green-800">
+              This session is <strong>in person</strong>. We will email you the address before the
+              session date.
+            </p>
+          )}
+          {!isPast && !offline && session.zoomLink && (
             <a
               href={session.zoomLink}
               target="_blank"
@@ -426,17 +509,30 @@ function SessionCard({
             </a>
           )}
         </div>
-        <span
-          className={`shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full ${
-            isPast
-              ? "bg-slate-200 text-slate-600"
-              : waitlisted
-              ? "bg-amber-500 text-white"
-              : "bg-blue-600 text-white"
-          }`}
-        >
-          {isPast ? "Completed" : waitlisted ? "Waitlisted" : "Confirmed"}
-        </span>
+        <div className="flex shrink-0 flex-col items-end gap-1.5">
+          <span
+            className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
+              isPast
+                ? "bg-slate-200 text-slate-600"
+                : waitlisted
+                ? "bg-amber-500 text-white"
+                : offline
+                ? "bg-green-600 text-white"
+                : "bg-blue-600 text-white"
+            }`}
+          >
+            {isPast ? "Completed" : waitlisted ? "Waitlisted" : "Confirmed"}
+          </span>
+          <span
+            className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full border ${
+              offline
+                ? "text-green-700 bg-white border-green-300"
+                : "text-blue-700 bg-white border-blue-300"
+            }`}
+          >
+            {deliveryModeLabel(session.deliveryMode)}
+          </span>
+        </div>
       </div>
 
       {/* A waitlister holds a reserve slot, so the rules and the two possible

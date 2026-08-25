@@ -275,7 +275,9 @@ export async function sendSessionCreatedEmail(
   caseTitles: string[],
   sessionDate: string,
   timeStr: string,
-  participantCount: number
+  participantCount: number,
+  /** Set for an in-person session so the requestee knows to travel. */
+  offline = false,
 ) {
   const caseListHtml = caseTitles
     .map((t) => `<li style="margin:4px 0;font-size:15px;font-weight:600;color:#1e3a8a;">${t}</li>`)
@@ -310,12 +312,29 @@ export async function sendSessionCreatedEmail(
         </td>
       </tr>
       <tr>
-        <td style="padding:12px 20px;">
+        <td style="padding:12px 20px;border-bottom:1px solid #e2e8f0;">
           <p style="margin:0 0 2px;font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.08em;">Participants Invited</p>
           <p style="margin:0;font-size:15px;font-weight:600;color:#1e293b;">${participantCount}</p>
         </td>
       </tr>
+      <tr>
+        <td style="padding:12px 20px;">
+          <p style="margin:0 0 2px;font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.08em;">Format</p>
+          <p style="margin:0;font-size:15px;font-weight:600;color:#1e293b;">${offline ? "In-Person" : "Online (Zoom)"}</p>
+        </td>
+      </tr>
     </table>
+
+    ${offline ? `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f0fdf4;border-left:4px solid #16a34a;border-radius:6px;margin:0 0 24px;">
+      <tr>
+        <td style="padding:14px 20px;">
+          <p style="margin:0;font-size:14px;color:#166534;">
+            This is an <strong>in-person</strong> focus group. We will send you the venue address before the session date.
+          </p>
+        </td>
+      </tr>
+    </table>` : ''}
 
     <table role="presentation" cellpadding="0" cellspacing="0">
       <tr>
@@ -441,6 +460,8 @@ export async function sendPresenceConfirmedEmail(
   firstName: string,
   sessionDate: string,
   timeStr: string,
+  /** In-person sessions require travel, so say so rather than implying Zoom. */
+  offline = false,
 ) {
   const html = emailWrapper(`
     <h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#15803d;">Presence Confirmed</h2>
@@ -465,6 +486,17 @@ export async function sendPresenceConfirmedEmail(
         </td>
       </tr>
     </table>
+
+    ${offline ? `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f0fdf4;border-left:4px solid #16a34a;border-radius:6px;margin:0 0 24px;">
+      <tr>
+        <td style="padding:14px 20px;">
+          <p style="margin:0;font-size:14px;color:#166534;">
+            This session is held <strong>in person</strong>. We will send you the full address before the session date — please plan your travel and bring your <strong>Texas driver&rsquo;s license</strong>, the same one on your profile.
+          </p>
+        </td>
+      </tr>
+    </table>` : ''}
 
     <p style="margin:0 0 28px;font-size:14px;color:#64748b;">
       We look forward to seeing you. If you have any questions, please feel free to contact us.
@@ -581,6 +613,8 @@ export async function sendInviteAcceptedConfirmationEmail(
   to: string,
   sessionDate: string,
   timeStr: string,
+  /** In-person sessions promise an address, not a meeting link. */
+  offline = false,
 ) {
   const html = emailWrapper(`
     <h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#15803d;">Thank You for Accepting!</h2>
@@ -606,6 +640,19 @@ export async function sendInviteAcceptedConfirmationEmail(
       </tr>
     </table>
 
+    ${offline ? `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f0fdf4;border-left:4px solid #16a34a;border-radius:6px;margin:0 0 28px;">
+      <tr>
+        <td style="padding:14px 20px;">
+          <p style="margin:0 0 6px;font-size:14px;color:#166534;">
+            This is an <strong>in-person session</strong> — you will be attending in a room, not over Zoom.
+          </p>
+          <p style="margin:0;font-size:14px;color:#166534;">
+            We will send you the <strong>full address</strong> before the session. Please keep an eye on your inbox closer to the date and plan your travel.
+          </p>
+        </td>
+      </tr>
+    </table>` : `
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#eff6ff;border-left:4px solid #2563eb;border-radius:6px;margin:0 0 28px;">
       <tr>
         <td style="padding:14px 20px;">
@@ -614,7 +661,7 @@ export async function sendInviteAcceptedConfirmationEmail(
           </p>
         </td>
       </tr>
-    </table>
+    </table>`}
 
     <table role="presentation" cellpadding="0" cellspacing="0">
       <tr>
@@ -837,6 +884,111 @@ export async function sendZoomLinkEmail(
   await sendEmail({
     to,
     subject: `Zoom Link for Your Session on ${sessionDate} | Texas Jury Study`,
+    html,
+  });
+}
+
+/* =========================
+   IN-PERSON SESSION EMAILS
+
+   The offline counterparts to the Zoom templates. Deliberately separate rather
+   than a branch inside them: almost every instruction differs. There is no link
+   to click, no camera to test, and no waiting room — instead there is an address
+   to travel to, a time to arrive by, and a Texas driver's license to bring —
+   the same one already on their profile, which is what check-in matches against.
+   Mixing the two into
+   one template is how someone ends up being told to test their microphone before
+   driving to a conference room.
+========================= */
+
+/** Google Maps deep link built from the address — no extra column to maintain. */
+function mapsUrl(location: string): string {
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location)}`;
+}
+
+/** Address block shared by the participant and requestee in-person templates. */
+function locationCard(location: string, sessionDate: string, timeStr?: string): string {
+  return `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f0fdf4;border-left:4px solid #16a34a;border-radius:6px;margin:0 0 24px;">
+      <tr>
+        <td style="padding:16px 20px;border-bottom:1px solid #bbf7d0;">
+          <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#166534;text-transform:uppercase;letter-spacing:0.08em;">Where</p>
+          <p style="margin:0;font-size:16px;font-weight:700;color:#15803d;white-space:pre-line;">${escHtml(location)}</p>
+        </td>
+      </tr>
+      <tr>
+        <td style="padding:16px 20px;${timeStr ? "border-bottom:1px solid #bbf7d0;" : ""}">
+          <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#166534;text-transform:uppercase;letter-spacing:0.08em;">Session Date</p>
+          <p style="margin:0;font-size:16px;font-weight:700;color:#15803d;">${sessionDate}</p>
+        </td>
+      </tr>
+      ${timeStr ? `
+      <tr>
+        <td style="padding:16px 20px;">
+          <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#166534;text-transform:uppercase;letter-spacing:0.08em;">Session Time</p>
+          <p style="margin:0;font-size:16px;font-weight:700;color:#15803d;">${timeStr}</p>
+        </td>
+      </tr>` : ''}
+    </table>`;
+}
+
+/**
+ * The in-person counterpart to `sendZoomLinkEmail`: an address instead of a
+ * link, sent to everyone holding a seat on an offline session.
+ */
+export async function sendSessionLocationEmail(
+  to: string,
+  firstName: string,
+  sessionDate: string,
+  location: string,
+  timeStr?: string,
+  hourlyRate?: string,
+) {
+  const html = emailWrapper(`
+    <h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#15803d;">Your Session Location</h2>
+    <p style="margin:0 0 20px;font-size:15px;color:#475569;">
+      Hi ${escHtml(firstName)}, your Texas Jury Study session on <strong>${sessionDate}</strong> is being held <strong>in person</strong>. The address is below — please plan your travel now.
+    </p>
+
+    ${locationCard(location, sessionDate, timeStr)}
+
+    <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 24px;">
+      <tr>
+        <td style="border-radius:6px;background-color:#16a34a;">
+          <a href="${mapsUrl(location)}"
+             style="display:inline-block;padding:14px 32px;font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:6px;">
+            Get Directions
+          </a>
+        </td>
+      </tr>
+    </table>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#fef9c3;border-left:4px solid #ca8a04;border-radius:6px;margin:0 0 8px;">
+      <tr>
+        <td style="padding:16px 20px;">
+          <p style="margin:0 0 8px;font-size:11px;font-weight:700;color:#854d0e;text-transform:uppercase;letter-spacing:0.08em;">Required to Participate &amp; Get Paid</p>
+          <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 10px;">
+            <tr><td style="padding:0 0 6px;font-size:14px;color:#854d0e;">&bull;&nbsp; Arrive <strong>15 minutes early</strong> so check-in does not delay the session</td></tr>
+            <tr><td style="padding:0 0 6px;font-size:14px;color:#854d0e;">&bull;&nbsp; Bring your <strong>Texas driver&rsquo;s license</strong> &mdash; the same one on your profile. We check it against your profile at the door.</td></tr>
+            <tr><td style="padding:0 0 6px;font-size:14px;color:#854d0e;">&bull;&nbsp; Stay for the <strong>entire session</strong> — payment covers the full scheduled length</td></tr>
+            <tr><td style="padding:0;font-size:14px;color:#854d0e;">&bull;&nbsp; If something changes and you cannot attend, tell us <strong>as early as you can</strong></td></tr>
+          </table>
+          <p style="margin:0;font-size:14px;font-weight:700;color:#854d0e;">
+            Seats are held for you by name. Arriving late or not at all means you cannot take part and will not be paid.
+          </p>
+        </td>
+      </tr>
+    </table>
+
+    ${hourlyRate ? `
+    <p style="margin:16px 0 0;font-size:13px;color:#64748b;">
+      In-person sessions are paid <strong>${hourlyRate} per hour</strong> for the full scheduled session length.
+    </p>` : ''}
+  `);
+
+  await sendEmail({
+    to,
+    subject: `Location for Your In-Person Session on ${sessionDate} | Texas Jury Study`,
     html,
   });
 }
@@ -1153,9 +1305,35 @@ export async function sendPresenterInfoEmail(
   zoomLink: string | null,
   cases: PresenterCaseInfo[],
   participants: PresenterParticipantInfo[],
+  /**
+   * Set for an in-person session, in which case it replaces the Zoom block
+   * entirely — an offline session has an address and no link, and showing a
+   * "no Zoom link yet" warning for one would read as a missing step.
+   */
+  offline?: { location: string | null },
 ) {
-  // Zoom section
-  const zoomHtml = zoomLink
+  // How the requestee gets to their own session: a Zoom link, or an address.
+  const zoomHtml = offline
+    ? offline.location
+      ? `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f0fdf4;border-left:4px solid #16a34a;border-radius:6px;margin:0 0 24px;">
+      <tr>
+        <td style="padding:16px 20px;">
+          <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#166534;text-transform:uppercase;letter-spacing:0.08em;">In-Person Location</p>
+          <p style="margin:0 0 8px;font-size:15px;font-weight:600;color:#15803d;white-space:pre-line;">${escHtml(offline.location)}</p>
+          <a href="${mapsUrl(offline.location)}" style="font-size:14px;font-weight:600;color:#15803d;">Get Directions →</a>
+        </td>
+      </tr>
+    </table>`
+      : `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#fef9c3;border-left:4px solid #ca8a04;border-radius:6px;margin:0 0 24px;">
+      <tr>
+        <td style="padding:16px 20px;">
+          <p style="margin:0;font-size:14px;color:#854d0e;">This is an <strong>in-person</strong> session. The location has not been set yet.</p>
+        </td>
+      </tr>
+    </table>`
+    : zoomLink
     ? `
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#eff6ff;border-left:4px solid #2563eb;border-radius:6px;margin:0 0 24px;">
       <tr>

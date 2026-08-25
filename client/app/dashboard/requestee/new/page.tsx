@@ -7,6 +7,11 @@ import RequesteeSidebar from "@/components/RequesteeSidebar";
 import BackButton from "@/components/BackButton";
 import CaseDocumentUploader from "@/components/CaseDocumentUploader";
 import ReceiptPricingPreview from "@/components/ReceiptPricingPreview";
+import {
+  DEFAULT_DELIVERY_MODE,
+  normalizeDeliveryMode,
+} from "@/lib/case/deliveryMode";
+import { baseRatePerHourCents, formatCents } from "@/lib/receipt-pricing";
 import { TEXAS_COUNTIES } from "@/lib/constants/texas-counties";
 import { CaseFilters } from "@/lib/filter-utils";
 import { ChevronDown, ChevronUp, Play } from "lucide-react";
@@ -130,6 +135,9 @@ export default function NewCasePage() {
     case_type: "",
     hours_requested: "1",
     focus_group_type: "",
+    // Online unless the requestee says otherwise — the column default, and what
+    // every case before this feature is.
+    delivery_mode: DEFAULT_DELIVERY_MODE as string,
     county: "",
     participants_from_county: "",
 
@@ -198,6 +206,7 @@ export default function NewCasePage() {
             case_type: data.case_type || "",
             hours_requested: data.hours_requested ? String(data.hours_requested) : "",
             focus_group_type: data.focus_group_type || "",
+            delivery_mode: normalizeDeliveryMode(data.delivery_mode),
             county: data.county || "",
             participants_from_county: data.participants_from_county || "",
 
@@ -277,6 +286,7 @@ export default function NewCasePage() {
         case_type: form.case_type || null,
         hours_requested: form.hours_requested ? Number(form.hours_requested) : null,
         focus_group_type: form.focus_group_type || null,
+        delivery_mode: normalizeDeliveryMode(form.delivery_mode),
         county: form.county || null,
         participants_from_county: form.participants_from_county || null,
 
@@ -414,6 +424,55 @@ export default function NewCasePage() {
                   <option value="Opening Statement">Opening Statement</option>
                   <option value="Other">Other</option>
                 </select>
+              </div>
+
+              {/* FORMAT — drives the whole quote, so the rate is on the option
+                  itself rather than only in the receipt further down. */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Format</label>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {([
+                    {
+                      value: "online",
+                      title: "Online",
+                      blurb: "Run over Zoom. Participants join from home.",
+                    },
+                    {
+                      value: "offline",
+                      title: "In-Person",
+                      blurb: "Run in a room. Participants attend from your county.",
+                    },
+                  ] as const).map((opt) => {
+                    const selected = form.delivery_mode === opt.value;
+                    return (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => setForm({ ...form, delivery_mode: opt.value })}
+                        className={`text-left rounded-xl border p-4 transition-all ${
+                          selected
+                            ? "border-primary ring-2 ring-primary/30 bg-primary/5"
+                            : "border-input hover:border-primary/40"
+                        }`}
+                      >
+                        <div className="flex items-baseline justify-between gap-2">
+                          <span className="font-semibold text-sm">{opt.title}</span>
+                          <span className="text-xs font-bold text-primary">
+                            {formatCents(baseRatePerHourCents(opt.value))}/hr
+                          </span>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1">{opt.blurb}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+                {form.delivery_mode === "offline" && (
+                  <p className="text-xs text-muted-foreground">
+                    In-person focus groups are drawn from the county you name below, since
+                    participants have to travel to the venue. We will confirm the location with
+                    you before the session.
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2 relative" ref={countyRef}>
@@ -662,6 +721,7 @@ export default function NewCasePage() {
             {/* TRANSCRIPT PRICING PREVIEW */}
             <ReceiptPricingPreview
               hoursRequested={form.hours_requested ? Number(form.hours_requested) : 1}
+              deliveryMode={form.delivery_mode}
               filters={{
                 gender: filters.gender,
                 race: filters.race,

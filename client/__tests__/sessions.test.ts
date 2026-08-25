@@ -147,6 +147,7 @@ const sendInviteAcceptedConfirmationEmailSpy = vi.fn(async () => undefined);
 const sendInviteDeclinedConfirmationEmailSpy = vi.fn(async () => undefined);
 const sendSessionFullEmailSpy = vi.fn(async () => undefined);
 const sendZoomLinkEmailSpy = vi.fn(async () => undefined);
+const sendSessionLocationEmailSpy = vi.fn(async () => undefined);
 const sendWaitlistConfirmationEmailSpy = vi.fn(async () => undefined);
 const sendWaitlistZoomLinkEmailSpy = vi.fn(async () => undefined);
 const sendWaitlistCalledInEmailSpy = vi.fn(async () => undefined);
@@ -161,6 +162,8 @@ vi.mock("@/lib/mail", () => ({
   sendPresenceDeclinedEmail: vi.fn(async () => undefined),
   sendZoomLinkEmail: (...args: unknown[]) =>
     sendZoomLinkEmailSpy(...(args as [])),
+  sendSessionLocationEmail: (...args: unknown[]) =>
+    sendSessionLocationEmailSpy(...(args as [])),
   sendPresenterInfoEmail: vi.fn(async () => undefined),
   sendInviteAcceptedConfirmationEmail: (...args: unknown[]) =>
     sendInviteAcceptedConfirmationEmailSpy(...(args as [])),
@@ -205,6 +208,7 @@ describe("Sessions", () => {
     sendInviteDeclinedConfirmationEmailSpy.mockClear();
     sendSessionFullEmailSpy.mockClear();
     sendZoomLinkEmailSpy.mockClear();
+    sendSessionLocationEmailSpy.mockClear();
     sendWaitlistConfirmationEmailSpy.mockClear();
     sendWaitlistZoomLinkEmailSpy.mockClear();
     sendWaitlistCalledInEmailSpy.mockClear();
@@ -270,8 +274,34 @@ describe("Sessions", () => {
       { caseId: "case-C", start: "13:00", end: "14:00" },
     ];
 
+    /**
+     * The delivery-mode guard runs before the insert — a session may not mix
+     * in-person and online cases. Two reads: the incoming cases' modes, then
+     * whatever is already attached to the session. Everything online unless a
+     * test says otherwise, which is what every pre-existing case is.
+     */
+    const modeGuard = (
+      opts: { incoming?: string[]; attached?: string[] } = {}
+    ) => [
+      {
+        data: (opts.incoming ?? ["online", "online", "online"]).map((m, i) => ({
+          id: `case-${String.fromCharCode(65 + i)}`,
+          delivery_mode: m,
+        })),
+        error: null,
+      },
+      {
+        data: (opts.attached ?? []).map((m, i) => ({
+          case_id: `attached-${i}`,
+          cases: { delivery_mode: m },
+        })),
+        error: null,
+      },
+    ];
+
     it("Creates one row per case", async () => {
       state.responses = [
+        ...modeGuard(),
         { error: null }, // session_cases insert
         // select cases.in
         {
@@ -289,7 +319,11 @@ describe("Sessions", () => {
 
       await addCasesToSession("session-1", cases, "2026-06-15", "UTC");
 
-      const sc = state.captured.find((x) => x.table === "session_cases")!;
+      // `find` by table alone would now land on the delivery-mode guard's
+      // read of session_cases, which has no insert op.
+      const sc = state.captured.find(
+        (x) => x.table === "session_cases" && x.ops.some((o) => o.op === "insert")
+      )!;
       const insert = sc.ops.find((o) => o.op === "insert") as {
         op: "insert";
         payload: unknown;
@@ -301,6 +335,7 @@ describe("Sessions", () => {
     it("Correct UTC time conversion", async () => {
       // For tz=UTC the conversion is identity — assertions stay deterministic.
       state.responses = [
+        ...modeGuard(),
         { error: null },
         {
           data: [
@@ -317,7 +352,9 @@ describe("Sessions", () => {
 
       await addCasesToSession("session-1", cases, "2026-06-15", "UTC");
 
-      const sc = state.captured.find((x) => x.table === "session_cases")!;
+      const sc = state.captured.find(
+        (x) => x.table === "session_cases" && x.ops.some((o) => o.op === "insert")
+      )!;
       const insert = sc.ops.find((o) => o.op === "insert") as {
         op: "insert";
         payload: Array<{ start_time: string; end_time: string }>;
@@ -335,6 +372,7 @@ describe("Sessions", () => {
 
     it("Updates each case's admin_scheduled_at", async () => {
       state.responses = [
+        ...modeGuard(),
         { error: null },
         {
           data: [
@@ -373,6 +411,155 @@ describe("Sessions", () => {
         expect.arrayContaining(["case-A", "case-B", "case-C"])
       );
     });
+
+    /* ---------------------------------------------------------------------
+       DELIVERY MODE — a session holds in-person cases or online cases, never
+       both. Rejected here as well as by a database trigger, and rejected
+       BEFORE the insert so a refused attach leaves nothing behind.
+    --------------------------------------------------------------------- */
+
+    it("Attaching all-offline cases is fine", async () => {
+      state.responses = [
+        ...modeGuard({ incoming: ["offline", "offline", "offline"] }),
+        { error: null },
+        { data: [], error: null },
+      ];
+
+      await addCasesToSession("session-1", cases, "2026-06-15", "UTC");
+
+      const sc = state.captured.find(
+        (x) => x.table === "session_cases" && x.ops.some((o) => o.op === "insert")
+      );
+      expect(sc).toBeDefined();
+    });
+
+    it("Refuses a selection that mixes in-person and online cases", async () => {
+      state.responses = [
+        ...modeGuard({ incoming: ["offline", "online", "online"] }),
+      ];
+
+      await expect(
+        addCasesToSession("session-1", cases, "2026-06-15", "UTC")
+      ).rejects.toThrow(/cannot hold both in-person and online/i);
+
+      // Nothing was written — the guard runs before the insert.
+      const inserted = state.captured.find(
+        (x) => x.table === "session_cases" && x.ops.some((o) => o.op === "insert")
+      );
+      expect(inserted).toBeUndefined();
+    });
+
+    it("Refuses an online case joining a session that already holds in-person ones", async () => {
+      state.responses = [
+        ...modeGuard({ incoming: ["online", "online", "online"], attached: ["offline"] }),
+      ];
+
+      await expect(
+        addCasesToSession("session-1", cases, "2026-06-15", "UTC")
+      ).rejects.toThrow(/cannot hold both in-person and online/i);
+
+      const inserted = state.captured.find(
+        (x) => x.table === "session_cases" && x.ops.some((o) => o.op === "insert")
+      );
+      expect(inserted).toBeUndefined();
+    });
+
+    it("An in-person case may join a session that already holds in-person ones", async () => {
+      state.responses = [
+        ...modeGuard({ incoming: ["offline", "offline", "offline"], attached: ["offline"] }),
+        { error: null },
+        { data: [], error: null },
+      ];
+
+      await addCasesToSession("session-1", cases, "2026-06-15", "UTC");
+
+      const sc = state.captured.find(
+        (x) => x.table === "session_cases" && x.ops.some((o) => o.op === "insert")
+      );
+      expect(sc).toBeDefined();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // replace-case-in-session.test.ts — real replaceCaseInSession
+  // -------------------------------------------------------------------------
+  describe("replace-case-in-session.test.ts", () => {
+    let replaceCaseInSession: (typeof import("@/lib/actions/session"))["replaceCaseInSession"];
+    beforeAll(async () => {
+      ({ replaceCaseInSession } = await import("@/lib/actions/session"));
+    });
+
+    /** The two reads the delivery-mode guard makes: incoming case, then attached. */
+    const replaceGuard = (incoming: string, attached: string[]) => [
+      { data: [{ id: "case-new", delivery_mode: incoming }], error: null },
+      {
+        data: attached.map((m, i) => ({
+          case_id: i === 0 ? "case-old" : `case-other-${i}`,
+          cases: { delivery_mode: m },
+        })),
+        error: null,
+      },
+    ];
+
+    it("Swaps in a case of the same format", async () => {
+      state.responses = [
+        ...replaceGuard("offline", ["offline"]),
+        { error: null }, // delete old session_cases row
+        { error: null }, // reset old case
+        { error: null }, // insert new session_cases row
+        { error: null }, // set admin_scheduled_at
+        { data: { user_id: "requestee-1" }, error: null },
+      ];
+
+      await replaceCaseInSession(
+        "session-1", "case-old", "case-new", "14:00:00", "15:00:00", "2026-06-15",
+      );
+
+      const deleted = state.captured.find(
+        (x) => x.table === "session_cases" && x.ops.some((o) => o.op === "delete")
+      );
+      expect(deleted).toBeDefined();
+    });
+
+    it("Refuses a replacement of the other format", async () => {
+      state.responses = [...replaceGuard("online", ["offline", "offline"])];
+
+      await expect(
+        replaceCaseInSession(
+          "session-1", "case-old", "case-new", "14:00:00", "15:00:00", "2026-06-15",
+        )
+      ).rejects.toThrow(/cannot hold both in-person and online/i);
+
+      // The guard runs before the delete, so the session is untouched — a
+      // rejected swap must not leave it half-emptied.
+      const touched = state.captured.find(
+        (x) =>
+          x.table === "session_cases" &&
+          x.ops.some((o) => o.op === "delete" || o.op === "insert")
+      );
+      expect(touched).toBeUndefined();
+    });
+
+    it("Refuses to flip the format of a session by replacing its ONLY case", async () => {
+      // The hole this closes: with only one case attached, excluding the
+      // outgoing case from the comparison would leave nothing to compare
+      // against, and an online case would slide into an in-person session whose
+      // participants already accepted at $100/hr and were sent an address.
+      state.responses = [...replaceGuard("online", ["offline"])];
+
+      await expect(
+        replaceCaseInSession(
+          "session-1", "case-old", "case-new", "14:00:00", "15:00:00", "2026-06-15",
+        )
+      ).rejects.toThrow(/cannot hold both in-person and online/i);
+
+      const touched = state.captured.find(
+        (x) =>
+          x.table === "session_cases" &&
+          x.ops.some((o) => o.op === "delete" || o.op === "insert")
+      );
+      expect(touched).toBeUndefined();
+    });
   });
 
   // -------------------------------------------------------------------------
@@ -384,7 +571,10 @@ describe("Sessions", () => {
       ({ inviteParticipants } = await import("@/lib/actions/session"));
     });
 
-    function queueInviteResponses(insertedIds: string[]) {
+    function queueInviteResponses(
+      insertedIds: string[],
+      deliveryMode: "online" | "offline" = "online",
+    ) {
       state.responses = [
         // 1. blacklist guard — roles.select().eq("role","blacklisted").in(ids) → none
         { data: [], error: null },
@@ -411,6 +601,13 @@ describe("Sessions", () => {
         // 4. .from("session_cases").select(...).eq() — used to format email time
         {
           data: [{ start_time: "14:00:00", end_time: "15:00:00" }],
+          error: null,
+        },
+        // 5. .from("session_cases").select("cases(delivery_mode)").eq() — the
+        //    session's format, which decides the rate quoted in the invite, the
+        //    JSON-LD location, and whether a waitlist is mentioned at all.
+        {
+          data: [{ cases: { delivery_mode: deliveryMode } }],
           error: null,
         },
       ];
@@ -485,6 +682,39 @@ describe("Sessions", () => {
         "p-2@example.com",
         "p-3@example.com",
       ]);
+    });
+
+    it("An online invite quotes $30/hr, says Zoom, and mentions the waitlist", async () => {
+      queueInviteResponses(["p-1"], "online");
+      state.participantEmails.set("p-1", "p-1@example.com");
+
+      await inviteParticipants("session-1", ["p-1"], "2026-06-15");
+
+      const { html } = sendEmailSpy.mock.calls[0][0];
+      expect(html).toContain("$30.00 per hour");
+      expect(html).toContain("Remote (Secure Zoom)");
+      expect(html).toMatch(/join over Zoom/i);
+      expect(html).toMatch(/waitlist spot/i);
+    });
+
+    it("An in-person invite quotes $100/hr, warns about travel, and promises no waitlist", async () => {
+      queueInviteResponses(["p-1"], "offline");
+      state.participantEmails.set("p-1", "p-1@example.com");
+
+      await inviteParticipants("session-1", ["p-1"], "2026-06-15");
+
+      const { html } = sendEmailSpy.mock.calls[0][0];
+      expect(html).toContain("$100.00 per hour");
+      expect(html).toMatch(/held in person/i);
+      expect(html).toMatch(/travel to the venue/i);
+      // Specifically a Texas driver's license, not any photo ID — it is the
+      // document already on their profile, and check-in matches the two.
+      expect(html).toMatch(/Texas driver(&rsquo;|&#8217;|')s license/i);
+      // The calendar entry must not claim the session is online.
+      expect(html).not.toContain("Remote (Secure Zoom)");
+      // And it must not dangle a waitlist that does not exist for this format.
+      expect(html).toMatch(/no waitlist for in-person sessions/i);
+      expect(html).not.toMatch(/waitlist spot/i);
     });
 
     it("Drops blacklisted invitees (roles + blacklisted_at) and only invites the rest", async () => {
@@ -804,15 +1034,30 @@ describe("Sessions", () => {
     ];
 
     /**
-     * getSessionOccupancy, which runs next: the caps row, then the accepted
-     * count, then the waitlist count. Defaults leave both seats and waitlist
-     * wide open.
+     * getSessionOccupancy, which runs next: the caps row, then the session's
+     * delivery mode (read off its cases), then the accepted count, then the
+     * waitlist count. Defaults are an online session with both seats and
+     * waitlist wide open.
+     *
+     * `deliveryMode: "offline"` forces the waitlist cap to 0 no matter what
+     * `waitlistCap` says — that is the point of it, so the two are deliberately
+     * separate knobs here.
      */
     const occupancy = (
-      opts: { cap?: number; waitlistCap?: number; accepted?: number; waitlisted?: number } = {}
+      opts: {
+        cap?: number;
+        waitlistCap?: number;
+        accepted?: number;
+        waitlisted?: number;
+        deliveryMode?: "online" | "offline";
+      } = {}
     ) => [
       {
         data: { participant_cap: opts.cap ?? 10, waitlist_cap: opts.waitlistCap ?? 2 },
+        error: null,
+      },
+      {
+        data: [{ cases: { delivery_mode: opts.deliveryMode ?? "online" } }],
         error: null,
       },
       { count: opts.accepted ?? 0, error: null },
@@ -1190,6 +1435,99 @@ describe("Sessions", () => {
       expect(upd.payload.invite_status).toBe("accepted");
       expect(upd.payload.payout_cents).toBe(9000); // 3 hrs × $30
       expect(upd.payload.waitlist_position).toBeNull();
+    });
+
+    /* ---------------------------------------------------------------------
+       IN-PERSON SESSIONS
+
+       Two things change, and both are decided by the session's cases rather
+       than by anything on the session row: the hourly rate, and the fact that
+       there is no waitlist to overflow into.
+    --------------------------------------------------------------------- */
+
+    it("A seat on an in-person session is paid the in-person rate", async () => {
+      state.responses = [
+        { data: { session_id: "s-off", participant_id: "p-off" }, error: null },
+        ...notStartedYet(), // 09:00 → 12:00 = 3 hours
+        ...occupancy({ deliveryMode: "offline" }),
+        {
+          data: {
+            paypal_username: "poff",
+            driver_license_number: "DLoff",
+            driver_license_image_url: "http://img/dloff",
+            reactivation_status: "yes",
+          },
+          error: null,
+        },
+        { data: [], error: null },
+      ];
+
+      const result = await updateInviteStatus("invite-offline-seat", "accepted");
+
+      expect(result).toBeUndefined();
+
+      const updateCall = state.captured.find(
+        (c) =>
+          c.table === "session_participants" &&
+          c.ops.some((o) => o.op === "update")
+      )!;
+      const upd = updateCall.ops.find((o) => o.op === "update") as {
+        op: "update";
+        payload: Record<string, unknown>;
+      };
+      expect(upd.payload.invite_status).toBe("accepted");
+      expect(upd.payload.payout_cents).toBe(30000); // 3 hrs × $100
+    });
+
+    it("A full in-person session turns people away instead of waitlisting them", async () => {
+      // The stored waitlist_cap is 2, and it is deliberately ignored: nobody is
+      // asked to travel to a venue for a reserve slot.
+      state.responses = [
+        { data: { session_id: "s-off", participant_id: "p-off2" }, error: null },
+        ...notStartedYet(),
+        ...occupancy({
+          cap: 1,
+          accepted: 1,
+          waitlistCap: 2,
+          waitlisted: 0,
+          deliveryMode: "offline",
+        }),
+      ];
+
+      const result = await updateInviteStatus("invite-offline-full", "accepted");
+
+      // 'session_full', NOT a waitlist offer.
+      expect(result).toEqual({ blocked: true, reason: "session_full" });
+
+      const update = state.captured.find(
+        (c) =>
+          c.table === "session_participants" &&
+          c.ops.some((o) => o.op === "update")
+      );
+      expect(update).toBeUndefined();
+    });
+
+    it("The same session online WOULD offer a waitlist slot", async () => {
+      // Same caps and counts as the test above — the only difference is the
+      // delivery mode, which is what proves the mode is doing the work.
+      state.responses = [
+        { data: { session_id: "s-on", participant_id: "p-on2" }, error: null },
+        ...notStartedYet(),
+        ...occupancy({ cap: 1, accepted: 1, waitlistCap: 2, waitlisted: 0 }),
+        {
+          data: {
+            paypal_username: "pon",
+            driver_license_number: "DLon",
+            driver_license_image_url: "http://img/dlon",
+            reactivation_status: "yes",
+          },
+          error: null,
+        },
+      ];
+
+      const result = await updateInviteStatus("invite-online-full", "accepted");
+
+      expect(result).toMatchObject({ needsWaitlistConsent: true, position: 1 });
     });
 
     it("Declining still works after the session has started", async () => {

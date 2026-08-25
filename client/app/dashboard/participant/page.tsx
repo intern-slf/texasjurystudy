@@ -11,9 +11,15 @@ import {
   WAITLIST_WAIT_FEE_CENTS,
   WAITLIST_HOLD_MINUTES,
   formatCents,
+  hourlyRateCents,
   sessionLengthHours,
   seatPayoutCents,
 } from "@/lib/participant/waitlist";
+import {
+  deliveryModeLabel,
+  isOffline,
+  sessionDeliveryModeOrDefault,
+} from "@/lib/case/deliveryMode";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { unstable_noStore as noStore } from "next/cache";
@@ -21,8 +27,22 @@ import { unstable_noStore as noStore } from "next/cache";
 /** Shape of the nested session on a pending invite (see getPendingInvites). */
 type InviteSession = {
   session_date?: string | null;
-  session_cases?: { start_time?: string | null; end_time?: string | null }[] | null;
+  session_cases?: {
+    start_time?: string | null;
+    end_time?: string | null;
+    cases?: { delivery_mode?: string | null } | { delivery_mode?: string | null }[] | null;
+  }[] | null;
 };
+
+/** The one mode shared by a session's cases — see lib/case/deliveryMode. */
+function inviteDeliveryMode(session: InviteSession | null | undefined) {
+  return sessionDeliveryModeOrDefault(
+    (session?.session_cases ?? []).map((c) => {
+      const detail = Array.isArray(c.cases) ? c.cases[0] : c.cases;
+      return detail?.delivery_mode ?? null;
+    }),
+  );
+}
 
 export default async function ParticipantDashboard({
   searchParams,
@@ -271,6 +291,30 @@ export default async function ParticipantDashboard({
                     <p className="font-medium">Session Invite</p>
                     <p className="text-sm text-slate-500">Date: {session?.session_date}</p>
                     <p className="text-sm text-slate-500">Time: {timeLabel}</p>
+                    {/* Accepting an in-person session commits them to a
+                        journey, so say so before they click, not only in the
+                        email. */}
+                    {(() => {
+                      const mode = inviteDeliveryMode(session);
+                      return (
+                        <p className="mt-1 flex items-center gap-1.5 text-sm text-slate-500">
+                          <span
+                            className={`text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded border ${
+                              isOffline(mode)
+                                ? "text-green-700 bg-green-50 border-green-200"
+                                : "text-blue-700 bg-blue-50 border-blue-200"
+                            }`}
+                          >
+                            {deliveryModeLabel(mode)}
+                          </span>
+                          <span className="text-xs">
+                            {isOffline(mode)
+                              ? `attend at a venue · ${formatCents(hourlyRateCents(mode))}/hr`
+                              : `join over Zoom · ${formatCents(hourlyRateCents(mode))}/hr`}
+                          </span>
+                        </p>
+                      );
+                    })()}
                   </div>
 
                   <div className="flex items-center gap-2">

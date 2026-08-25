@@ -207,8 +207,42 @@ export function applyCaseFilters<Q extends FilterQueryBuilder>(
 }
 
 /**
+ * A case's filters with its county folded into the location filter, when the
+ * case should only draw local participants. Two reasons that happens:
+ *
+ *   - the requestee ticked "participants from my county"
+ *   - the case is IN PERSON, whether or not they ticked it — attendees have to
+ *     physically reach the venue, so someone four hours away is not a weaker
+ *     match, they are a no-show
+ *
+ * Every candidate list builds its filter set through here, so the rule has one
+ * definition. Mutates and returns the same `filters` object, matching how the
+ * call sites already treat the value read off the row.
+ */
+export function withCountyRestriction(
+  filters: CaseFilters,
+  caseRow: {
+    county?: string | null;
+    participants_from_county?: string | null;
+    delivery_mode?: string | null;
+  },
+): CaseFilters {
+  const restrict =
+    caseRow.participants_from_county === "Yes" || caseRow.delivery_mode === "offline";
+  if (!restrict || !caseRow.county) return filters;
+
+  if (!filters.location) filters.location = {};
+  const existing = filters.location.county ?? [];
+  const countyVal = caseRow.county;
+  if (!existing.some((v: string) => v.toLowerCase() === countyVal.toLowerCase())) {
+    filters.location.county = [...existing, countyVal];
+  }
+  return filters;
+}
+
+/**
  * Combines multiple case filters using UNION (OR) logic.
- * 
+ *
  * Strategy:
  * - Arrays (Gender, Race, etc): Union of values. Participant passes if they match ANY case.
  * - Ranges: Union — each case's range kept separately.
