@@ -9,18 +9,19 @@ import {
   sendSessionLocationEmail,
   sendWaitlistConfirmationEmail,
   sendWaitlistZoomLinkEmail,
+  sendWaitlistLocationEmail,
 } from "@/lib/mail";
 import { isActiveStatus } from "@/lib/participant/activeStatus";
 import { hasSessionStarted, cooldownAfterSession } from "@/lib/participant/sessionStart";
 import {
   WAITLISTED_STATUS,
-  WAITLIST_WAIT_FEE_CENTS,
-  WAITLIST_HOLD_MINUTES,
   assignSlot,
   sessionLengthHours,
   seatPayoutCents,
   hourlyRateCents,
   waitlistCapFor,
+  waitlistHoldMinutes,
+  waitlistWaitFeeCents,
   formatCents,
 } from "@/lib/participant/waitlist";
 import { isOffline, type DeliveryMode } from "@/lib/case/deliveryMode";
@@ -58,10 +59,9 @@ export async function isSessionFull(sessionId: string): Promise<boolean> {
    Reads both caps and both counts in one place so the accept path, the session
    page and the full-sweep all agree on where a session currently stands.
 
-   `waitlistCap` is resolved through `waitlistCapFor`, which returns 0 for an
-   in-person session no matter what the column says: nobody is asked to travel to
-   a room for a reserve slot. With a cap of 0, `assignSlot` goes straight from
-   seat to full, and the existing session-full path takes over unchanged.
+   Both formats have a waitlist; what differs is the hold window and the waiting
+   fee, not the number of slots. `deliveryMode` is returned alongside so callers
+   can quote the right terms without a second lookup.
 ========================= */
 export async function getSessionOccupancy(sessionId: string) {
   const [{ data: session }, deliveryMode] = await Promise.all([
@@ -204,10 +204,6 @@ export async function updateInviteStatus(
       //
       // Placed after the active and profile checks so we never pitch a waitlist
       // slot to someone who would be bounced anyway.
-      //
-      // Unreachable for an in-person session: its waitlist cap is 0, so
-      // `assignSlot` returns 'full' the moment the seats are gone and the branch
-      // above has already returned.
       if (slot === "waitlist" && !options.confirmWaitlist) {
         return {
           needsWaitlistConsent: true,
@@ -215,9 +211,10 @@ export async function updateInviteStatus(
           sessionDate: (sessionRow?.session_date as string | undefined) ?? null,
           sessionHours,
           seatPayoutCents: seatPayoutCents(sessionHours, deliveryMode),
-          waitFeeCents: WAITLIST_WAIT_FEE_CENTS,
+          waitFeeCents: waitlistWaitFeeCents(deliveryMode),
           hourlyRateCents: hourlyRateCents(deliveryMode),
-          holdMinutes: WAITLIST_HOLD_MINUTES,
+          holdMinutes: waitlistHoldMinutes(deliveryMode),
+          deliveryMode,
         } as const;
       }
     }
@@ -237,7 +234,7 @@ export async function updateInviteStatus(
             // A seat is worth the hourly rate for the session; a waitlist slot is
             // worth the waiting fee until an admin records the real outcome.
             payout_cents: isWaitlistAccept
-              ? WAITLIST_WAIT_FEE_CENTS
+              ? waitlistWaitFeeCents(deliveryMode)
               : seatPayoutCents(sessionHours, deliveryMode),
           }
         : {}),
@@ -274,7 +271,7 @@ export async function updateInviteStatus(
   // from every exit below, because otherwise the accept/decline pages cannot
   // distinguish the two and a waitlister is told "You're In!".
   const outcome = isWaitlistAccept
-    ? ({ waitlisted: true, position: waitlistPosition } as const)
+    ? ({ waitlisted: true, position: waitlistPosition, deliveryMode } as const)
     : undefined;
 
   if (!updatedRows?.length) return outcome;
@@ -347,31 +344,51 @@ export async function updateInviteStatus(
             userData?.user?.user_metadata?.full_name?.split(" ")[0] ||
             "Participant";
 
+          const offline = isOffline(deliveryMode);
+
           // A waitlister gets the waitlist arc instead of the seated one — they
           // must be told the hold rules and the two payment outcomes, and must
           // never receive a plain "You're In" confirmation.
-          const offline = isOffline(deliveryMode);
-
           if (isWaitlistAccept) {
+            const holdMinutes = waitlistHoldMinutes(deliveryMode);
+            const waitFee = formatCents(waitlistWaitFeeCents(deliveryMode));
+            const rate = formatCents(hourlyRateCents(deliveryMode));
+
             await sendWaitlistConfirmationEmail(
               email,
               firstName,
               session.session_date as string,
-              WAITLIST_HOLD_MINUTES,
-              formatCents(hourlyRateCents(deliveryMode)),
-              formatCents(WAITLIST_WAIT_FEE_CENTS),
+              holdMinutes,
+              rate,
+              waitFee,
               timeStr,
+              offline,
             );
 
-            if (session.zoom_link) {
+            // Whichever joining detail is already saved goes out now, on the
+            // waitlist template. Never both — a session has an address or a
+            // link, never the two.
+            if (offline && session.location) {
+              await sendWaitlistLocationEmail(
+                email,
+                firstName,
+                session.session_date as string,
+                session.location as string,
+                holdMinutes,
+                rate,
+                waitFee,
+                timeStr,
+              );
+              console.log(`[updateInviteStatus] Sent waitlist location to ${email} (already saved)`);
+            } else if (!offline && session.zoom_link) {
               await sendWaitlistZoomLinkEmail(
                 email,
                 firstName,
                 session.session_date as string,
                 session.zoom_link,
-                WAITLIST_HOLD_MINUTES,
-                formatCents(hourlyRateCents(deliveryMode)),
-                formatCents(WAITLIST_WAIT_FEE_CENTS),
+                holdMinutes,
+                rate,
+                waitFee,
                 timeStr,
               );
               console.log(`[updateInviteStatus] Sent waitlist zoom link to ${email} (link already saved)`);

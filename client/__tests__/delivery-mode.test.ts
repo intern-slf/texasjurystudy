@@ -17,10 +17,14 @@ import {
   HOURLY_RATE_CENTS,
   OFFLINE_HOURLY_RATE_CENTS,
   WAITLIST_WAIT_FEE_CENTS,
+  OFFLINE_WAITLIST_WAIT_FEE_CENTS,
+  WAITLIST_HOLD_MINUTES,
+  OFFLINE_WAITLIST_HOLD_MINUTES,
   hourlyRateCents,
   seatPayoutCents,
-  supportsWaitlist,
   waitlistCapFor,
+  waitlistHoldMinutes,
+  waitlistWaitFeeCents,
   waitlistPayoutCents,
 } from "@/lib/participant/waitlist";
 import type { CaseFilters } from "@/lib/filter-utils";
@@ -124,9 +128,9 @@ describe("assertCasesShareDeliveryMode", () => {
 });
 
 describe("requestee pricing", () => {
-  it("charges $850/hr online and $10,000/hr in person", () => {
+  it("charges $850/hr online and $1,500/hr in person", () => {
     expect(baseRatePerHourCents("online")).toBe(85_000);
-    expect(baseRatePerHourCents("offline")).toBe(1_000_000);
+    expect(baseRatePerHourCents("offline")).toBe(150_000);
     expect(baseRatePerHourCents(null)).toBe(85_000);
   });
 
@@ -155,22 +159,22 @@ describe("requestee pricing", () => {
     expect(offline.filterCostCents).toBe(30_000);
 
     expect(online.totalCostCents).toBe(170_000 + 30_000);
-    expect(offline.totalCostCents).toBe(2_000_000 + 30_000);
-    expect(formatReceiptCents(offline.totalCostCents)).toBe("$20,300.00");
+    expect(offline.totalCostCents).toBe(300_000 + 30_000);
+    expect(formatReceiptCents(offline.totalCostCents)).toBe("$3,300.00");
   });
 
   it("reports the rate it used so the receipt can show it", () => {
-    expect(calculateReceiptPrice(null, 1, "offline").baseRatePerHourCents).toBe(1_000_000);
+    expect(calculateReceiptPrice(null, 1, "offline").baseRatePerHourCents).toBe(150_000);
     expect(calculateReceiptPrice(null, 1, "online").baseRatePerHourCents).toBe(85_000);
   });
 });
 
 describe("participant payout", () => {
-  it("pays $30/hr online and $100/hr in person", () => {
+  it("pays $30/hr online and $40/hr in person", () => {
     expect(hourlyRateCents("online")).toBe(HOURLY_RATE_CENTS);
     expect(hourlyRateCents("offline")).toBe(OFFLINE_HOURLY_RATE_CENTS);
     expect(HOURLY_RATE_CENTS).toBe(3_000);
-    expect(OFFLINE_HOURLY_RATE_CENTS).toBe(10_000);
+    expect(OFFLINE_HOURLY_RATE_CENTS).toBe(4_000);
   });
 
   it("defaults to the online rate when no mode is passed", () => {
@@ -178,41 +182,52 @@ describe("participant payout", () => {
   });
 
   it("scales the seat payout by session length", () => {
-    expect(seatPayoutCents(3, "offline")).toBe(30_000); // 3 hrs × $100
-    expect(seatPayoutCents(1.5, "offline")).toBe(15_000);
+    expect(seatPayoutCents(3, "offline")).toBe(12_000); // 3 hrs × $40
+    expect(seatPayoutCents(1.5, "offline")).toBe(6_000);
     expect(seatPayoutCents(1.5, "online")).toBe(4_500);
   });
 
   it("pays a called-in waitlister at the session's rate", () => {
     expect(waitlistPayoutCents("called_in", 2, "online")).toBe(6_000);
-    // Unreachable in practice — offline sessions never create a waitlisted row —
-    // but if one ever existed it must not be paid at the online rate.
-    expect(waitlistPayoutCents("called_in", 2, "offline")).toBe(20_000);
+    expect(waitlistPayoutCents("called_in", 2, "offline")).toBe(8_000);
   });
 
-  it("leaves the flat waiting fee alone", () => {
+  it("pays the waiting fee at the session's own flat rate", () => {
+    // $10 online, $30 in person — the in-person holder travelled to the venue.
     expect(waitlistPayoutCents("waited_out", 4, "online")).toBe(WAITLIST_WAIT_FEE_CENTS);
-    expect(waitlistPayoutCents("waited_out", 4, "offline")).toBe(WAITLIST_WAIT_FEE_CENTS);
+    expect(waitlistPayoutCents("waited_out", 4, "offline")).toBe(OFFLINE_WAITLIST_WAIT_FEE_CENTS);
+    expect(WAITLIST_WAIT_FEE_CENTS).toBe(1_000);
+    expect(OFFLINE_WAITLIST_WAIT_FEE_CENTS).toBe(3_000);
+    // Flat means flat: session length must not move it.
+    expect(waitlistPayoutCents("waited_out", 1, "offline")).toBe(
+      waitlistPayoutCents("waited_out", 9, "offline"),
+    );
   });
 });
 
-describe("waitlist availability", () => {
-  it("forces the in-person waitlist cap to zero whatever the column says", () => {
-    expect(waitlistCapFor("offline", 2)).toBe(0);
-    expect(waitlistCapFor("offline", 99)).toBe(0);
-    expect(waitlistCapFor("offline", null)).toBe(0);
+describe("waitlist terms", () => {
+  it("offers the same number of slots in both formats", () => {
+    // Both formats have a waitlist; what differs is the hold window and the fee,
+    // not the size. The cap is the stored column, defaulting to 2.
+    for (const mode of ["online", "offline", null] as const) {
+      expect(waitlistCapFor(mode, 5)).toBe(5);
+      expect(waitlistCapFor(mode, 0)).toBe(0);
+      expect(waitlistCapFor(mode, null)).toBe(2);
+      expect(waitlistCapFor(mode, undefined)).toBe(2);
+    }
   });
 
-  it("honours the stored cap online, falling back to the default", () => {
-    expect(waitlistCapFor("online", 5)).toBe(5);
-    expect(waitlistCapFor("online", 0)).toBe(0);
-    expect(waitlistCapFor("online", null)).toBe(2);
-    expect(waitlistCapFor("online", undefined)).toBe(2);
+  it("holds an in-person waitlister twice as long", () => {
+    expect(waitlistHoldMinutes("online")).toBe(WAITLIST_HOLD_MINUTES);
+    expect(waitlistHoldMinutes("offline")).toBe(OFFLINE_WAITLIST_HOLD_MINUTES);
+    expect(WAITLIST_HOLD_MINUTES).toBe(15);
+    expect(OFFLINE_WAITLIST_HOLD_MINUTES).toBe(30);
+    expect(waitlistHoldMinutes(null)).toBe(WAITLIST_HOLD_MINUTES);
   });
 
-  it("says plainly which sessions have a waitlist", () => {
-    expect(supportsWaitlist("online")).toBe(true);
-    expect(supportsWaitlist("offline")).toBe(false);
-    expect(supportsWaitlist(null)).toBe(true);
+  it("pays an in-person waitlister three times the waiting fee", () => {
+    expect(waitlistWaitFeeCents("online")).toBe(1_000);
+    expect(waitlistWaitFeeCents("offline")).toBe(3_000);
+    expect(waitlistWaitFeeCents(null)).toBe(1_000);
   });
 });

@@ -697,24 +697,27 @@ describe("Sessions", () => {
       expect(html).toMatch(/waitlist spot/i);
     });
 
-    it("An in-person invite quotes $100/hr, warns about travel, and promises no waitlist", async () => {
+    it("An in-person invite quotes $40/hr and the in-person waitlist terms", async () => {
       queueInviteResponses(["p-1"], "offline");
       state.participantEmails.set("p-1", "p-1@example.com");
 
       await inviteParticipants("session-1", ["p-1"], "2026-06-15");
 
       const { html } = sendEmailSpy.mock.calls[0][0];
-      expect(html).toContain("$100.00 per hour");
+      expect(html).toContain("$40.00 per hour");
       expect(html).toMatch(/held in person/i);
       expect(html).toMatch(/travel to the venue/i);
-      // Specifically a Texas driver's license, not any photo ID — it is the
-      // document already on their profile, and check-in matches the two.
-      expect(html).toMatch(/Texas driver(&rsquo;|&#8217;|')s license/i);
+      // A Texas State ID, not a driver's license and not a generic photo ID.
+      expect(html).toMatch(/Texas State ID/i);
+      expect(html).not.toMatch(/driver(&rsquo;|&#8217;|')s license/i);
       // The calendar entry must not claim the session is online.
       expect(html).not.toContain("Remote (Secure Zoom)");
-      // And it must not dangle a waitlist that does not exist for this format.
-      expect(html).toMatch(/no waitlist for in-person sessions/i);
-      expect(html).not.toMatch(/waitlist spot/i);
+      // Both formats have a waitlist, but on their own terms: 30 minutes and
+      // $30 here, never the online 15/$10 pair.
+      expect(html).toMatch(/waitlist spot/i);
+      expect(html).toContain("30 minutes");
+      expect(html).toContain("$30.00");
+      expect(html).not.toMatch(/Zoom waiting room/i);
     });
 
     it("Drops blacklisted invitees (roles + blacklisted_at) and only invites the rest", async () => {
@@ -1306,7 +1309,9 @@ describe("Sessions", () => {
 
       // The caller MUST be able to tell this apart from a seat, or the accept
       // page says "You're In!" to someone who is not in.
-      expect(result).toEqual({ waitlisted: true, position: 1 });
+      // deliveryMode rides along so the caller can quote the right terms in the
+      // redirect banner without a second lookup.
+      expect(result).toEqual({ waitlisted: true, position: 1, deliveryMode: "online" });
 
       const updateCall = state.captured.find(
         (c) =>
@@ -1476,35 +1481,79 @@ describe("Sessions", () => {
         payload: Record<string, unknown>;
       };
       expect(upd.payload.invite_status).toBe("accepted");
-      expect(upd.payload.payout_cents).toBe(30000); // 3 hrs × $100
+      expect(upd.payload.payout_cents).toBe(12000); // 3 hrs × $40
     });
 
-    it("A full in-person session turns people away instead of waitlisting them", async () => {
-      // The stored waitlist_cap is 2, and it is deliberately ignored: nobody is
-      // asked to travel to a venue for a reserve slot.
+    it("A full in-person session offers a waitlist slot on IN-PERSON terms", async () => {
       state.responses = [
         { data: { session_id: "s-off", participant_id: "p-off2" }, error: null },
-        ...notStartedYet(),
-        ...occupancy({
-          cap: 1,
-          accepted: 1,
-          waitlistCap: 2,
-          waitlisted: 0,
-          deliveryMode: "offline",
-        }),
+        ...notStartedYet(), // 09:00 -> 12:00 = 3 hours
+        ...occupancy({ cap: 1, accepted: 1, waitlistCap: 2, waitlisted: 0, deliveryMode: "offline" }),
+        {
+          data: {
+            paypal_username: "poff2",
+            driver_license_number: "DLoff2",
+            driver_license_image_url: "http://img/dloff2",
+            reactivation_status: "yes",
+          },
+          error: null,
+        },
       ];
 
       const result = await updateInviteStatus("invite-offline-full", "accepted");
 
-      // 'session_full', NOT a waitlist offer.
-      expect(result).toEqual({ blocked: true, reason: "session_full" });
+      // The terms quoted back must be the in-person ones, never the online
+      // 15-minute / $10 pair — that split is the whole point.
+      expect(result).toMatchObject({
+        needsWaitlistConsent: true,
+        position: 1,
+        holdMinutes: 30,
+        waitFeeCents: 3_000,
+        hourlyRateCents: 4_000,
+        seatPayoutCents: 12_000, // 3 hrs x $40
+        deliveryMode: "offline",
+      });
 
+      // Still writes nothing until they agree.
       const update = state.captured.find(
         (c) =>
           c.table === "session_participants" &&
           c.ops.some((o) => o.op === "update")
       );
       expect(update).toBeUndefined();
+    });
+
+    it("An in-person waitlist accept records the $30 waiting fee, not $10", async () => {
+      state.responses = [
+        { data: { session_id: "s-off", participant_id: "p-off3" }, error: null },
+        ...notStartedYet(),
+        ...occupancy({ cap: 1, accepted: 1, waitlistCap: 2, waitlisted: 0, deliveryMode: "offline" }),
+        {
+          data: {
+            paypal_username: "poff3",
+            driver_license_number: "DLoff3",
+            driver_license_image_url: "http://img/dloff3",
+            reactivation_status: "yes",
+          },
+          error: null,
+        },
+        { data: [], error: null },
+      ];
+
+      await updateInviteStatus("invite-offline-wl", "accepted", { confirmWaitlist: true });
+
+      const updateCall = state.captured.find(
+        (c) =>
+          c.table === "session_participants" &&
+          c.ops.some((o) => o.op === "update")
+      )!;
+      const upd = updateCall.ops.find((o) => o.op === "update") as {
+        op: "update";
+        payload: Record<string, unknown>;
+      };
+      expect(upd.payload.invite_status).toBe("waitlisted");
+      expect(upd.payload.payout_cents).toBe(3_000); // $30 in person, not $10
+      expect(upd.payload.waitlist_position).toBe(1);
     });
 
     it("The same session online WOULD offer a waitlist slot", async () => {

@@ -1,6 +1,10 @@
 -- =============================================================================
 -- OFFLINE (IN-PERSON) CASES
 --
+-- SUPERSEDED FIGURES: the rates and the "no waitlist" rule described below were
+-- revised on 2026-08-26. See 20260826_offline_terms_revision.sql for the current
+-- numbers. This file is left as applied; only its successor is authoritative.
+--
 -- A case is now either run over Zoom ('online', the default and what every
 -- existing row is) or in a physical room ('offline'). The two are priced,
 -- staffed and communicated differently:

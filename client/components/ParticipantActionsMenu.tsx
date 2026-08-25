@@ -7,7 +7,7 @@ import {
   callInWaitlistParticipant,
   markWaitlistWaitedOut,
 } from "@/lib/actions/session";
-import { isWaitlisted, WAITLIST_HOLD_MINUTES } from "@/lib/participant/waitlist";
+import { isWaitlisted } from "@/lib/participant/waitlist";
 
 interface Props {
   sessionId: string;
@@ -89,13 +89,13 @@ export default function ParticipantActionsMenu({
     },
     call_in: {
       title: "Call In From Waitlist",
-      body: `This moves ${participantName} off the waitlist into a full seat for this session. They are paid the standard hourly rate for the whole session instead of the waiting fee, and are emailed to confirm it. Do this once you have admitted them from the Zoom waiting room. Note this deliberately goes past the participant cap — the seat belongs to whoever did not show up.`,
+      body: `This moves ${participantName} off the waitlist into a full seat for this session. They are paid the standard hourly rate for the whole session instead of the waiting fee, and are emailed to confirm it. Do this once you have admitted them — from the Zoom waiting room, or from the waiting area at the venue. Note this deliberately goes past the participant cap — the seat belongs to whoever did not show up.`,
       confirm: "Call In",
       tone: "bg-green-600 hover:bg-green-700",
     },
     waited_out: {
       title: "Record: Waited, Not Called",
-      body: `This records that ${participantName} held their waitlist slot for the full ${WAITLIST_HOLD_MINUTES} minutes and was never called in. They are paid the flat waiting fee, emailed a thank-you, and stay eligible for future sessions.`,
+      body: `This records that ${participantName} held their waitlist slot for the full hold window and was never called in. They are paid the flat waiting fee, emailed a thank-you, and stay eligible for future sessions.`,
       confirm: "Record Waiting Fee",
       tone: "bg-blue-600 hover:bg-blue-700",
     },

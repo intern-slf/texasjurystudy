@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { sendEmail, sendRescheduleEmail, sendSessionCreatedEmail, sendSessionCompletedEmail, sendPresenceConfirmedEmail, sendPresenceDeclinedEmail, sendZoomLinkEmail, sendSessionLocationEmail, sendPresenterInfoEmail, sendWaitlistZoomLinkEmail, sendWaitlistCalledInEmail, sendWaitlistWaitedOutEmail, sendWaitlistConfirmationEmail, emailWrapper } from "@/lib/mail";
+import { sendEmail, sendRescheduleEmail, sendSessionCreatedEmail, sendSessionCompletedEmail, sendPresenceConfirmedEmail, sendPresenceDeclinedEmail, sendZoomLinkEmail, sendSessionLocationEmail, sendWaitlistLocationEmail, sendPresenterInfoEmail, sendWaitlistZoomLinkEmail, sendWaitlistCalledInEmail, sendWaitlistWaitedOutEmail, sendWaitlistConfirmationEmail, emailWrapper } from "@/lib/mail";
 import type { PresenterParticipantInfo, PresenterCaseInfo } from "@/lib/mail";
 import { checkAndNotifySessionFull, getSessionOccupancy } from "@/lib/participant/updateInviteStatus";
 import { recordBackoutStrike } from "@/lib/actions/participantFlags";
@@ -16,15 +16,14 @@ import { ACTIVE_STATUS, isActiveStatus, isParticipantActive } from "@/lib/partic
 import { cooldownAfterSession } from "@/lib/participant/sessionStart";
 import {
   WAITLISTED_STATUS,
-  HOURLY_RATE_CENTS,
-  WAITLIST_WAIT_FEE_CENTS,
-  WAITLIST_HOLD_MINUTES,
   isWaitlisted,
   assignSlot,
   sessionLengthHours,
   seatPayoutCents,
   hourlyRateCents,
-  supportsWaitlist,
+  waitlistHoldMinutes,
+  waitlistWaitFeeCents,
+  OFFLINE_ARRIVE_EARLY_MINUTES,
   formatCents,
 } from "@/lib/participant/waitlist";
 import { assertCasesShareDeliveryMode, isOffline } from "@/lib/case/deliveryMode";
@@ -438,12 +437,14 @@ async function inviteParticipantsInner(
     }
   }
 
-  // An in-person invitation is a different ask: it costs the invitee a commute,
-  // it pays more, and there is no waitlist to fall back on if the seats go. All
-  // three have to be in the email, or people accept the wrong thing.
+  // An in-person invitation is a different ask: it costs the invitee a journey,
+  // it pays a different rate, and its waitlist has its own hold window and fee.
+  // All of that has to be in the email, or people accept the wrong thing.
   const deliveryMode = await getSessionDeliveryModeOrDefault(sessionId);
   const offline = isOffline(deliveryMode);
   const hourlyRate = formatCents(hourlyRateCents(deliveryMode));
+  const inviteWaitFee = formatCents(waitlistWaitFeeCents(deliveryMode));
+  const inviteHoldMinutes = waitlistHoldMinutes(deliveryMode);
 
   // Send invitation emails to each participant
   const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "");
@@ -554,7 +555,7 @@ async function inviteParticipantsInner(
                   <strong>This session is held in person.</strong> You will need to travel to the venue, so please only accept if you can be there for the full session.
                 </p>
                 <p style="margin:0;font-size:13px;color:#166534;">
-                  We will email you the full address once you accept. Bring your <strong>Texas driver&rsquo;s license</strong> &mdash; the same one on your profile &mdash; and plan to arrive 15 minutes early.
+                  We will email you the full address once you accept. Bring your <strong>Texas State ID</strong> and plan to arrive <strong>${OFFLINE_ARRIVE_EARLY_MINUTES} minutes early</strong> for check-in.
                 </p>
               </td>
             </tr>
@@ -570,9 +571,9 @@ async function inviteParticipantsInner(
                   <strong>About your payment:</strong> payment for this session is sent to the PayPal username on your profile. PayPal treats it as a &ldquo;service&rdquo; payment and takes a processing fee out of it, so the amount that reaches you is about <strong>$2 to $3 less</strong> than the session amount. That fee is PayPal&rsquo;s, not ours.
                 </p>
                 <p style="margin:10px 0 0;font-size:13px;color:#64748b;">
-                  ${offline
-                    ? `<strong>Please note:</strong> seats are filled in the order people reply, and there is no waitlist for in-person sessions. If this one fills up before you respond we will consider you for the next one.`
-                    : `<strong>Please note:</strong> seats are filled in the order people reply. If this session fills up before you respond, we may be able to offer you a paid <strong>waitlist spot</strong> instead of a seat &mdash; you will be shown exactly what that involves and can accept or decline it separately.`}
+                  <strong>Please note:</strong> seats are filled in the order people reply. If this session fills up before you respond, we may be able to offer you a paid <strong>waitlist spot</strong> instead of a seat &mdash; ${offline
+                    ? `you would come to the venue, hold for up to ${inviteHoldMinutes} minutes, and be paid ${inviteWaitFee} for waiting even if no seat opens`
+                    : `you would hold in the Zoom waiting room for up to ${inviteHoldMinutes} minutes and be paid ${inviteWaitFee} for waiting even if no seat opens`}. You will be shown exactly what that involves and can accept or decline it separately.
                 </p>
               </td>
             </tr>
@@ -900,16 +901,10 @@ export async function adminRespondOnBehalf(
     deliveryMode = occupancy.deliveryMode;
     const assigned = assignSlot(occupancy);
     if (assigned === "full") {
-      // An in-person session has no waitlist to fall back on, so the only lever
-      // is the seat cap. Saying "all 0 waitlist slots used" would send an admin
-      // looking for a control that does not apply.
       throw new Error(
-        supportsWaitlist(deliveryMode)
-          ? `This session is full — ${occupancy.acceptedCount}/${occupancy.participantCap} seats taken ` +
-            `and all ${occupancy.waitlistCap} waitlist slots used. Raise the participant cap or the ` +
-            `waitlist cap before adding anyone else.`
-          : `This in-person session is full — ${occupancy.acceptedCount}/${occupancy.participantCap} seats taken. ` +
-            `In-person sessions have no waitlist, so raise the participant cap before adding anyone else.`
+        `This session is full — ${occupancy.acceptedCount}/${occupancy.participantCap} seats taken ` +
+        `and all ${occupancy.waitlistCap} waitlist slots used. Raise the participant cap or the ` +
+        `waitlist cap before adding anyone else.`
       );
     }
     onBehalfSlot = assigned;
@@ -927,7 +922,7 @@ export async function adminRespondOnBehalf(
         ? {
             waitlist_position: onBehalfPosition,
             payout_cents: onBehalfWaitlisted
-              ? WAITLIST_WAIT_FEE_CENTS
+              ? waitlistWaitFeeCents(deliveryMode)
               : seatPayoutCents(onBehalfHours, deliveryMode),
           }
         : // Declining ends any claim on the session — drop the amount and the
@@ -991,16 +986,16 @@ export async function adminRespondOnBehalf(
 
       // Someone put on the waitlist must never receive a plain "you're confirmed"
       // email — the hold rules and the two payment outcomes are the whole point.
-      // Unreachable offline: those sessions have no waitlist slots to land in.
       if (onBehalfWaitlisted) {
         await sendWaitlistConfirmationEmail(
           email,
           firstName,
           session.session_date,
-          WAITLIST_HOLD_MINUTES,
+          waitlistHoldMinutes(deliveryMode),
           formatCents(hourlyRateCents(deliveryMode)),
-          formatCents(WAITLIST_WAIT_FEE_CENTS),
+          formatCents(waitlistWaitFeeCents(deliveryMode)),
           timeStr,
+          offline,
         );
       } else {
         await sendPresenceConfirmedEmail(email, firstName, session.session_date, timeStr, offline);
@@ -1013,7 +1008,18 @@ export async function adminRespondOnBehalf(
       if (joinDetail) {
         const detailTimeStr = await sessionTimeString(supabase, sessionId);
 
-        if (offline) {
+        if (offline && onBehalfWaitlisted) {
+          await sendWaitlistLocationEmail(
+            email,
+            firstName,
+            session.session_date,
+            joinDetail,
+            waitlistHoldMinutes(deliveryMode),
+            formatCents(hourlyRateCents(deliveryMode)),
+            formatCents(waitlistWaitFeeCents(deliveryMode)),
+            detailTimeStr,
+          );
+        } else if (offline) {
           await sendSessionLocationEmail(
             email,
             firstName,
@@ -1028,9 +1034,9 @@ export async function adminRespondOnBehalf(
             firstName,
             session.session_date,
             joinDetail,
-            WAITLIST_HOLD_MINUTES,
+            waitlistHoldMinutes(deliveryMode),
             formatCents(hourlyRateCents(deliveryMode)),
-            formatCents(WAITLIST_WAIT_FEE_CENTS),
+            formatCents(waitlistWaitFeeCents(deliveryMode)),
             detailTimeStr,
           );
         } else {
@@ -1160,15 +1166,6 @@ export async function callInWaitlistParticipant(sessionId: string, participantId
   const supabase = await createClient();
   const ctx = await loadWaitlistContext(supabase, sessionId, participantId);
 
-  // In-person sessions never create waitlisted rows, so a call-in here would be
-  // acting on data that should not exist — and would pay at whichever rate the
-  // row happened to be written with. Refuse rather than guess.
-  if (!supportsWaitlist(ctx.deliveryMode)) {
-    throw new Error(
-      "In-person sessions do not have a waitlist, so there is nobody to call in.",
-    );
-  }
-
   if (!ctx.inviteRow || !isWaitlisted(ctx.inviteRow.invite_status)) {
     throw new Error("This participant is not on the waitlist for this session.");
   }
@@ -1224,12 +1221,6 @@ export async function markWaitlistWaitedOut(sessionId: string, participantId: st
   const supabase = await createClient();
   const ctx = await loadWaitlistContext(supabase, sessionId, participantId);
 
-  if (!supportsWaitlist(ctx.deliveryMode)) {
-    throw new Error(
-      "In-person sessions do not have a waitlist, so there is no waiting fee to record.",
-    );
-  }
-
   if (!ctx.inviteRow || !isWaitlisted(ctx.inviteRow.invite_status)) {
     throw new Error("This participant is not on the waitlist for this session.");
   }
@@ -1239,7 +1230,7 @@ export async function markWaitlistWaitedOut(sessionId: string, participantId: st
     .update({
       waitlist_outcome: "waited_out",
       waitlist_outcome_at: new Date().toISOString(),
-      payout_cents: WAITLIST_WAIT_FEE_CENTS,
+      payout_cents: waitlistWaitFeeCents(ctx.deliveryMode),
     })
     .eq("session_id", sessionId)
     .eq("participant_id", participantId);
@@ -1252,8 +1243,9 @@ export async function markWaitlistWaitedOut(sessionId: string, participantId: st
         ctx.email,
         ctx.firstName,
         longDate(ctx.sessionDate),
-        formatCents(WAITLIST_WAIT_FEE_CENTS),
-        WAITLIST_HOLD_MINUTES,
+        formatCents(waitlistWaitFeeCents(ctx.deliveryMode)),
+        waitlistHoldMinutes(ctx.deliveryMode),
+        isOffline(ctx.deliveryMode),
       );
     } catch (err) {
       console.error("[markWaitlistWaitedOut] Email failed:", err);
@@ -1411,7 +1403,8 @@ export async function sendZoomLink(formData: FormData) {
 
   // An in-person session has no Zoom meeting to join. Sending one would tell
   // people to stay home for a session they are expected to travel to.
-  if (isOffline(await getSessionDeliveryModeOrDefault(sessionId))) {
+  const zoomMode = await getSessionDeliveryModeOrDefault(sessionId);
+  if (isOffline(zoomMode)) {
     throw new Error(
       "This is an in-person session — send the venue location instead of a Zoom link.",
     );
@@ -1457,9 +1450,9 @@ export async function sendZoomLink(formData: FormData) {
           firstName,
           sessionDate,
           zoomLink,
-          WAITLIST_HOLD_MINUTES,
-          formatCents(HOURLY_RATE_CENTS),
-          formatCents(WAITLIST_WAIT_FEE_CENTS),
+          waitlistHoldMinutes(zoomMode),
+          formatCents(hourlyRateCents(zoomMode)),
+          formatCents(waitlistWaitFeeCents(zoomMode)),
           timeStr,
         );
       } else {
@@ -1480,8 +1473,9 @@ export async function sendZoomLink(formData: FormData) {
    SEND SESSION LOCATION (in-person)
 
    The offline counterpart to sendZoomLink: the same shape, an address instead of
-   a URL. There is no waitlist branch because an in-person session never puts
-   anyone on a waitlist — see lib/participant/waitlist.
+   a URL. Waitlisters are included and get their own template, exactly as the
+   Zoom path does — an in-person reserve slot is held at the venue, so the
+   address matters to them as much as to a seated participant.
 ========================= */
 export async function sendSessionLocation(formData: FormData) {
   const supabase = await createClient();
@@ -1517,13 +1511,19 @@ export async function sendSessionLocation(formData: FormData) {
     .eq("id", sessionId);
   if (saveError) throw saveError;
 
+  // Waitlisters need the address too — travelling to the venue and holding on
+  // site is the whole point of an in-person reserve slot — but they get the
+  // waitlist template, which spells out the hold window and the two payment
+  // outcomes. Mirrors how sendZoomLink treats its own waitlisters.
   const { data: participants } = await supabase
     .from("session_participants")
-    .select("participant_id")
+    .select("participant_id, invite_status")
     .eq("session_id", sessionId)
-    .eq("invite_status", "accepted");
+    .in("invite_status", ["accepted", WAITLISTED_STATUS]);
 
   const rate = formatCents(hourlyRateCents(mode));
+  const holdMinutes = waitlistHoldMinutes(mode);
+  const waitFee = formatCents(waitlistWaitFeeCents(mode));
 
   for (const p of participants ?? []) {
     try {
@@ -1536,7 +1536,13 @@ export async function sendSessionLocation(formData: FormData) {
 
       if (!email) continue;
 
-      await sendSessionLocationEmail(email, firstName, sessionDate, location, timeStr, rate);
+      if (isWaitlisted(p.invite_status)) {
+        await sendWaitlistLocationEmail(
+          email, firstName, sessionDate, location, holdMinutes, rate, waitFee, timeStr,
+        );
+      } else {
+        await sendSessionLocationEmail(email, firstName, sessionDate, location, timeStr, rate);
+      }
     } catch (e) {
       console.error(`[sendSessionLocation] Failed for participant ${p.participant_id}:`, e);
     }

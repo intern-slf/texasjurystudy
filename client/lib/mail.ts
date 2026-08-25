@@ -492,7 +492,7 @@ export async function sendPresenceConfirmedEmail(
       <tr>
         <td style="padding:14px 20px;">
           <p style="margin:0;font-size:14px;color:#166534;">
-            This session is held <strong>in person</strong>. We will send you the full address before the session date — please plan your travel and bring your <strong>Texas driver&rsquo;s license</strong>, the same one on your profile.
+            This session is held <strong>in person</strong>. We will send you the full address before the session date — please plan your travel and bring your <strong>Texas State ID</strong>.
           </p>
         </td>
       </tr>
@@ -893,9 +893,9 @@ export async function sendZoomLinkEmail(
 
    The offline counterparts to the Zoom templates. Deliberately separate rather
    than a branch inside them: almost every instruction differs. There is no link
-   to click, no camera to test, and no waiting room — instead there is an address
-   to travel to, a time to arrive by, and a Texas driver's license to bring —
-   the same one already on their profile, which is what check-in matches against.
+   to click and no camera to test — instead there is an address to travel to, a
+   time to arrive by, and a Texas State ID to bring for check-in. Both formats
+   do have a waitlist, but on different terms (see lib/participant/waitlist).
    Mixing the two into
    one template is how someone ends up being told to test their microphone before
    driving to a conference room.
@@ -969,7 +969,7 @@ export async function sendSessionLocationEmail(
           <p style="margin:0 0 8px;font-size:11px;font-weight:700;color:#854d0e;text-transform:uppercase;letter-spacing:0.08em;">Required to Participate &amp; Get Paid</p>
           <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 10px;">
             <tr><td style="padding:0 0 6px;font-size:14px;color:#854d0e;">&bull;&nbsp; Arrive <strong>15 minutes early</strong> so check-in does not delay the session</td></tr>
-            <tr><td style="padding:0 0 6px;font-size:14px;color:#854d0e;">&bull;&nbsp; Bring your <strong>Texas driver&rsquo;s license</strong> &mdash; the same one on your profile. We check it against your profile at the door.</td></tr>
+            <tr><td style="padding:0 0 6px;font-size:14px;color:#854d0e;">&bull;&nbsp; Bring your <strong>Texas State ID</strong> &mdash; we check it at the door</td></tr>
             <tr><td style="padding:0 0 6px;font-size:14px;color:#854d0e;">&bull;&nbsp; Stay for the <strong>entire session</strong> — payment covers the full scheduled length</td></tr>
             <tr><td style="padding:0;font-size:14px;color:#854d0e;">&bull;&nbsp; If something changes and you cannot attend, tell us <strong>as early as you can</strong></td></tr>
           </table>
@@ -1012,6 +1012,8 @@ export async function sendWaitlistConfirmationEmail(
   hourlyRate: string,
   waitFee: string,
   timeStr?: string,
+  /** In-person reserve slots are held at the venue, not in a Zoom waiting room. */
+  offline = false,
 ) {
   const html = emailWrapper(`
     <h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#1e3a8a;">You're on the Waitlist</h2>
@@ -1040,8 +1042,11 @@ export async function sendWaitlistConfirmationEmail(
         <td style="padding:16px 20px;">
           <p style="margin:0 0 10px;font-size:11px;font-weight:700;color:#854d0e;text-transform:uppercase;letter-spacing:0.08em;">How the Waitlist Works</p>
           <table role="presentation" cellpadding="0" cellspacing="0">
-            <tr><td style="padding:0 0 8px;font-size:14px;color:#854d0e;">&bull;&nbsp; Join the Zoom meeting at the session start time, exactly like a confirmed participant.</td></tr>
-            <tr><td style="padding:0 0 8px;font-size:14px;color:#854d0e;">&bull;&nbsp; You will be held in the Zoom waiting room for up to <strong>${holdMinutes} minutes</strong>.</td></tr>
+            ${offline
+              ? `<tr><td style="padding:0 0 8px;font-size:14px;color:#854d0e;">&bull;&nbsp; Come to the venue and check in <strong>15 minutes before</strong> the start time, exactly like a confirmed participant.</td></tr>
+            <tr><td style="padding:0 0 8px;font-size:14px;color:#854d0e;">&bull;&nbsp; You will wait on site for up to <strong>${holdMinutes} minutes</strong>.</td></tr>`
+              : `<tr><td style="padding:0 0 8px;font-size:14px;color:#854d0e;">&bull;&nbsp; Join the Zoom meeting at the session start time, exactly like a confirmed participant.</td></tr>
+            <tr><td style="padding:0 0 8px;font-size:14px;color:#854d0e;">&bull;&nbsp; You will be held in the Zoom waiting room for up to <strong>${holdMinutes} minutes</strong>.</td></tr>`}
             <tr><td style="padding:0 0 8px;font-size:14px;color:#854d0e;">&bull;&nbsp; If a confirmed participant does not show up, you will be admitted and take part in the full session.</td></tr>
             <tr><td style="padding:0;font-size:14px;color:#854d0e;">&bull;&nbsp; If no spot opens within ${holdMinutes} minutes, you are free to leave.</td></tr>
           </table>
@@ -1155,6 +1160,70 @@ export async function sendWaitlistZoomLinkEmail(
   });
 }
 
+/**
+ * The in-person counterpart to `sendWaitlistZoomLinkEmail`: the venue address
+ * plus the hold rules, for someone holding a reserve slot at an offline session.
+ * Separate template rather than a branch — a waitlister who is told to "stay in
+ * the waiting room" when they are meant to drive to a building is the exact
+ * failure this whole split exists to prevent.
+ */
+export async function sendWaitlistLocationEmail(
+  to: string,
+  firstName: string,
+  sessionDate: string,
+  location: string,
+  holdMinutes: number,
+  hourlyRate: string,
+  waitFee: string,
+  timeStr?: string,
+) {
+  const html = emailWrapper(`
+    <h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#15803d;">Your Waitlist Details &amp; Location</h2>
+    <p style="margin:0 0 20px;font-size:15px;color:#475569;">
+      Hi ${escHtml(firstName)}, you are holding a <strong>waitlist spot</strong> for the in-person session on <strong>${sessionDate}</strong>. The address is below &mdash; please read the hold rules before you travel.
+    </p>
+
+    ${locationCard(location, sessionDate, timeStr)}
+
+    <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 24px;">
+      <tr>
+        <td style="border-radius:6px;background-color:#16a34a;">
+          <a href="${mapsUrl(location)}"
+             style="display:inline-block;padding:14px 32px;font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:6px;">
+            Get Directions
+          </a>
+        </td>
+      </tr>
+    </table>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#fef9c3;border-left:4px solid #ca8a04;border-radius:6px;margin:0 0 8px;">
+      <tr>
+        <td style="padding:16px 20px;">
+          <p style="margin:0 0 8px;font-size:11px;font-weight:700;color:#854d0e;text-transform:uppercase;letter-spacing:0.08em;">How Your Waitlist Spot Works</p>
+          <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 10px;">
+            <tr><td style="padding:0 0 6px;font-size:14px;color:#854d0e;">&bull;&nbsp; Arrive and check in <strong>15 minutes before</strong> the start time</td></tr>
+            <tr><td style="padding:0 0 6px;font-size:14px;color:#854d0e;">&bull;&nbsp; Bring your <strong>Texas State ID</strong> &mdash; we check it at the door</td></tr>
+            <tr><td style="padding:0 0 6px;font-size:14px;color:#854d0e;">&bull;&nbsp; Wait on site for up to <strong>${holdMinutes} minutes</strong> &mdash; do not leave early</td></tr>
+            <tr><td style="padding:0;font-size:14px;color:#854d0e;">&bull;&nbsp; You take part <strong>only</strong> if a confirmed participant does not show up</td></tr>
+          </table>
+          <p style="margin:0 0 6px;font-size:14px;color:#854d0e;">
+            <strong>Called in:</strong> ${hourlyRate} per hour for the full session length.
+          </p>
+          <p style="margin:0;font-size:14px;color:#854d0e;">
+            <strong>Not called in:</strong> ${waitFee} for holding the slot the full ${holdMinutes} minutes. You are paid for waiting either way.
+          </p>
+        </td>
+      </tr>
+    </table>
+  `);
+
+  await sendEmail({
+    to,
+    subject: `Waitlist Details for Your In-Person Session on ${sessionDate} | Texas Jury Study`,
+    html,
+  });
+}
+
 export async function sendWaitlistCalledInEmail(
   to: string,
   firstName: string,
@@ -1215,6 +1284,8 @@ export async function sendWaitlistWaitedOutEmail(
   sessionDate: string,
   waitFee: string,
   holdMinutes: number,
+  /** They held at the venue rather than in a Zoom waiting room. */
+  offline = false,
 ) {
   const html = emailWrapper(`
     <h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#1e3a8a;">Thank You for Waiting</h2>
@@ -1228,7 +1299,7 @@ export async function sendWaitlistWaitedOutEmail(
           <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#15803d;text-transform:uppercase;letter-spacing:0.08em;">Your Waiting Payment</p>
           <p style="margin:0 0 6px;font-size:24px;font-weight:700;color:#15803d;">${waitFee}</p>
           <p style="margin:0;font-size:13px;color:#15803d;">
-            For holding the waitlist slot for the full ${holdMinutes} minutes.
+            For holding the waitlist slot for the full ${holdMinutes} minutes${offline ? " at the venue" : ""}.
           </p>
         </td>
       </tr>

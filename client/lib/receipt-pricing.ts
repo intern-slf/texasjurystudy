@@ -36,7 +36,7 @@ const ONLINE_BASE_COST_PER_HOUR_CENTS = 85_000; // $850 per hour, over Zoom
  * and participants paid 3.3× more to travel. Priced per hour like the online
  * rate so `hours_requested` still drives the quote.
  */
-const OFFLINE_BASE_COST_PER_HOUR_CENTS = 1_000_000; // $10,000 per hour, in person
+const OFFLINE_BASE_COST_PER_HOUR_CENTS = 150_000; // $1,500 per hour, in person
 
 /** Backwards-compatible alias — the online rate is still the default rate. */
 export const BASE_COST_PER_HOUR_CENTS = ONLINE_BASE_COST_PER_HOUR_CENTS;

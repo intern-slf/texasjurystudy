@@ -9,10 +9,10 @@ import { updateInviteStatus } from "@/lib/participant/updateInviteStatus";
 import { hasSessionStarted } from "@/lib/participant/sessionStart";
 import {
   WAITLISTED_STATUS,
-  HOURLY_RATE_CENTS,
-  WAITLIST_WAIT_FEE_CENTS,
-  WAITLIST_HOLD_MINUTES,
+  OFFLINE_ARRIVE_EARLY_MINUTES,
   isWaitlisted,
+  waitlistHoldMinutes,
+  waitlistWaitFeeCents,
   formatCents,
   hourlyRateCents,
   sessionLengthHours,
@@ -182,10 +182,13 @@ export default async function ParticipantSessionsPage({
             <p className="font-semibold text-sm">You&apos;re on the waitlist for this session.</p>
             <p className="text-xs text-amber-800 mt-0.5 leading-relaxed">
               It was already full, so you have a reserve spot rather than a confirmed seat. Join at
-              the start time and wait in the Zoom waiting room — if a spot opens you&apos;ll be
-              admitted and paid {formatCents(HOURLY_RATE_CENTS)} per hour for the full session. If
-              no spot opens within {WAITLIST_HOLD_MINUTES} minutes you may leave, and you&apos;ll
-              still be paid {formatCents(WAITLIST_WAIT_FEE_CENTS)} for waiting.
+              {isOffline(waitlisted)
+                ? ` the venue ${OFFLINE_ARRIVE_EARLY_MINUTES} minutes before the start time and wait on site`
+                : " the start time and wait in the Zoom waiting room"} — if a spot opens you&apos;ll be
+              admitted and paid {formatCents(hourlyRateCents(waitlisted))} per hour for the full
+              session. If no spot opens within {waitlistHoldMinutes(waitlisted)} minutes you may
+              leave, and you&apos;ll still be paid {formatCents(waitlistWaitFeeCents(waitlisted))}{" "}
+              for waiting.
             </p>
           </div>
         </div>
@@ -251,6 +254,7 @@ export default async function ParticipantSessionsPage({
             // Drives the concrete "about $90 for this session" figure on the
             // waitlist offer, so the rate is not left as arithmetic.
             const sessionHoursFor = sessionLengthHours(starts, ends);
+            const offerMode = modeOf(sessionCases);
 
             return (
               <form
@@ -295,22 +299,26 @@ export default async function ParticipantSessionsPage({
                         This session is now full — we can offer you a waitlist spot
                       </p>
                       <ul className="mt-2 space-y-1 text-xs leading-relaxed text-amber-900">
-                        <li>• Join Zoom at the start time and hold in the waiting room up to {WAITLIST_HOLD_MINUTES} minutes.</li>
+                        <li>
+                          {isOffline(offerMode)
+                            ? `Come to the venue ${OFFLINE_ARRIVE_EARLY_MINUTES} min early and hold on site up to ${waitlistHoldMinutes(offerMode)} minutes.`
+                            : `Join Zoom at the start time and hold in the waiting room up to ${waitlistHoldMinutes(offerMode)} minutes.`}
+                        </li>
                         <li>• You are admitted <strong>only</strong> if a confirmed participant does not show up.</li>
                         <li>
-                          • Called in: <strong>{formatCents(HOURLY_RATE_CENTS)}/hour</strong>
+                          • Called in: <strong>{formatCents(hourlyRateCents(offerMode))}/hour</strong>
                           {sessionHoursFor > 0
-                            ? <> — about <strong>{formatCents(seatPayoutCents(sessionHoursFor))}</strong> for this session</>
+                            ? <> — about <strong>{formatCents(seatPayoutCents(sessionHoursFor, offerMode))}</strong> for this session</>
                             : null}.
                         </li>
-                        <li>• Not called in: <strong>{formatCents(WAITLIST_WAIT_FEE_CENTS)}</strong> for waiting.</li>
+                        <li>• Not called in: <strong>{formatCents(waitlistWaitFeeCents(offerMode))}</strong> for waiting.</li>
                       </ul>
                       <div className="mt-3 flex flex-wrap gap-2">
                         <button
                           formAction={async () => {
                             "use server";
-                            await updateInviteStatus(invite.id, "accepted", { confirmWaitlist: true });
-                            redirect("/dashboard/participant/sessions?waitlisted=1");
+                            const confirmed = await updateInviteStatus(invite.id, "accepted", { confirmWaitlist: true });
+                            redirect(`/dashboard/participant/sessions?waitlisted=${confirmed?.deliveryMode ?? "online"}`);
                           }}
                           className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700"
                         >
@@ -352,7 +360,7 @@ export default async function ParticipantSessionsPage({
                         // Seats were gone — they took a reserve slot, which needs
                         // saying out loud rather than a silent refresh.
                         if (result && "waitlisted" in result && result.waitlisted) {
-                          redirect("/dashboard/participant/sessions?waitlisted=1");
+                          redirect(`/dashboard/participant/sessions?waitlisted=${result.deliveryMode}`);
                         }
                         revalidatePath("/dashboard/participant/sessions");
                       }}
@@ -482,8 +490,7 @@ function SessionCard({
                 Get Directions
               </a>
               <p className="mt-2 text-xs text-green-800">
-                Arrive 15 minutes early and bring your Texas driver&apos;s license — the same one
-                on your profile.
+                Arrive {OFFLINE_ARRIVE_EARLY_MINUTES} minutes early and bring your Texas State ID.
               </p>
             </div>
           )}
@@ -543,11 +550,14 @@ function SessionCard({
             You are on the waitlist for this session.
           </p>
           <p className="mt-1 text-xs leading-relaxed text-amber-800">
-            Join at the start time and wait in the Zoom waiting room. If a confirmed participant
-            does not show up you will be admitted and paid the standard{" "}
-            {formatCents(HOURLY_RATE_CENTS)} per hour for the full session. If no spot opens within{" "}
-            {WAITLIST_HOLD_MINUTES} minutes you are free to leave, and you will still be paid{" "}
-            {formatCents(WAITLIST_WAIT_FEE_CENTS)} for waiting.
+            {offline
+              ? `Arrive ${OFFLINE_ARRIVE_EARLY_MINUTES} minutes early and wait on site.`
+              : "Join at the start time and wait in the Zoom waiting room."}{" "}
+            If a confirmed participant does not show up you will be admitted and paid the standard{" "}
+            {formatCents(hourlyRateCents(session.deliveryMode))} per hour for the full session. If no
+            spot opens within {waitlistHoldMinutes(session.deliveryMode)} minutes you are free to
+            leave, and you will still be paid{" "}
+            {formatCents(waitlistWaitFeeCents(session.deliveryMode))} for waiting.
           </p>
         </div>
       )}

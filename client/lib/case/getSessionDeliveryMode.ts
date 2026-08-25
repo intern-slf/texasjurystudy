@@ -15,8 +15,8 @@ import {
    that invariant into an answer.
 
    It matters at three points, and getting it wrong is expensive at all three:
-     - what participants are paid  ($30/hr online vs $100/hr in person)
-     - whether a waitlist exists   (offline sessions have none)
+     - what participants are paid  ($30/hr online vs $40/hr in person)
+     - the waitlist's terms        (15 min/$10 online vs 30 min/$30 in person)
      - what an admin sends them    (a Zoom link vs an address)
 
    Server-only: pulls in the service-role client. Import the pure helpers from

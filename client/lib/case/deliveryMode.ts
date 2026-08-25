@@ -5,8 +5,9 @@
    The choice is made by the requestee when the case is created, and it drives
    three separate things:
 
-     price       $850/hr  vs $10,000/hr to the requestee (see receipt-pricing)
-     payout      $30/hr   vs $100/hr to participants     (see participant/waitlist)
+     price       $850/hr  vs $1,500/hr to the requestee (see receipt-pricing)
+     payout      $30/hr   vs $40/hr to participants      (see participant/waitlist)
+     waitlist    both have one, on different terms       (see participant/waitlist)
      joining     a Zoom link (sessions.zoom_link) vs an address (sessions.location)
 
    A session may not mix the two. There is one venue and one payout rate per
@@ -34,7 +35,7 @@ export const DEFAULT_DELIVERY_MODE: DeliveryMode = "online";
  * Anything unrecognised reads as 'online'. The column has a CHECK constraint and
  * a NOT NULL default, so a bad value should be impossible — but a stale row
  * shape or a hand-run UPDATE must degrade to the cheaper, safer regime rather
- * than quietly billing someone $10,000/hr.
+ * than quietly billing someone the in-person rate.
  */
 export function normalizeDeliveryMode(value: unknown): DeliveryMode {
   return value === "offline" ? "offline" : DEFAULT_DELIVERY_MODE;
@@ -113,7 +114,7 @@ export function assertCasesShareDeliveryMode(
   if (hasOffline && hasOnline) {
     throw new Error(
       "A session cannot hold both in-person and online cases. In-person cases need a " +
-        "room and pay participants $100/hr; online cases need a Zoom link and pay $30/hr. " +
+        "room and pay participants $40/hr; online cases need a Zoom link and pay $30/hr. " +
         "Build a separate session for each.",
     );
   }

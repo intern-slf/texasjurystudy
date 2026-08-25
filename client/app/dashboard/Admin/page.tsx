@@ -21,6 +21,8 @@ import { RejectCaseButton } from "@/components/RejectCaseButton";
 import TimezoneInput from "@/components/TimezoneInput";
 import CaseModeSelectionGuard from "@/components/CaseModeSelectionGuard";
 import { deliveryModeLabel, isOffline, normalizeDeliveryMode } from "@/lib/case/deliveryMode";
+import { baseRatePerHourCents, formatCents } from "@/lib/receipt-pricing";
+import { hourlyRateCents } from "@/lib/participant/waitlist";
 import { Calendar, FileText } from "lucide-react";
 
 /* =========================
@@ -388,11 +390,11 @@ export default async function AdminDashboardPage({
                             ? "bg-green-400/10 text-green-700 ring-green-400/20"
                             : "bg-blue-400/10 text-blue-700 ring-blue-400/20"
                         }`}
-                        title={
-                          isOffline(c.delivery_mode)
-                            ? "In-person focus group — $10,000/hr, participants paid $100/hr"
-                            : "Online focus group over Zoom — $850/hr, participants paid $30/hr"
-                        }
+                        title={`${
+                          isOffline(c.delivery_mode) ? "In-person focus group" : "Online focus group over Zoom"
+                        } — ${formatCents(baseRatePerHourCents(c.delivery_mode))}/hr, participants paid ${formatCents(
+                          hourlyRateCents(c.delivery_mode),
+                        )}/hr`}
                       >
                         {deliveryModeLabel(c.delivery_mode)}
                       </span>

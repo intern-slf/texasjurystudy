@@ -2,25 +2,28 @@
    SESSION WAITLIST
 
    Once accepted seats reach `sessions.participant_cap`, the next people to
-   accept land on the waitlist instead of being turned away. They get the Zoom
-   link and hold in the waiting room for 15 minutes:
+   accept land on the waitlist instead of being turned away. They hold for a
+   window, and one of two things happens:
 
      called in  -> paid the hourly rate for the FULL session length, and their
                    invite flips to 'accepted'
      waited out -> paid a flat waiting fee, and the invite stays 'waitlisted'
 
    An admin records which happened from the session page — the call-in itself
-   happens in Zoom, not in the app.
+   happens in the room or in Zoom, not in the app.
 
-   ---- IN-PERSON SESSIONS HAVE NO WAITLIST ----
+   Both formats have a waitlist, but the terms differ, because holding a reserve
+   slot in person costs the participant a journey rather than fifteen minutes at
+   a desk:
 
-   The whole arrangement rests on the reserve slot being nearly free to hold: you
-   sit in a Zoom waiting room for 15 minutes and are paid $10 whether or not a
-   seat opens. Asking someone to drive to a room for the same maybe is a
-   different proposition, so an offline session's waitlist cap is forced to zero
-   and the overflow takes the existing "session full" path instead. Nothing here
-   is dead for offline — `waitlistCapFor` closes the door, and the call-in and
-   waited-out actions refuse outright.
+                        online            in person
+     hold window        15 minutes        30 minutes (arrive 15 min early)
+     waited-out fee     $10.00 flat       $30.00 flat
+     called-in rate     $30.00/hr         $40.00/hr
+
+   Read the two per-mode values through `waitlistHoldMinutes()` and
+   `waitlistWaitFeeCents()` rather than the bare constants, or an in-person
+   waitlister gets quoted the online terms.
 ========================= */
 
 import { isOffline, type DeliveryMode } from "@/lib/case/deliveryMode";
@@ -33,15 +36,24 @@ export const HOURLY_RATE_CENTS = 3_000; // $30.00, online
 
 /**
  * In-person rate. Higher because attending costs the participant a commute, a
- * parking spot and a whole afternoon rather than fifteen minutes at a desk.
+ * parking spot and a whole afternoon rather than an hour at a desk.
  */
-export const OFFLINE_HOURLY_RATE_CENTS = 10_000; // $100.00, in person
+export const OFFLINE_HOURLY_RATE_CENTS = 4_000; // $40.00, in person
 
-/** Flat fee for a waitlister who held the full window and was never called in. */
-export const WAITLIST_WAIT_FEE_CENTS = 1_000; // $10.00
+/** Flat fee for an online waitlister who held the full window and was never called in. */
+export const WAITLIST_WAIT_FEE_CENTS = 1_000; // $10.00, online
 
-/** How long a waitlister is asked to hold before the flat fee applies. */
+/** Flat fee for an in-person waitlister — they travelled to the venue to hold it. */
+export const OFFLINE_WAITLIST_WAIT_FEE_CENTS = 3_000; // $30.00, in person
+
+/** How long an online waitlister is asked to hold before the flat fee applies. */
 export const WAITLIST_HOLD_MINUTES = 15;
+
+/** How long an in-person waitlister holds on site before the flat fee applies. */
+export const OFFLINE_WAITLIST_HOLD_MINUTES = 30;
+
+/** How early everyone attending in person is asked to arrive, for check-in. */
+export const OFFLINE_ARRIVE_EARLY_MINUTES = 15;
 
 /** Used when a session row predates `waitlist_cap`. */
 export const DEFAULT_WAITLIST_CAP = 2;
@@ -54,22 +66,27 @@ export function hourlyRateCents(deliveryMode?: DeliveryMode | string | null): nu
 }
 
 /**
- * How many reserve slots a session offers. Always zero in person: see the note
- * at the top. `storedCap` is `sessions.waitlist_cap`, which stays whatever it
- * was — the mode decides, not the column, so a session that flips mode (it
- * cannot, but still) can never strand people in slots that no longer exist.
+ * How many reserve slots a session offers. Both formats have a waitlist, so this
+ * is simply the stored cap with a default for rows that predate the column — the
+ * per-mode difference is in the hold window and the waiting fee, not the size.
  */
 export function waitlistCapFor(
-  deliveryMode: DeliveryMode | string | null | undefined,
+  _deliveryMode: DeliveryMode | string | null | undefined,
   storedCap?: number | null,
 ): number {
-  if (isOffline(deliveryMode)) return 0;
   return storedCap ?? DEFAULT_WAITLIST_CAP;
 }
 
-/** True when the waitlist concept does not apply to this session at all. */
-export function supportsWaitlist(deliveryMode?: DeliveryMode | string | null): boolean {
-  return !isOffline(deliveryMode);
+/** How long a waitlister holds before the flat waiting fee is earned. */
+export function waitlistHoldMinutes(deliveryMode?: DeliveryMode | string | null): number {
+  return isOffline(deliveryMode) ? OFFLINE_WAITLIST_HOLD_MINUTES : WAITLIST_HOLD_MINUTES;
+}
+
+/** Flat fee for holding the full window without being called in. */
+export function waitlistWaitFeeCents(deliveryMode?: DeliveryMode | string | null): number {
+  return isOffline(deliveryMode)
+    ? OFFLINE_WAITLIST_WAIT_FEE_CENTS
+    : WAITLIST_WAIT_FEE_CENTS;
 }
 
 export function isWaitlisted(inviteStatus?: string | null): boolean {
@@ -123,11 +140,7 @@ export function seatPayoutCents(
   return Math.round(hours * hourlyRateCents(deliveryMode));
 }
 
-/**
- * Payout for a recorded waitlist outcome. Only reachable for online sessions —
- * an in-person session never creates a waitlisted row — so the flat waiting fee
- * has no in-person counterpart to diverge from.
- */
+/** Payout for a recorded waitlist outcome, at this session's terms. */
 export function waitlistPayoutCents(
   outcome: WaitlistOutcome,
   hours: number,
@@ -135,7 +148,7 @@ export function waitlistPayoutCents(
 ): number {
   return outcome === "called_in"
     ? seatPayoutCents(hours, deliveryMode)
-    : WAITLIST_WAIT_FEE_CENTS;
+    : waitlistWaitFeeCents(deliveryMode);
 }
 
 /**

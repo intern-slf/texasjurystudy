@@ -17,10 +17,11 @@ import { getLineageInvolvementForCases, splitLineageInvolvement } from "@/lib/ca
 import { sortRoster, rosterStatusLabel } from "@/lib/participant/rosterOrder";
 import {
   WAITLISTED_STATUS,
-  WAITLIST_HOLD_MINUTES,
   isWaitlisted,
   waitlistCapFor,
-  supportsWaitlist,
+  hourlyRateCents,
+  waitlistHoldMinutes,
+  waitlistWaitFeeCents,
   formatCents,
 } from "@/lib/participant/waitlist";
 import {
@@ -528,8 +529,8 @@ export default async function SessionsPage({
                         }`}
                         title={
                           isOffline(deliveryMode)
-                            ? "In-person session — participants attend at a venue and are paid $100/hr. No waitlist."
-                            : "Online session — participants join over Zoom and are paid $30/hr."
+                            ? `In-person session — participants attend at a venue and are paid ${formatCents(hourlyRateCents(deliveryMode))}/hr. Waitlisters hold on site for ${waitlistHoldMinutes(deliveryMode)} min and are paid ${formatCents(waitlistWaitFeeCents(deliveryMode))}.`
+                            : `Online session — participants join over Zoom and are paid ${formatCents(hourlyRateCents(deliveryMode))}/hr. Waitlisters hold for ${waitlistHoldMinutes(deliveryMode)} min and are paid ${formatCents(waitlistWaitFeeCents(deliveryMode))}.`
                         }
                       >
                         {deliveryModeLabel(deliveryMode)}
@@ -547,13 +548,10 @@ export default async function SessionsPage({
                       </span>
                       <SessionCapEditor sessionId={s.id} currentCap={s.participant_cap ?? 10} />
                       {(() => {
-                        // Always shown for an online session, even at 0, so the
-                        // reserve capacity reads alongside the seat count rather
-                        // than appearing out of nowhere once someone lands on it.
-                        // Hidden entirely in person: those sessions have no
-                        // waitlist, and a permanent "0/0" would only raise the
-                        // question of how to change it.
-                        if (!supportsWaitlist(deliveryMode)) return null;
+                        // Always shown, even at 0, so the reserve capacity reads
+                        // alongside the seat count rather than appearing out of
+                        // nowhere once someone lands on it. Both formats have a
+                        // waitlist; only the hold window and the fee differ.
                         const onWaitlist = sParticipants.filter((p) => isWaitlisted(p.invite_status)).length;
                         const waitlistCap = waitlistCapFor(deliveryMode, s.waitlist_cap);
                         return (
@@ -563,7 +561,7 @@ export default async function SessionsPage({
                                 ? "text-xs font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full"
                                 : "text-xs text-slate-500"
                             }
-                            title="Reserve slots. Waitlisters hold in the Zoom waiting room and are never counted in the accepted seats."
+                            title={`Reserve slots. Waitlisters ${isOffline(deliveryMode) ? "hold on site at the venue" : "hold in the Zoom waiting room"} for up to ${waitlistHoldMinutes(deliveryMode)} minutes and are paid ${formatCents(waitlistWaitFeeCents(deliveryMode))} if no seat opens. Never counted in the accepted seats.`}
                           >
                             Waitlist: {onWaitlist}/{waitlistCap}
                           </span>
@@ -713,7 +711,7 @@ export default async function SessionsPage({
                                   className="text-xs font-semibold text-slate-500"
                                   title={
                                     p.waitlist_outcome === "waited_out"
-                                      ? `Waiting fee — held the slot for the full ${WAITLIST_HOLD_MINUTES} minutes and was not called in`
+                                      ? `Waiting fee — held the slot for the full ${waitlistHoldMinutes(deliveryMode)} minutes and was not called in`
                                       : p.waitlist_outcome === "called_in"
                                       ? "Called in from the waitlist — paid the full session rate"
                                       : "Session payment"

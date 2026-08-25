@@ -38,7 +38,12 @@ import {
   isOffline,
   sessionDeliveryModeOrDefault,
 } from "@/lib/case/deliveryMode";
-import { formatCents, hourlyRateCents } from "@/lib/participant/waitlist";
+import {
+  formatCents,
+  hourlyRateCents,
+  waitlistHoldMinutes,
+  waitlistWaitFeeCents,
+} from "@/lib/participant/waitlist";
 import SelectAllParticipants from "@/components/SelectAllParticipants";
 import ShowMoreButton from "@/components/ShowMoreButton";
 import CheckboxRestorer from "@/components/CheckboxRestorer";
@@ -460,9 +465,11 @@ export default async function NewSessionPage({
           {sessionIsOffline ? (
             <>
               Participants attend at a venue and are paid{" "}
-              {formatCents(hourlyRateCents("offline"))}/hr. There is no waitlist, and candidates
-              are restricted to each case&apos;s county because they have to travel there. You
-              will send the address from the sessions page once the venue is booked.
+              {formatCents(hourlyRateCents("offline"))}/hr. Waitlisters hold on site for{" "}
+              {waitlistHoldMinutes("offline")} minutes and are paid{" "}
+              {formatCents(waitlistWaitFeeCents("offline"))} if no seat opens. Candidates are
+              restricted to each case&apos;s county because they have to travel there. You will
+              send the address from the sessions page once the venue is booked.
             </>
           ) : (
             <>
