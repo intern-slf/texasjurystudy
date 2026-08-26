@@ -3,11 +3,13 @@ import { verifyEmailActionToken } from "@/lib/emailActionToken";
 import { updateInviteStatus } from "@/lib/participant/updateInviteStatus";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import {
-  HOURLY_RATE_CENTS,
-  WAITLIST_WAIT_FEE_CENTS,
-  WAITLIST_HOLD_MINUTES,
+  hourlyRateCents,
+  waitlistWaitFeeCents,
+  waitlistHoldMinutes,
   formatCents,
 } from "@/lib/participant/waitlist";
+import { isOffline } from "@/lib/case/deliveryMode";
+import { getSessionDeliveryModeOrDefault } from "@/lib/case/getSessionDeliveryMode";
 
 export const runtime = "nodejs";
 
@@ -43,7 +45,7 @@ export async function GET(req: NextRequest) {
   try {
     const { data: row, error } = await supabaseAdmin
       .from("session_participants")
-      .select("invite_status, participant_id")
+      .select("invite_status, participant_id, session_id")
       .eq("id", inviteId)
       .single();
 
@@ -91,9 +93,14 @@ export async function GET(req: NextRequest) {
     // show "You're In!" here — they are not in, and the hold rules and the two
     // payment outcomes are the whole point of the slot.
     if (result && "waitlisted" in result && result.waitlisted) {
-      return html(waitlistedPage(magicLink));
+      return html(waitlistedPage(magicLink, result.deliveryMode));
     }
-    return html(successPage(action, magicLink));
+    // What arrives next differs by format — an address to travel to, or a Zoom
+    // link. Looked up only on this path so a decline costs no extra query.
+    const offline =
+      action === "accepted" &&
+      isOffline(await getSessionDeliveryModeOrDefault(row.session_id));
+    return html(successPage(action, magicLink, offline));
   } catch (err) {
     console.error("[email-action] Error updating invite status:", err);
     return html(errorPage("Something Went Wrong", "We could not update your response. Please try again or contact support."), 500);
@@ -177,13 +184,20 @@ function page(title: string, content: string): string {
 </html>`;
 }
 
-function successPage(action: "accepted" | "declined", dashboardUrl: string): string {
+function successPage(
+  action: "accepted" | "declined",
+  dashboardUrl: string,
+  /** In-person sessions send an address, not a link — and require travel. */
+  offline = false,
+): string {
   const isAccepted = action === "accepted";
   const color = isAccepted ? "#2D6A3E" : "#C32130";
   const bgColor = isAccepted ? "#E3EFE6" : "#F9E9EA";
   const headline = isAccepted ? "You're In!" : "Invitation Declined";
   const message = isAccepted
-    ? "Thank you for accepting. We look forward to seeing you at the session. You will receive a Zoom link closer to the date."
+    ? offline
+      ? "Thank you for accepting. This session is held in person — we will email you the full address before the session date, so please plan your travel and bring your Texas State ID."
+      : "Thank you for accepting. We look forward to seeing you at the session. You will receive a Zoom link closer to the date."
     : "We have recorded your response. Thank you for letting us know — we hope to see you at a future session.";
 
   return page(headline, `
@@ -229,6 +243,7 @@ function waitlistOfferPage(
     waitFeeCents: number;
     hourlyRateCents: number;
     holdMinutes: number;
+    deliveryMode: string;
   },
 ): string {
   const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
@@ -260,8 +275,10 @@ function waitlistOfferPage(
       <tr>
         <td style="padding:16px 20px;">
           <p style="margin:0 0 10px;font-size:11px;font-weight:700;color:#854d0e;text-transform:uppercase;letter-spacing:0.08em;">If You Take the Waitlist Spot</p>
-          <p style="margin:0 0 8px;font-size:14px;color:#6E5418;">&bull;&nbsp; Join the Zoom meeting at the start time, the same as a confirmed participant.</p>
-          <p style="margin:0 0 8px;font-size:14px;color:#6E5418;">&bull;&nbsp; Hold in the waiting room for up to <strong>${offer.holdMinutes} minutes</strong>.</p>
+          <p style="margin:0 0 8px;font-size:14px;color:#6E5418;">&bull;&nbsp; ${isOffline(offer.deliveryMode)
+            ? "Come to the venue 15 minutes before the start time, the same as a confirmed participant."
+            : "Join the Zoom meeting at the start time, the same as a confirmed participant."}</p>
+          <p style="margin:0 0 8px;font-size:14px;color:#6E5418;">&bull;&nbsp; ${isOffline(offer.deliveryMode) ? "Wait on site" : "Hold in the waiting room"} for up to <strong>${offer.holdMinutes} minutes</strong>.</p>
           <p style="margin:0 0 8px;font-size:14px;color:#6E5418;">&bull;&nbsp; You are admitted <strong>only</strong> if a confirmed participant does not show up.</p>
           <p style="margin:0;font-size:14px;color:#6E5418;">&bull;&nbsp; If no spot opens in that time, you are free to leave.</p>
         </td>
@@ -313,9 +330,11 @@ function waitlistOfferDeclinedPage(dashboardUrl: string): string {
   `);
 }
 
-function waitlistedPage(dashboardUrl: string): string {
-  const hourly = formatCents(HOURLY_RATE_CENTS);
-  const waitFee = formatCents(WAITLIST_WAIT_FEE_CENTS);
+function waitlistedPage(dashboardUrl: string, deliveryMode: string): string {
+  const hourly = formatCents(hourlyRateCents(deliveryMode));
+  const waitFee = formatCents(waitlistWaitFeeCents(deliveryMode));
+  const hold = waitlistHoldMinutes(deliveryMode);
+  const offline = isOffline(deliveryMode);
 
   return page("You're on the Waitlist", `
     <div style="width:64px;height:64px;border-radius:50%;background-color:#FBF0DD;border:2px solid #AD8A37;margin:0 auto 20px;font-size:28px;line-height:64px;">⏳</div>
@@ -327,8 +346,10 @@ function waitlistedPage(dashboardUrl: string): string {
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#FBF0DD;border-left:4px solid #AD8A37;border-radius:6px;margin:0 0 20px;text-align:left;">
       <tr>
         <td style="padding:16px 20px;">
-          <p style="margin:0 0 8px;font-size:14px;color:#6E5418;">&bull;&nbsp; Join the Zoom meeting at the session start time, the same as a confirmed participant.</p>
-          <p style="margin:0 0 8px;font-size:14px;color:#6E5418;">&bull;&nbsp; Wait in the Zoom waiting room for up to <strong>${WAITLIST_HOLD_MINUTES} minutes</strong>.</p>
+          <p style="margin:0 0 8px;font-size:14px;color:#6E5418;">&bull;&nbsp; ${offline
+            ? "Come to the venue 15 minutes before the start time, the same as a confirmed participant."
+            : "Join the Zoom meeting at the session start time, the same as a confirmed participant."}</p>
+          <p style="margin:0 0 8px;font-size:14px;color:#6E5418;">&bull;&nbsp; ${offline ? "Wait on site" : "Wait in the Zoom waiting room"} for up to <strong>${hold} minutes</strong>.</p>
           <p style="margin:0 0 8px;font-size:14px;color:#6E5418;">&bull;&nbsp; If someone does not show up, you will be admitted and take part in the full session.</p>
           <p style="margin:0;font-size:14px;color:#6E5418;">&bull;&nbsp; If no spot opens in that time, you are free to leave.</p>
         </td>
@@ -344,7 +365,7 @@ function waitlistedPage(dashboardUrl: string): string {
       </tr>
     </table>
 
-    <p style="margin:0 0 20px;font-size:14px;color:#54524A;">We have emailed you these details as well, along with the Zoom link when it is ready.</p>
+    <p style="margin:0 0 20px;font-size:14px;color:#54524A;">We have emailed you these details as well, along with the ${offline ? "venue address" : "Zoom link"} when it is ready.</p>
     <a href="${dashboardUrl}" style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;background-color:#012A68;text-decoration:none;border-radius:6px;">View My Dashboard</a>
   `);
 }
@@ -373,7 +394,7 @@ function missingProfilePage(missing: string[], dashboardUrl: string): string {
   const hasDl = missing.includes("dl");
   const hasPaypal = missing.includes("paypal");
   const items = [
-    hasDl && "Driver&rsquo;s License number and photo",
+    hasDl && "Texas State ID number and photo",
     hasPaypal && "PayPal username",
   ].filter(Boolean).join(" and ");
 

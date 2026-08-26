@@ -6,6 +6,10 @@ export async function getPendingInvites(userId: string) {
 
   const supabase = supabaseAdmin;
 
+  // `cases.delivery_mode` says whether accepting means joining a Zoom call or
+  // travelling to a venue. Every case in a session shares one value, so the
+  // dashboards read it off the first. (PostgREST select strings take no
+  // comments — keep notes out here.)
   const { data, error } = await supabase
     .from("session_participants")
     .select(`
@@ -18,7 +22,8 @@ export async function getPendingInvites(userId: string) {
           start_time,
           end_time,
           cases (
-            title
+            title,
+            delivery_mode
           )
         )
       )

@@ -431,7 +431,12 @@ describe("API Route Handlers", () => {
       expect(res.status).toBe(200);
       const html = await res.text();
       expect(html).toContain("Profile Incomplete");
-      expect(html).toContain("Driver");
+      // Participants are asked for a Texas State ID, never a driver's license.
+      // The negative half is the regression guard: the underlying column is
+      // still driver_license_number, so it is easy to leak the old wording back
+      // into the copy.
+      expect(html).toContain("Texas State ID");
+      expect(html).not.toMatch(/driver(&rsquo;|&#8217;|')?s? licen[cs]e/i);
       expect(html).toContain("PayPal");
     });
   });

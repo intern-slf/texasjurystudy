@@ -275,7 +275,9 @@ export async function sendSessionCreatedEmail(
   caseTitles: string[],
   sessionDate: string,
   timeStr: string,
-  participantCount: number
+  participantCount: number,
+  /** Set for an in-person session so the requestee knows to travel. */
+  offline = false,
 ) {
   const caseListHtml = caseTitles
     .map((t) => `<li style="margin:4px 0;font-size:15px;font-weight:600;color:#1e3a8a;">${t}</li>`)
@@ -310,12 +312,29 @@ export async function sendSessionCreatedEmail(
         </td>
       </tr>
       <tr>
-        <td style="padding:12px 20px;">
+        <td style="padding:12px 20px;border-bottom:1px solid #e2e8f0;">
           <p style="margin:0 0 2px;font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.08em;">Participants Invited</p>
           <p style="margin:0;font-size:15px;font-weight:600;color:#1e293b;">${participantCount}</p>
         </td>
       </tr>
+      <tr>
+        <td style="padding:12px 20px;">
+          <p style="margin:0 0 2px;font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.08em;">Format</p>
+          <p style="margin:0;font-size:15px;font-weight:600;color:#1e293b;">${offline ? "In-Person" : "Online (Zoom)"}</p>
+        </td>
+      </tr>
     </table>
+
+    ${offline ? `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f0fdf4;border-left:4px solid #16a34a;border-radius:6px;margin:0 0 24px;">
+      <tr>
+        <td style="padding:14px 20px;">
+          <p style="margin:0;font-size:14px;color:#166534;">
+            This is an <strong>in-person</strong> focus group. We will send you the venue address before the session date.
+          </p>
+        </td>
+      </tr>
+    </table>` : ''}
 
     <table role="presentation" cellpadding="0" cellspacing="0">
       <tr>
@@ -441,6 +460,8 @@ export async function sendPresenceConfirmedEmail(
   firstName: string,
   sessionDate: string,
   timeStr: string,
+  /** In-person sessions require travel, so say so rather than implying Zoom. */
+  offline = false,
 ) {
   const html = emailWrapper(`
     <h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#15803d;">Presence Confirmed</h2>
@@ -465,6 +486,17 @@ export async function sendPresenceConfirmedEmail(
         </td>
       </tr>
     </table>
+
+    ${offline ? `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f0fdf4;border-left:4px solid #16a34a;border-radius:6px;margin:0 0 24px;">
+      <tr>
+        <td style="padding:14px 20px;">
+          <p style="margin:0;font-size:14px;color:#166534;">
+            This session is held <strong>in person</strong>. We will send you the full address before the session date — please plan your travel and bring your <strong>Texas State ID</strong>.
+          </p>
+        </td>
+      </tr>
+    </table>` : ''}
 
     <p style="margin:0 0 28px;font-size:14px;color:#64748b;">
       We look forward to seeing you. If you have any questions, please feel free to contact us.
@@ -581,6 +613,8 @@ export async function sendInviteAcceptedConfirmationEmail(
   to: string,
   sessionDate: string,
   timeStr: string,
+  /** In-person sessions promise an address, not a meeting link. */
+  offline = false,
 ) {
   const html = emailWrapper(`
     <h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#15803d;">Thank You for Accepting!</h2>
@@ -606,6 +640,19 @@ export async function sendInviteAcceptedConfirmationEmail(
       </tr>
     </table>
 
+    ${offline ? `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f0fdf4;border-left:4px solid #16a34a;border-radius:6px;margin:0 0 28px;">
+      <tr>
+        <td style="padding:14px 20px;">
+          <p style="margin:0 0 6px;font-size:14px;color:#166534;">
+            This is an <strong>in-person session</strong> — you will be attending in a room, not over Zoom.
+          </p>
+          <p style="margin:0;font-size:14px;color:#166534;">
+            We will send you the <strong>full address</strong> before the session. Please keep an eye on your inbox closer to the date and plan your travel.
+          </p>
+        </td>
+      </tr>
+    </table>` : `
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#eff6ff;border-left:4px solid #2563eb;border-radius:6px;margin:0 0 28px;">
       <tr>
         <td style="padding:14px 20px;">
@@ -614,7 +661,7 @@ export async function sendInviteAcceptedConfirmationEmail(
           </p>
         </td>
       </tr>
-    </table>
+    </table>`}
 
     <table role="presentation" cellpadding="0" cellspacing="0">
       <tr>
@@ -842,14 +889,121 @@ export async function sendZoomLinkEmail(
 }
 
 /* =========================
+   IN-PERSON SESSION EMAILS
+
+   The offline counterparts to the Zoom templates. Deliberately separate rather
+   than a branch inside them: almost every instruction differs. There is no link
+   to click and no camera to test — instead there is an address to travel to, a
+   time to arrive by, and a Texas State ID to bring for check-in. Both formats
+   do have a waitlist, but on different terms (see lib/participant/waitlist).
+   Mixing the two into
+   one template is how someone ends up being told to test their microphone before
+   driving to a conference room.
+========================= */
+
+/** Google Maps deep link built from the address — no extra column to maintain. */
+function mapsUrl(location: string): string {
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location)}`;
+}
+
+/** Address block shared by the participant and requestee in-person templates. */
+function locationCard(location: string, sessionDate: string, timeStr?: string): string {
+  return `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f0fdf4;border-left:4px solid #16a34a;border-radius:6px;margin:0 0 24px;">
+      <tr>
+        <td style="padding:16px 20px;border-bottom:1px solid #bbf7d0;">
+          <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#166534;text-transform:uppercase;letter-spacing:0.08em;">Where</p>
+          <p style="margin:0;font-size:16px;font-weight:700;color:#15803d;white-space:pre-line;">${escHtml(location)}</p>
+        </td>
+      </tr>
+      <tr>
+        <td style="padding:16px 20px;${timeStr ? "border-bottom:1px solid #bbf7d0;" : ""}">
+          <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#166534;text-transform:uppercase;letter-spacing:0.08em;">Session Date</p>
+          <p style="margin:0;font-size:16px;font-weight:700;color:#15803d;">${sessionDate}</p>
+        </td>
+      </tr>
+      ${timeStr ? `
+      <tr>
+        <td style="padding:16px 20px;">
+          <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#166534;text-transform:uppercase;letter-spacing:0.08em;">Session Time</p>
+          <p style="margin:0;font-size:16px;font-weight:700;color:#15803d;">${timeStr}</p>
+        </td>
+      </tr>` : ''}
+    </table>`;
+}
+
+/**
+ * The in-person counterpart to `sendZoomLinkEmail`: an address instead of a
+ * link, sent to everyone holding a seat on an offline session.
+ */
+export async function sendSessionLocationEmail(
+  to: string,
+  firstName: string,
+  sessionDate: string,
+  location: string,
+  timeStr?: string,
+  hourlyRate?: string,
+) {
+  const html = emailWrapper(`
+    <h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#15803d;">Your Session Location</h2>
+    <p style="margin:0 0 20px;font-size:15px;color:#475569;">
+      Hi ${escHtml(firstName)}, your Texas Jury Study session on <strong>${sessionDate}</strong> is being held <strong>in person</strong>. The address is below — please plan your travel now.
+    </p>
+
+    ${locationCard(location, sessionDate, timeStr)}
+
+    <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 24px;">
+      <tr>
+        <td style="border-radius:6px;background-color:#16a34a;">
+          <a href="${mapsUrl(location)}"
+             style="display:inline-block;padding:14px 32px;font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:6px;">
+            Get Directions
+          </a>
+        </td>
+      </tr>
+    </table>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#fef9c3;border-left:4px solid #ca8a04;border-radius:6px;margin:0 0 8px;">
+      <tr>
+        <td style="padding:16px 20px;">
+          <p style="margin:0 0 8px;font-size:11px;font-weight:700;color:#854d0e;text-transform:uppercase;letter-spacing:0.08em;">Required to Participate &amp; Get Paid</p>
+          <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 10px;">
+            <tr><td style="padding:0 0 6px;font-size:14px;color:#854d0e;">&bull;&nbsp; Arrive <strong>15 minutes early</strong> so check-in does not delay the session</td></tr>
+            <tr><td style="padding:0 0 6px;font-size:14px;color:#854d0e;">&bull;&nbsp; Bring your <strong>Texas State ID</strong> &mdash; we check it at the door</td></tr>
+            <tr><td style="padding:0 0 6px;font-size:14px;color:#854d0e;">&bull;&nbsp; Stay for the <strong>entire session</strong> — payment covers the full scheduled length</td></tr>
+            <tr><td style="padding:0;font-size:14px;color:#854d0e;">&bull;&nbsp; If something changes and you cannot attend, tell us <strong>as early as you can</strong></td></tr>
+          </table>
+          <p style="margin:0;font-size:14px;font-weight:700;color:#854d0e;">
+            Seats are held for you by name. Arriving late or not at all means you cannot take part and will not be paid.
+          </p>
+        </td>
+      </tr>
+    </table>
+
+    ${hourlyRate ? `
+    <p style="margin:16px 0 0;font-size:13px;color:#64748b;">
+      In-person sessions are paid <strong>${hourlyRate} per hour</strong> for the full scheduled session length.
+    </p>` : ''}
+  `);
+
+  await sendEmail({
+    to,
+    subject: `Location for Your In-Person Session on ${sessionDate} | Texas Jury Study`,
+    html,
+  });
+}
+
+/* =========================
    WAITLIST EMAILS
 
-   A waitlister accepted after the session filled up. They hold a reserve slot:
-   they join Zoom on time, wait in the waiting room, and are admitted only if a
-   seat opens. The four templates below cover the whole arc — landing on the
-   waitlist, the Zoom link with hold instructions, being called in, and being
-   thanked for waiting. Kept separate from the seated-participant templates so
-   the terms are never implied to someone who does not have a seat.
+   A waitlister accepted after the session filled up. They hold a reserve slot
+   and are admitted only if a seat opens — online by waiting in the Zoom waiting
+   room, in person by holding on site. The five templates below cover the whole
+   arc: landing on the waitlist, the joining details with hold instructions (a
+   Zoom link OR a venue address — sendWaitlistZoomLinkEmail and
+   sendWaitlistLocationEmail), being called in, and being thanked for waiting.
+   Kept separate from the seated-participant templates so the terms are never
+   implied to someone who does not have a seat.
 ========================= */
 
 export async function sendWaitlistConfirmationEmail(
@@ -860,6 +1014,8 @@ export async function sendWaitlistConfirmationEmail(
   hourlyRate: string,
   waitFee: string,
   timeStr?: string,
+  /** In-person reserve slots are held at the venue, not in a Zoom waiting room. */
+  offline = false,
 ) {
   const html = emailWrapper(`
     <h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#1e3a8a;">You're on the Waitlist</h2>
@@ -888,8 +1044,11 @@ export async function sendWaitlistConfirmationEmail(
         <td style="padding:16px 20px;">
           <p style="margin:0 0 10px;font-size:11px;font-weight:700;color:#854d0e;text-transform:uppercase;letter-spacing:0.08em;">How the Waitlist Works</p>
           <table role="presentation" cellpadding="0" cellspacing="0">
-            <tr><td style="padding:0 0 8px;font-size:14px;color:#854d0e;">&bull;&nbsp; Join the Zoom meeting at the session start time, exactly like a confirmed participant.</td></tr>
-            <tr><td style="padding:0 0 8px;font-size:14px;color:#854d0e;">&bull;&nbsp; You will be held in the Zoom waiting room for up to <strong>${holdMinutes} minutes</strong>.</td></tr>
+            ${offline
+              ? `<tr><td style="padding:0 0 8px;font-size:14px;color:#854d0e;">&bull;&nbsp; Come to the venue and check in <strong>15 minutes before</strong> the start time, exactly like a confirmed participant.</td></tr>
+            <tr><td style="padding:0 0 8px;font-size:14px;color:#854d0e;">&bull;&nbsp; You will wait on site for up to <strong>${holdMinutes} minutes</strong>.</td></tr>`
+              : `<tr><td style="padding:0 0 8px;font-size:14px;color:#854d0e;">&bull;&nbsp; Join the Zoom meeting at the session start time, exactly like a confirmed participant.</td></tr>
+            <tr><td style="padding:0 0 8px;font-size:14px;color:#854d0e;">&bull;&nbsp; You will be held in the Zoom waiting room for up to <strong>${holdMinutes} minutes</strong>.</td></tr>`}
             <tr><td style="padding:0 0 8px;font-size:14px;color:#854d0e;">&bull;&nbsp; If a confirmed participant does not show up, you will be admitted and take part in the full session.</td></tr>
             <tr><td style="padding:0;font-size:14px;color:#854d0e;">&bull;&nbsp; If no spot opens within ${holdMinutes} minutes, you are free to leave.</td></tr>
           </table>
@@ -1003,6 +1162,70 @@ export async function sendWaitlistZoomLinkEmail(
   });
 }
 
+/**
+ * The in-person counterpart to `sendWaitlistZoomLinkEmail`: the venue address
+ * plus the hold rules, for someone holding a reserve slot at an offline session.
+ * Separate template rather than a branch — a waitlister who is told to "stay in
+ * the waiting room" when they are meant to drive to a building is the exact
+ * failure this whole split exists to prevent.
+ */
+export async function sendWaitlistLocationEmail(
+  to: string,
+  firstName: string,
+  sessionDate: string,
+  location: string,
+  holdMinutes: number,
+  hourlyRate: string,
+  waitFee: string,
+  timeStr?: string,
+) {
+  const html = emailWrapper(`
+    <h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#15803d;">Your Waitlist Details &amp; Location</h2>
+    <p style="margin:0 0 20px;font-size:15px;color:#475569;">
+      Hi ${escHtml(firstName)}, you are holding a <strong>waitlist spot</strong> for the in-person session on <strong>${sessionDate}</strong>. The address is below &mdash; please read the hold rules before you travel.
+    </p>
+
+    ${locationCard(location, sessionDate, timeStr)}
+
+    <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 24px;">
+      <tr>
+        <td style="border-radius:6px;background-color:#16a34a;">
+          <a href="${mapsUrl(location)}"
+             style="display:inline-block;padding:14px 32px;font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:6px;">
+            Get Directions
+          </a>
+        </td>
+      </tr>
+    </table>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#fef9c3;border-left:4px solid #ca8a04;border-radius:6px;margin:0 0 8px;">
+      <tr>
+        <td style="padding:16px 20px;">
+          <p style="margin:0 0 8px;font-size:11px;font-weight:700;color:#854d0e;text-transform:uppercase;letter-spacing:0.08em;">How Your Waitlist Spot Works</p>
+          <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 10px;">
+            <tr><td style="padding:0 0 6px;font-size:14px;color:#854d0e;">&bull;&nbsp; Arrive and check in <strong>15 minutes before</strong> the start time</td></tr>
+            <tr><td style="padding:0 0 6px;font-size:14px;color:#854d0e;">&bull;&nbsp; Bring your <strong>Texas State ID</strong> &mdash; we check it at the door</td></tr>
+            <tr><td style="padding:0 0 6px;font-size:14px;color:#854d0e;">&bull;&nbsp; Wait on site for up to <strong>${holdMinutes} minutes</strong> &mdash; do not leave early</td></tr>
+            <tr><td style="padding:0;font-size:14px;color:#854d0e;">&bull;&nbsp; You take part <strong>only</strong> if a confirmed participant does not show up</td></tr>
+          </table>
+          <p style="margin:0 0 6px;font-size:14px;color:#854d0e;">
+            <strong>Called in:</strong> ${hourlyRate} per hour for the full session length.
+          </p>
+          <p style="margin:0;font-size:14px;color:#854d0e;">
+            <strong>Not called in:</strong> ${waitFee} for holding the slot the full ${holdMinutes} minutes. You are paid for waiting either way.
+          </p>
+        </td>
+      </tr>
+    </table>
+  `);
+
+  await sendEmail({
+    to,
+    subject: `Waitlist Details for Your In-Person Session on ${sessionDate} | Texas Jury Study`,
+    html,
+  });
+}
+
 export async function sendWaitlistCalledInEmail(
   to: string,
   firstName: string,
@@ -1063,6 +1286,8 @@ export async function sendWaitlistWaitedOutEmail(
   sessionDate: string,
   waitFee: string,
   holdMinutes: number,
+  /** They held at the venue rather than in a Zoom waiting room. */
+  offline = false,
 ) {
   const html = emailWrapper(`
     <h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#1e3a8a;">Thank You for Waiting</h2>
@@ -1076,7 +1301,7 @@ export async function sendWaitlistWaitedOutEmail(
           <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#15803d;text-transform:uppercase;letter-spacing:0.08em;">Your Waiting Payment</p>
           <p style="margin:0 0 6px;font-size:24px;font-weight:700;color:#15803d;">${waitFee}</p>
           <p style="margin:0;font-size:13px;color:#15803d;">
-            For holding the waitlist slot for the full ${holdMinutes} minutes.
+            For holding the waitlist slot for the full ${holdMinutes} minutes${offline ? " at the venue" : ""}.
           </p>
         </td>
       </tr>
@@ -1153,9 +1378,35 @@ export async function sendPresenterInfoEmail(
   zoomLink: string | null,
   cases: PresenterCaseInfo[],
   participants: PresenterParticipantInfo[],
+  /**
+   * Set for an in-person session, in which case it replaces the Zoom block
+   * entirely — an offline session has an address and no link, and showing a
+   * "no Zoom link yet" warning for one would read as a missing step.
+   */
+  offline?: { location: string | null },
 ) {
-  // Zoom section
-  const zoomHtml = zoomLink
+  // How the requestee gets to their own session: a Zoom link, or an address.
+  const zoomHtml = offline
+    ? offline.location
+      ? `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f0fdf4;border-left:4px solid #16a34a;border-radius:6px;margin:0 0 24px;">
+      <tr>
+        <td style="padding:16px 20px;">
+          <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#166534;text-transform:uppercase;letter-spacing:0.08em;">In-Person Location</p>
+          <p style="margin:0 0 8px;font-size:15px;font-weight:600;color:#15803d;white-space:pre-line;">${escHtml(offline.location)}</p>
+          <a href="${mapsUrl(offline.location)}" style="font-size:14px;font-weight:600;color:#15803d;">Get Directions →</a>
+        </td>
+      </tr>
+    </table>`
+      : `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#fef9c3;border-left:4px solid #ca8a04;border-radius:6px;margin:0 0 24px;">
+      <tr>
+        <td style="padding:16px 20px;">
+          <p style="margin:0;font-size:14px;color:#854d0e;">This is an <strong>in-person</strong> session. The location has not been set yet.</p>
+        </td>
+      </tr>
+    </table>`
+    : zoomLink
     ? `
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#eff6ff;border-left:4px solid #2563eb;border-radius:6px;margin:0 0 24px;">
       <tr>
@@ -1371,7 +1622,7 @@ export async function sendReactivationEmail(opts: {
           </p>
           <ul style="margin:0 0 12px 0;padding-left:20px;color:#7c2d12;font-size:14px;line-height:1.7;">
             <li><strong>PayPal username</strong> &mdash; we pay exclusively via PayPal</li>
-            <li><strong>Driver&rsquo;s License number and photo</strong> &mdash; to verify Texas residency</li>
+            <li><strong>Texas State ID number and photo</strong> &mdash; to verify Texas residency</li>
           </ul>
           <p style="margin:0 0 12px;font-size:14px;color:#7c2d12;line-height:1.7;">
             Please note: there is a 2&ndash;3 dollar deduction for payments processed

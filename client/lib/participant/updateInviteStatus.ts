@@ -6,22 +6,26 @@ import {
   sendInviteDeclinedConfirmationEmail,
   sendSessionFullEmail,
   sendZoomLinkEmail,
+  sendSessionLocationEmail,
   sendWaitlistConfirmationEmail,
   sendWaitlistZoomLinkEmail,
+  sendWaitlistLocationEmail,
 } from "@/lib/mail";
 import { isActiveStatus } from "@/lib/participant/activeStatus";
 import { hasSessionStarted, cooldownAfterSession } from "@/lib/participant/sessionStart";
 import {
   WAITLISTED_STATUS,
-  DEFAULT_WAITLIST_CAP,
-  HOURLY_RATE_CENTS,
-  WAITLIST_WAIT_FEE_CENTS,
-  WAITLIST_HOLD_MINUTES,
   assignSlot,
   sessionLengthHours,
   seatPayoutCents,
+  hourlyRateCents,
+  waitlistCapFor,
+  waitlistHoldMinutes,
+  waitlistWaitFeeCents,
   formatCents,
 } from "@/lib/participant/waitlist";
+import { isOffline, type DeliveryMode } from "@/lib/case/deliveryMode";
+import { getSessionDeliveryModeOrDefault } from "@/lib/case/getSessionDeliveryMode";
 
 /* =========================
    CHECK IF SESSION HAS REACHED ITS PARTICIPANT CAP
@@ -54,13 +58,20 @@ export async function isSessionFull(sessionId: string): Promise<boolean> {
 
    Reads both caps and both counts in one place so the accept path, the session
    page and the full-sweep all agree on where a session currently stands.
+
+   Both formats have a waitlist; what differs is the hold window and the waiting
+   fee, not the number of slots. `deliveryMode` is returned alongside so callers
+   can quote the right terms without a second lookup.
 ========================= */
 export async function getSessionOccupancy(sessionId: string) {
-  const { data: session } = await supabaseAdmin
-    .from("sessions")
-    .select("participant_cap, waitlist_cap")
-    .eq("id", sessionId)
-    .single();
+  const [{ data: session }, deliveryMode] = await Promise.all([
+    supabaseAdmin
+      .from("sessions")
+      .select("participant_cap, waitlist_cap")
+      .eq("id", sessionId)
+      .single(),
+    getSessionDeliveryModeOrDefault(sessionId),
+  ]);
 
   const [{ count: acceptedCount }, { count: waitlistCount }] = await Promise.all([
     supabaseAdmin
@@ -76,8 +87,9 @@ export async function getSessionOccupancy(sessionId: string) {
   ]);
 
   return {
+    deliveryMode,
     participantCap: session?.participant_cap ?? 10,
-    waitlistCap: session?.waitlist_cap ?? DEFAULT_WAITLIST_CAP,
+    waitlistCap: waitlistCapFor(deliveryMode, session?.waitlist_cap),
     acceptedCount: acceptedCount ?? 0,
     waitlistCount: waitlistCount ?? 0,
   };
@@ -107,6 +119,9 @@ export async function updateInviteStatus(
   let slot: "seat" | "waitlist" = "seat";
   let waitlistPosition: number | null = null;
   let sessionHours = 0;
+  // How the session is run. Decides the hourly rate, the waitlist's hold window
+  // and waiting fee, and which set of joining instructions goes out.
+  let deliveryMode: DeliveryMode = "online";
 
   // 0. If accepting, check the session hasn't started, then active panel status,
   //    session capacity and required profile fields. Declining stays open at
@@ -150,6 +165,7 @@ export async function updateInviteStatus(
       );
 
       const occupancy = await getSessionOccupancy(inviteRow.session_id);
+      deliveryMode = occupancy.deliveryMode;
       const assigned = assignSlot(occupancy);
       if (assigned === "full") {
         return { blocked: true, reason: "session_full" } as const;
@@ -194,10 +210,11 @@ export async function updateInviteStatus(
           position: waitlistPosition,
           sessionDate: (sessionRow?.session_date as string | undefined) ?? null,
           sessionHours,
-          seatPayoutCents: seatPayoutCents(sessionHours),
-          waitFeeCents: WAITLIST_WAIT_FEE_CENTS,
-          hourlyRateCents: HOURLY_RATE_CENTS,
-          holdMinutes: WAITLIST_HOLD_MINUTES,
+          seatPayoutCents: seatPayoutCents(sessionHours, deliveryMode),
+          waitFeeCents: waitlistWaitFeeCents(deliveryMode),
+          hourlyRateCents: hourlyRateCents(deliveryMode),
+          holdMinutes: waitlistHoldMinutes(deliveryMode),
+          deliveryMode,
         } as const;
       }
     }
@@ -217,8 +234,8 @@ export async function updateInviteStatus(
             // A seat is worth the hourly rate for the session; a waitlist slot is
             // worth the waiting fee until an admin records the real outcome.
             payout_cents: isWaitlistAccept
-              ? WAITLIST_WAIT_FEE_CENTS
-              : seatPayoutCents(sessionHours),
+              ? waitlistWaitFeeCents(deliveryMode)
+              : seatPayoutCents(sessionHours, deliveryMode),
           }
         : {}),
       // Declining ends any claim on this session. Clear the money and the slot:
@@ -254,7 +271,7 @@ export async function updateInviteStatus(
   // from every exit below, because otherwise the accept/decline pages cannot
   // distinguish the two and a waitlister is told "You're In!".
   const outcome = isWaitlistAccept
-    ? ({ waitlisted: true, position: waitlistPosition } as const)
+    ? ({ waitlisted: true, position: waitlistPosition, deliveryMode } as const)
     : undefined;
 
   if (!updatedRows?.length) return outcome;
@@ -265,7 +282,7 @@ export async function updateInviteStatus(
     try {
       const { data: session } = await supabaseAdmin
         .from("sessions")
-        .select("session_date, zoom_link")
+        .select("session_date, zoom_link, location")
         .eq("id", session_id)
         .single();
 
@@ -327,38 +344,77 @@ export async function updateInviteStatus(
             userData?.user?.user_metadata?.full_name?.split(" ")[0] ||
             "Participant";
 
+          const offline = isOffline(deliveryMode);
+
           // A waitlister gets the waitlist arc instead of the seated one — they
           // must be told the hold rules and the two payment outcomes, and must
           // never receive a plain "You're In" confirmation.
           if (isWaitlistAccept) {
+            const holdMinutes = waitlistHoldMinutes(deliveryMode);
+            const waitFee = formatCents(waitlistWaitFeeCents(deliveryMode));
+            const rate = formatCents(hourlyRateCents(deliveryMode));
+
             await sendWaitlistConfirmationEmail(
               email,
               firstName,
               session.session_date as string,
-              WAITLIST_HOLD_MINUTES,
-              formatCents(HOURLY_RATE_CENTS),
-              formatCents(WAITLIST_WAIT_FEE_CENTS),
+              holdMinutes,
+              rate,
+              waitFee,
               timeStr,
+              offline,
             );
 
-            if (session.zoom_link) {
+            // Whichever joining detail is already saved goes out now, on the
+            // waitlist template. Never both — a session has an address or a
+            // link, never the two.
+            if (offline && session.location) {
+              await sendWaitlistLocationEmail(
+                email,
+                firstName,
+                session.session_date as string,
+                session.location as string,
+                holdMinutes,
+                rate,
+                waitFee,
+                timeStr,
+              );
+              console.log(`[updateInviteStatus] Sent waitlist location to ${email} (already saved)`);
+            } else if (!offline && session.zoom_link) {
               await sendWaitlistZoomLinkEmail(
                 email,
                 firstName,
                 session.session_date as string,
                 session.zoom_link,
-                WAITLIST_HOLD_MINUTES,
-                formatCents(HOURLY_RATE_CENTS),
-                formatCents(WAITLIST_WAIT_FEE_CENTS),
+                holdMinutes,
+                rate,
+                waitFee,
                 timeStr,
               );
               console.log(`[updateInviteStatus] Sent waitlist zoom link to ${email} (link already saved)`);
             }
           } else {
-            await sendInviteAcceptedConfirmationEmail(email, session.session_date as string, timeStr);
+            await sendInviteAcceptedConfirmationEmail(
+              email,
+              session.session_date as string,
+              timeStr,
+              offline,
+            );
 
-            // If zoom link is already saved, send it immediately to the new participant
-            if (session.zoom_link) {
+            // Whichever joining detail is already on the session goes out now, so
+            // someone who accepts late is not left waiting for a re-send. An
+            // in-person session has an address rather than a link, and never both.
+            if (offline && session.location) {
+              await sendSessionLocationEmail(
+                email,
+                firstName,
+                session.session_date as string,
+                session.location as string,
+                timeStr,
+                formatCents(hourlyRateCents(deliveryMode)),
+              );
+              console.log(`[updateInviteStatus] Sent session location to ${email} (already saved)`);
+            } else if (!offline && session.zoom_link) {
               await sendZoomLinkEmail(email, firstName, session.session_date as string, session.zoom_link, timeStr);
               console.log(`[updateInviteStatus] Sent zoom link email to ${email} (link already saved)`);
             }

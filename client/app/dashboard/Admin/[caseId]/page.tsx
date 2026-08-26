@@ -3,6 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { CaseFilters } from "@/lib/filter-utils";
 import ReceiptPricingPreview from "@/components/ReceiptPricingPreview";
+import { deliveryModeLabel } from "@/lib/case/deliveryMode";
+import { baseRatePerHourCents, formatCents } from "@/lib/receipt-pricing";
 import CaseLineagePanel from "@/components/CaseLineagePanel";
 import CaseSessionsPanel from "@/components/CaseSessionsPanel";
 import BackButton from "@/components/BackButton";
@@ -59,6 +61,7 @@ interface CaseInfo {
   parent_case_id: string | null;
   case_type: string | null;
   focus_group_type: string | null;
+  delivery_mode: string | null;
   documentation_type: string | null;
   county: string | null;
   participants_from_county: string | null;
@@ -109,6 +112,7 @@ export default async function AdminCaseDetailPage({
       parent_case_id,
       case_type,
       focus_group_type,
+      delivery_mode,
       documentation_type,
       county,
       participants_from_county,
@@ -243,6 +247,15 @@ export default async function AdminCaseDetailPage({
           {[
             { label: "Case Type", value: caseInfo.case_type },
             { label: "Focus Group", value: caseInfo.focus_group_type },
+            {
+              // Never null — the column is NOT NULL with an 'online' default —
+              // so this tile always renders and the format is never inferred
+              // from its absence.
+              label: "Format",
+              value: `${deliveryModeLabel(caseInfo.delivery_mode)} · ${formatCents(
+                baseRatePerHourCents(caseInfo.delivery_mode),
+              )}/hr`,
+            },
             { label: "Documentation", value: caseInfo.documentation_type },
             { label: "County", value: caseInfo.county },
             {
@@ -377,6 +390,7 @@ export default async function AdminCaseDetailPage({
         <ReceiptPricingPreview
           filters={caseInfo.filters}
           hoursRequested={caseInfo.hours_requested}
+          deliveryMode={caseInfo.delivery_mode}
         />
       </section>
 

@@ -216,11 +216,29 @@ const SECTIONS: Section[] = [
       <>
         <h3 className="text-base font-semibold text-foreground">Fees</h3>
         <p>
-          Studies are priced at{" "}
-          <strong className="font-semibold text-foreground">
-            $850 per hour
-          </strong>{" "}
-          of session time, plus{" "}
+          Studies are priced per hour of session time, at a rate that depends on
+          the format you choose for the case:
+        </p>
+        <ul className="ml-5 list-disc space-y-1.5">
+          <li>
+            <strong className="font-semibold text-foreground">
+              Online
+            </strong>{" "}
+            &mdash; conducted over Zoom &mdash;{" "}
+            <strong className="font-semibold text-foreground">
+              $850 per hour
+            </strong>
+          </li>
+          <li>
+            <strong className="font-semibold text-foreground">In person</strong>{" "}
+            &mdash; conducted at a venue we arrange &mdash;{" "}
+            <strong className="font-semibold text-foreground">
+              $1,500 per hour
+            </strong>
+          </li>
+        </ul>
+        <p>
+          In either format you also pay{" "}
           <strong className="font-semibold text-foreground">$100</strong> for
           each demographic or eligibility filter you apply to narrow the panel.
           The app shows you a full breakdown before you confirm a case, and that

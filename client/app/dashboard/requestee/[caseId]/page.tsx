@@ -11,6 +11,8 @@ import ReceiptPricingPreview from "@/components/ReceiptPricingPreview";
 import { Badge } from "@/components/ui/badge";
 import BackButton from "@/components/BackButton";
 import { CaseFilters } from "@/lib/filter-utils";
+import { deliveryModeLabel, isOffline } from "@/lib/case/deliveryMode";
+import { baseRatePerHourCents, formatCents } from "@/lib/receipt-pricing";
 import {
   Calendar,
   Clock,
@@ -23,6 +25,7 @@ import {
   Hourglass,
   MapPin,
   UserCheck,
+  Video,
 } from "lucide-react";
 
 export default async function RequesteeCaseDetailPage({
@@ -46,7 +49,7 @@ export default async function RequesteeCaseDetailPage({
       id, title, description, status, admin_status, schedule_status,
       scheduled_at, admin_scheduled_at, session_completion_timeframe, preferred_day,
       documentation_type, filters, created_at, parent_case_id, hours_requested,
-      case_type, focus_group_type, county, participants_from_county
+      case_type, focus_group_type, county, participants_from_county, delivery_mode
     `)
     .eq("id", caseId)
     .eq("user_id", user.id)
@@ -176,6 +179,24 @@ export default async function RequesteeCaseDetailPage({
                 <p className="text-sm font-semibold">{c.focus_group_type as string}</p>
               </div>
             )}
+            {/* Always shown, unlike the fields around it: every case has a
+                format, and leaving it out would read as online by omission. */}
+            <div className="bg-white border rounded-xl p-4 space-y-1">
+              <p className="text-xs text-muted-foreground font-medium flex items-center gap-1">
+                {isOffline(c.delivery_mode) ? (
+                  <MapPin className="h-3.5 w-3.5" />
+                ) : (
+                  <Video className="h-3.5 w-3.5" />
+                )}{" "}
+                Format
+              </p>
+              <p className="text-sm font-semibold">
+                {deliveryModeLabel(c.delivery_mode)}
+                <span className="ml-1.5 font-normal text-muted-foreground">
+                  ({formatCents(baseRatePerHourCents(c.delivery_mode as string | null))}/hr)
+                </span>
+              </p>
+            </div>
             {c.county && (
               <div className="bg-white border rounded-xl p-4 space-y-1">
                 <p className="text-xs text-muted-foreground font-medium flex items-center gap-1">
@@ -272,7 +293,11 @@ export default async function RequesteeCaseDetailPage({
           {/* TRANSCRIPT PRICING PREVIEW (non-previous cases) */}
           {status !== "previous" && (
             <section className="space-y-2">
-              <ReceiptPricingPreview filters={filters} hoursRequested={c.hours_requested} />
+              <ReceiptPricingPreview
+                filters={filters}
+                hoursRequested={c.hours_requested}
+                deliveryMode={c.delivery_mode as string | null}
+              />
             </section>
           )}
 

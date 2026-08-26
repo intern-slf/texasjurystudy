@@ -19,6 +19,10 @@ import { localToUTC } from "@/lib/timezone";
 import { AdminActionButton } from "@/components/AdminActionButton";
 import { RejectCaseButton } from "@/components/RejectCaseButton";
 import TimezoneInput from "@/components/TimezoneInput";
+import CaseModeSelectionGuard from "@/components/CaseModeSelectionGuard";
+import { deliveryModeLabel, isOffline, normalizeDeliveryMode } from "@/lib/case/deliveryMode";
+import { baseRatePerHourCents, formatCents } from "@/lib/receipt-pricing";
+import { hourlyRateCents } from "@/lib/participant/waitlist";
 import { Calendar, FileText } from "lucide-react";
 
 /* =========================
@@ -37,6 +41,8 @@ interface JuryCase {
   title: string;
   status: "current" | "previous";
   admin_status: "all" | "approved" | "submitted" | "rejected";
+  /** 'online' | 'offline' — decides pricing, payout and venue. */
+  delivery_mode: string | null;
 
   case_documents: CaseDocument[];
   scheduled_at: string | null;
@@ -123,6 +129,7 @@ export default async function AdminDashboardPage({
       title,
       status,
       admin_status,
+      delivery_mode,
 
       scheduled_at,
       schedule_status,
@@ -238,19 +245,24 @@ export default async function AdminDashboardPage({
           </div>
 
           {tab === "approved" && (
-            <form
-              id="buildSessionForm"
-              action="/dashboard/Admin/sessions/new"
-              method="GET"
-            >
-              <input type="hidden" name="test_table" value={isOldData ? "oldData" : "jury_participants"} />
-              <button
-                type="submit"
-                className="bg-slate-900 text-white px-4 py-2 rounded hover:bg-slate-800"
+            <div className="flex flex-col items-end gap-1">
+              <form
+                id="buildSessionForm"
+                action="/dashboard/Admin/sessions/new"
+                method="GET"
               >
-                Build Session
-              </button>
-            </form>
+                <input type="hidden" name="test_table" value={isOldData ? "oldData" : "jury_participants"} />
+                <button
+                  type="submit"
+                  className="bg-slate-900 text-white px-4 py-2 rounded hover:bg-slate-800"
+                >
+                  Build Session
+                </button>
+              </form>
+              {/* Locks the selection to one format once the first case is
+                  ticked — a session cannot mix in-person and online cases. */}
+              <CaseModeSelectionGuard />
+            </div>
           )}
         </div>
       </div>
@@ -270,6 +282,10 @@ export default async function AdminDashboardPage({
 
                 <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   Status
+                </TableHead>
+
+                <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Format
                 </TableHead>
 
 
@@ -324,6 +340,10 @@ export default async function AdminDashboardPage({
                           value={c.id}
                           form="buildSessionForm"
                           disabled={c.is_in_session}
+                          // Read by CaseModeSelectionGuard, which reports the
+                          // format makeup of the current selection. Read-only —
+                          // it never touches `disabled`.
+                          data-delivery-mode={normalizeDeliveryMode(c.delivery_mode)}
                           className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
                         />
                       </TableCell>
@@ -360,6 +380,24 @@ export default async function AdminDashboardPage({
                           Declined
                         </span>
                       )}
+                    </TableCell>
+
+                    {/* FORMAT */}
+                    <TableCell className="py-4">
+                      <span
+                        className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ring-1 ring-inset ${
+                          isOffline(c.delivery_mode)
+                            ? "bg-green-400/10 text-green-700 ring-green-400/20"
+                            : "bg-blue-400/10 text-blue-700 ring-blue-400/20"
+                        }`}
+                        title={`${
+                          isOffline(c.delivery_mode) ? "In-person focus group" : "Online focus group over Zoom"
+                        } — ${formatCents(baseRatePerHourCents(c.delivery_mode))}/hr, participants paid ${formatCents(
+                          hourlyRateCents(c.delivery_mode),
+                        )}/hr`}
+                      >
+                        {deliveryModeLabel(c.delivery_mode)}
+                      </span>
                     </TableCell>
 
 
@@ -503,7 +541,7 @@ export default async function AdminDashboardPage({
               {!filteredCases.length && (
                 <TableRow>
                   <TableCell
-                    colSpan={10}
+                    colSpan={11}
                     className="text-center py-16 text-muted-foreground italic"
                   >
                     No cases found in this section.

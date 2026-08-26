@@ -3,10 +3,12 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { replaceCaseInSession } from "@/lib/actions/session";
+import { deliveryModeLabel, type DeliveryMode } from "@/lib/case/deliveryMode";
 
 export interface ReplacementCandidate {
   id: string;
   title: string;
+  deliveryMode: DeliveryMode;
 }
 
 interface ReplaceCaseModalProps {
@@ -16,7 +18,10 @@ interface ReplaceCaseModalProps {
   startTime: string;
   endTime: string;
   sessionDate: string;
+  /** Already narrowed to this session's mode by the caller. */
   candidates: ReplacementCandidate[];
+  /** The session's mode, shown so an empty list explains itself. */
+  deliveryMode: DeliveryMode;
 }
 
 export default function ReplaceCaseModal({
@@ -27,19 +32,29 @@ export default function ReplaceCaseModal({
   endTime,
   sessionDate,
   candidates,
+  deliveryMode,
 }: ReplaceCaseModalProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [selectedId, setSelectedId] = useState("");
   const [isPending, setIsPending] = useState(false);
+  const [error, setError] = useState("");
   const router = useRouter();
 
   const handleReplace = async () => {
     if (!selectedId) return;
     setIsPending(true);
-    await replaceCaseInSession(sessionId, oldCaseId, selectedId, startTime, endTime, sessionDate);
-    setIsOpen(false);
-    setIsPending(false);
-    router.refresh();
+    setError("");
+    try {
+      await replaceCaseInSession(sessionId, oldCaseId, selectedId, startTime, endTime, sessionDate);
+      setIsOpen(false);
+      router.refresh();
+    } catch (err: unknown) {
+      // The server rejects a mode mismatch outright, and it checks before
+      // detaching the old case — so a failure here leaves the session intact.
+      setError(err instanceof Error ? err.message : "Replace failed. Please try again.");
+    } finally {
+      setIsPending(false);
+    }
   };
 
   return (
@@ -69,7 +84,7 @@ export default function ReplaceCaseModal({
               {candidates.length ? (
                 <select
                   value={selectedId}
-                  onChange={(e) => setSelectedId(e.target.value)}
+                  onChange={(e) => { setSelectedId(e.target.value); setError(""); }}
                   className="w-full border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-slate-400"
                 >
                   <option value="">-- Choose a case --</option>
@@ -81,10 +96,17 @@ export default function ReplaceCaseModal({
                 </select>
               ) : (
                 <p className="text-sm text-slate-400 italic">
-                  No accepted cases available for replacement.
+                  No unscheduled {deliveryModeLabel(deliveryMode).toLowerCase()} cases available for
+                  replacement.
                 </p>
               )}
+              <p className="text-xs text-slate-400">
+                Only {deliveryModeLabel(deliveryMode).toLowerCase()} cases are listed — a session
+                cannot mix in-person and online cases.
+              </p>
             </div>
+
+            {error && <p className="text-sm text-red-600">{error}</p>}
 
             <div className="flex justify-end gap-3 pt-2">
               <button

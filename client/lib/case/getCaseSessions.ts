@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { normalizeDeliveryMode, type DeliveryMode } from "@/lib/case/deliveryMode";
 
 /**
  * Every session scheduled for a case, with the participant roster attached.
@@ -26,7 +27,11 @@ export type CaseSessionRow = {
   /** Raw UTC `time` values from `session_cases` — rendered client-side in the viewer's timezone. */
   startTime: string | null;
   endTime: string | null;
+  /** How the session runs. Decides whether zoomLink or location is the live one. */
+  deliveryMode: DeliveryMode;
   zoomLink: string | null;
+  /** Street address, set only for in-person sessions. */
+  location: string | null;
   participantCap: number;
   isPast: boolean;
   participants: CaseSessionParticipant[];
@@ -55,10 +60,19 @@ export async function getCaseSessions(caseId: string): Promise<CaseSessionRow[]>
 
   if (!sessionIds.length) return [];
 
+  // Every case in a session shares one delivery mode, so THIS case's mode is
+  // the session's mode — no join back through session_cases needed.
+  const { data: caseRow } = await supabase
+    .from("cases")
+    .select("delivery_mode")
+    .eq("id", caseId)
+    .maybeSingle();
+  const deliveryMode = normalizeDeliveryMode(caseRow?.delivery_mode);
+
   const [{ data: sessions }, { data: invites }] = await Promise.all([
     supabase
       .from("sessions")
-      .select("id, session_date, zoom_link, participant_cap")
+      .select("id, session_date, zoom_link, location, participant_cap")
       .in("id", sessionIds),
     supabase
       .from("session_participants")
@@ -162,7 +176,9 @@ export async function getCaseSessions(caseId: string): Promise<CaseSessionRow[]>
         }),
         startTime: times?.start ?? null,
         endTime: times?.end ?? null,
+        deliveryMode,
         zoomLink: s.zoom_link ?? null,
+        location: s.location ?? null,
         participantCap: s.participant_cap ?? 10,
         isPast: new Date(s.session_date) < today,
         participants: roster,

@@ -7,13 +7,19 @@ import { hasSessionStarted } from "@/lib/participant/sessionStart";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import {
   WAITLISTED_STATUS,
-  HOURLY_RATE_CENTS,
-  WAITLIST_WAIT_FEE_CENTS,
-  WAITLIST_HOLD_MINUTES,
+  OFFLINE_ARRIVE_EARLY_MINUTES,
+  waitlistHoldMinutes,
+  waitlistWaitFeeCents,
   formatCents,
+  hourlyRateCents,
   sessionLengthHours,
   seatPayoutCents,
 } from "@/lib/participant/waitlist";
+import {
+  deliveryModeLabel,
+  isOffline,
+  sessionDeliveryModeOrDefault,
+} from "@/lib/case/deliveryMode";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { unstable_noStore as noStore } from "next/cache";
@@ -21,8 +27,22 @@ import { unstable_noStore as noStore } from "next/cache";
 /** Shape of the nested session on a pending invite (see getPendingInvites). */
 type InviteSession = {
   session_date?: string | null;
-  session_cases?: { start_time?: string | null; end_time?: string | null }[] | null;
+  session_cases?: {
+    start_time?: string | null;
+    end_time?: string | null;
+    cases?: { delivery_mode?: string | null } | { delivery_mode?: string | null }[] | null;
+  }[] | null;
 };
+
+/** The one mode shared by a session's cases — see lib/case/deliveryMode. */
+function inviteDeliveryMode(session: InviteSession | null | undefined) {
+  return sessionDeliveryModeOrDefault(
+    (session?.session_cases ?? []).map((c) => {
+      const detail = Array.isArray(c.cases) ? c.cases[0] : c.cases;
+      return detail?.delivery_mode ?? null;
+    }),
+  );
+}
 
 export default async function ParticipantDashboard({
   searchParams,
@@ -106,10 +126,10 @@ export default async function ParticipantDashboard({
 
   // Waitlisted invites are not "pending" — the person already answered — so they
   // would otherwise fall through to the "no active sessions" onboarding block
-  // despite holding a slot and a Zoom link.
+  // despite holding a slot and the joining details (a Zoom link, or an address).
   const { data: waitlistRows } = await supabaseAdmin
     .from("session_participants")
-    .select("id, sessions(session_date)")
+    .select("id, sessions(session_date, session_cases(cases(delivery_mode)))")
     .eq("participant_id", participant.user_id)
     .eq("invite_status", WAITLISTED_STATUS);
 
@@ -117,10 +137,15 @@ export default async function ParticipantDashboard({
   const waitlistedSessions = (waitlistRows ?? [])
     .map((row) => {
       const session = (Array.isArray(row.sessions) ? row.sessions[0] : row.sessions) as
-        | { session_date?: string | null }
+        | InviteSession
         | null
         | undefined;
-      return { id: row.id, date: session?.session_date ?? "" };
+      // Terms differ by format, so each waitlist card quotes its own session's.
+      return {
+        id: row.id,
+        date: session?.session_date ?? "",
+        deliveryMode: inviteDeliveryMode(session),
+      };
     })
     .filter((s) => s.date && s.date.slice(0, 10) >= todayStr);
 
@@ -154,17 +179,22 @@ export default async function ParticipantDashboard({
       )}
 
       {/* ACCEPTED ONTO THE WAITLIST */}
-      {waitlisted === "1" && (
+      {/* The redirect carries the delivery mode ("online" | "offline"), not a
+          flag — the banner below quotes that session's own hold window and fee. */}
+      {waitlisted && (
         <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900 shadow-sm">
           <span className="text-xl">⏳</span>
           <div>
             <p className="font-semibold text-sm">You&apos;re on the waitlist for this session.</p>
             <p className="text-xs text-amber-800 mt-0.5 leading-relaxed">
               It was already full, so you have a reserve spot rather than a confirmed seat. Join at
-              the start time and wait in the Zoom waiting room — if a spot opens you&apos;ll be
-              admitted and paid {formatCents(HOURLY_RATE_CENTS)} per hour for the full session. If
-              no spot opens within {WAITLIST_HOLD_MINUTES} minutes you may leave, and you&apos;ll
-              still be paid {formatCents(WAITLIST_WAIT_FEE_CENTS)} for waiting.
+              {isOffline(waitlisted)
+                ? ` the venue ${OFFLINE_ARRIVE_EARLY_MINUTES} minutes before the start time and wait on site`
+                : " the start time and wait in the Zoom waiting room"} — if a spot opens you&apos;ll be
+              admitted and paid {formatCents(hourlyRateCents(waitlisted))} per hour for the full
+              session. If no spot opens within {waitlistHoldMinutes(waitlisted)} minutes you may
+              leave, and you&apos;ll still be paid {formatCents(waitlistWaitFeeCents(waitlisted))}{" "}
+              for waiting.
             </p>
           </div>
         </div>
@@ -205,7 +235,7 @@ export default async function ParticipantDashboard({
               Please update your{" "}
               {missingProfile.split(",").map((f, i, arr) => (
                 <span key={f}>
-                  {f === "dl" ? "Driver's License (number & photo)" : "PayPal username"}
+                  {f === "dl" ? "Texas State ID (number & photo)" : "PayPal username"}
                   {i < arr.length - 1 ? " and " : ""}
                 </span>
               ))}
@@ -261,6 +291,7 @@ export default async function ParticipantDashboard({
               // Drives the concrete "about $90 for this session" figure on the
               // waitlist offer, so the rate is not left as arithmetic.
               const offerHours = sessionLengthHours(startTimes, endTimes);
+              const offerMode = inviteDeliveryMode(session);
 
               return (
                 <form
@@ -271,6 +302,30 @@ export default async function ParticipantDashboard({
                     <p className="font-medium">Session Invite</p>
                     <p className="text-sm text-slate-500">Date: {session?.session_date}</p>
                     <p className="text-sm text-slate-500">Time: {timeLabel}</p>
+                    {/* Accepting an in-person session commits them to a
+                        journey, so say so before they click, not only in the
+                        email. */}
+                    {(() => {
+                      const mode = inviteDeliveryMode(session);
+                      return (
+                        <p className="mt-1 flex items-center gap-1.5 text-sm text-slate-500">
+                          <span
+                            className={`text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded border ${
+                              isOffline(mode)
+                                ? "text-green-700 bg-green-50 border-green-200"
+                                : "text-blue-700 bg-blue-50 border-blue-200"
+                            }`}
+                          >
+                            {deliveryModeLabel(mode)}
+                          </span>
+                          <span className="text-xs">
+                            {isOffline(mode)
+                              ? `attend at a venue · ${formatCents(hourlyRateCents(mode))}/hr`
+                              : `join over Zoom · ${formatCents(hourlyRateCents(mode))}/hr`}
+                          </span>
+                        </p>
+                      );
+                    })()}
                   </div>
 
                   <div className="flex items-center gap-2">
@@ -286,22 +341,26 @@ export default async function ParticipantDashboard({
                           This session is now full — we can offer you a waitlist spot
                         </p>
                         <ul className="mt-2 space-y-1 text-xs leading-relaxed text-amber-900">
-                          <li>• Hold in the Zoom waiting room up to {WAITLIST_HOLD_MINUTES} minutes.</li>
+                          <li>
+                            {isOffline(offerMode)
+                              ? `Come to the venue ${OFFLINE_ARRIVE_EARLY_MINUTES} min early and hold on site up to ${waitlistHoldMinutes(offerMode)} minutes.`
+                              : `Hold in the Zoom waiting room up to ${waitlistHoldMinutes(offerMode)} minutes.`}
+                          </li>
                           <li>• Admitted <strong>only</strong> if a confirmed participant doesn&apos;t show.</li>
                           <li>
-                            • Called in: <strong>{formatCents(HOURLY_RATE_CENTS)}/hour</strong>
+                            • Called in: <strong>{formatCents(hourlyRateCents(offerMode))}/hour</strong>
                             {offerHours > 0
-                              ? <> — about <strong>{formatCents(seatPayoutCents(offerHours))}</strong> for this session</>
+                              ? <> — about <strong>{formatCents(seatPayoutCents(offerHours, offerMode))}</strong> for this session</>
                               : null}.
                           </li>
-                          <li>• Not called in: <strong>{formatCents(WAITLIST_WAIT_FEE_CENTS)}</strong> for waiting.</li>
+                          <li>• Not called in: <strong>{formatCents(waitlistWaitFeeCents(offerMode))}</strong> for waiting.</li>
                         </ul>
                         <div className="mt-3 flex flex-wrap gap-2">
                           <button
                             formAction={async () => {
                               "use server";
-                              await updateInviteStatus(invite.id, "accepted", { confirmWaitlist: true });
-                              redirect("/dashboard/participant?waitlisted=1");
+                              const confirmed = await updateInviteStatus(invite.id, "accepted", { confirmWaitlist: true });
+                              redirect(`/dashboard/participant?waitlisted=${confirmed?.deliveryMode ?? "online"}`);
                             }}
                             className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700"
                           >
@@ -344,7 +403,7 @@ export default async function ParticipantDashboard({
                           // Seats were gone — they took a reserve slot, which
                           // needs saying out loud rather than a silent refresh.
                           if (result && "waitlisted" in result && result.waitlisted) {
-                            redirect("/dashboard/participant?waitlisted=1");
+                            redirect(`/dashboard/participant?waitlisted=${result.deliveryMode}`);
                           }
                           revalidatePath("/dashboard/participant");
                         }}
@@ -387,11 +446,15 @@ export default async function ParticipantDashboard({
                       })}
                     </p>
                     <p className="mt-1 text-xs leading-relaxed text-amber-800">
-                      You are on the waitlist. Join at the start time and wait in the Zoom waiting
-                      room. If a spot opens you will be admitted and paid{" "}
-                      {formatCents(HOURLY_RATE_CENTS)} per hour for the full session. If no spot
-                      opens within {WAITLIST_HOLD_MINUTES} minutes you may leave, and you will
-                      still be paid {formatCents(WAITLIST_WAIT_FEE_CENTS)} for waiting.
+                      You are on the waitlist.{" "}
+                      {isOffline(s.deliveryMode)
+                        ? `Arrive at the venue ${OFFLINE_ARRIVE_EARLY_MINUTES} minutes early and wait on site.`
+                        : "Join at the start time and wait in the Zoom waiting room."}{" "}
+                      If a spot opens you will be admitted and paid{" "}
+                      {formatCents(hourlyRateCents(s.deliveryMode))} per hour for the full session.
+                      If no spot opens within {waitlistHoldMinutes(s.deliveryMode)} minutes you may
+                      leave, and you will still be paid{" "}
+                      {formatCents(waitlistWaitFeeCents(s.deliveryMode))} for waiting.
                     </p>
                   </div>
                   <span className="shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-500 text-white">

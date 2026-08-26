@@ -1,4 +1,9 @@
 import { CaseFilters, AgeRange } from "./filter-utils";
+import {
+  DEFAULT_DELIVERY_MODE,
+  normalizeDeliveryMode,
+  type DeliveryMode,
+} from "./case/deliveryMode";
 
 const DEFAULT_AGE_MIN = 18;
 const DEFAULT_AGE_MAX = 99;
@@ -14,15 +19,40 @@ export interface FilterLineItem {
 }
 
 export interface ReceiptPriceBreakdown {
+  /** Which rate produced `baseCostCents`. Surfaced so the receipt can name it. */
+  deliveryMode: DeliveryMode;
   hours: number;
+  /** The per-hour rate this breakdown was built from. */
+  baseRatePerHourCents: number;
   baseCostCents: number;
   filterItems: FilterLineItem[];
   filterCostCents: number;
   totalCostCents: number;
 }
 
-const BASE_COST_PER_HOUR_CENTS = 85_000; // $850 per hour
+const ONLINE_BASE_COST_PER_HOUR_CENTS = 85_000; // $850 per hour, over Zoom
+/**
+ * In-person focus groups are a different product: a booked room, staff on site,
+ * and participants paid more to travel ($40/hr vs $30/hr). Priced per hour like the online
+ * rate so `hours_requested` still drives the quote.
+ */
+const OFFLINE_BASE_COST_PER_HOUR_CENTS = 150_000; // $1,500 per hour, in person
+
+/** Backwards-compatible alias — the online rate is still the default rate. */
+export const BASE_COST_PER_HOUR_CENTS = ONLINE_BASE_COST_PER_HOUR_CENTS;
+
 const PER_FILTER_CENTS = 10_000; // $100
+
+/**
+ * What one hour of focus group costs the requestee, before filters. Filters are
+ * charged on top at the same $100 each in both modes — narrowing the panel is
+ * the same work either way.
+ */
+export function baseRatePerHourCents(deliveryMode?: DeliveryMode | string | null): number {
+  return normalizeDeliveryMode(deliveryMode) === "offline"
+    ? OFFLINE_BASE_COST_PER_HOUR_CENTS
+    : ONLINE_BASE_COST_PER_HOUR_CENTS;
+}
 
 function hasArrayItems(arr?: string[]): boolean {
   return Array.isArray(arr) && arr.length > 0;
@@ -34,15 +64,21 @@ function eligibilityIsSet(value?: string): boolean {
 
 export function calculateReceiptPrice(
   filters: CaseFilters | null | undefined,
-  hoursRequested?: number | null
+  hoursRequested?: number | null,
+  /** Omitted means online — the historical behaviour and the column default. */
+  deliveryMode?: DeliveryMode | string | null
 ): ReceiptPriceBreakdown {
+  const mode = deliveryMode ? normalizeDeliveryMode(deliveryMode) : DEFAULT_DELIVERY_MODE;
+  const ratePerHour = baseRatePerHourCents(mode);
   const hours = hoursRequested && hoursRequested > 0 ? hoursRequested : 1;
-  const baseCostCents = BASE_COST_PER_HOUR_CENTS * hours;
+  const baseCostCents = ratePerHour * hours;
   const filterItems: FilterLineItem[] = [];
 
   if (!filters) {
     return {
+      deliveryMode: mode,
       hours,
+      baseRatePerHourCents: ratePerHour,
       baseCostCents,
       filterItems,
       filterCostCents: 0,
@@ -143,7 +179,9 @@ export function calculateReceiptPrice(
   const filterCostCents = filterItems.reduce((s, i) => s + i.costCents, 0);
 
   return {
+    deliveryMode: mode,
     hours,
+    baseRatePerHourCents: ratePerHour,
     baseCostCents,
     filterItems,
     filterCostCents,

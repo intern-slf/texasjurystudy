@@ -204,7 +204,7 @@ function missingProfilePage(missing: string[], dashboardUrl: string): string {
   const hasDl = missing.includes("dl");
   const hasPaypal = missing.includes("paypal");
   const items = [
-    hasDl && "Driver&rsquo;s License number and photo",
+    hasDl && "Texas State ID number and photo",
     hasPaypal && "PayPal username",
   ].filter(Boolean).join(" and ");
 

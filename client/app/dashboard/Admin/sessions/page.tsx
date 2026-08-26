@@ -11,16 +11,24 @@ import {
   checkFilterMatch,
   attachMultiCaseScores,
   sortParticipantsByMultiCaseMatch,
+  withCountyRestriction,
 } from "@/lib/filter-utils";
 import { getLineageInvolvementForCases, splitLineageInvolvement } from "@/lib/case-lineage";
 import { sortRoster, rosterStatusLabel } from "@/lib/participant/rosterOrder";
 import {
   WAITLISTED_STATUS,
-  DEFAULT_WAITLIST_CAP,
-  WAITLIST_HOLD_MINUTES,
   isWaitlisted,
+  waitlistCapFor,
+  hourlyRateCents,
+  waitlistHoldMinutes,
+  waitlistWaitFeeCents,
   formatCents,
 } from "@/lib/participant/waitlist";
+import {
+  deliveryModeLabel,
+  isOffline,
+  sessionDeliveryModeOrDefault,
+} from "@/lib/case/deliveryMode";
 import { ACTIVE_STATUS } from "@/lib/participant/activeStatus";
 import { getAllIdsWithoutLogin } from "@/lib/participant/loginAccount";
 import InviteMoreModal, { type Candidate } from "@/components/InviteMoreModal";
@@ -30,6 +38,7 @@ import LocalTimeRange from "@/components/LocalTimeRange";
 import ParticipantActionsMenu from "@/components/ParticipantActionsMenu";
 import { sendCompletionNow } from "@/lib/actions/session";
 import ZoomLinkSender from "@/components/ZoomLinkSender";
+import LocationSender from "@/components/LocationSender";
 import SessionCapEditor from "@/components/SessionCapEditor";
 import NotifyPresenterModal from "@/components/NotifyPresenterModal";
 
@@ -51,7 +60,7 @@ async function fetchCandidates(
 
   const { data: cases } = await supabase
     .from("cases")
-    .select("id, title, filters, county, participants_from_county")
+    .select("id, title, filters, county, participants_from_county, delivery_mode")
     .in("id", caseIds);
 
   type CaseRow = {
@@ -60,20 +69,14 @@ async function fetchCandidates(
     filters?: CaseFilters | null;
     county?: string | null;
     participants_from_county?: string | null;
+    delivery_mode?: string | null;
   };
-  const filtersList = ((cases as CaseRow[] | null) ?? []).map((c) => {
-    const f = (c.filters ?? {}) as CaseFilters;
-    // Inject case-level county into filters when requestee wants participants from their county
-    if (c.participants_from_county === "Yes" && c.county) {
-      if (!f.location) f.location = {};
-      const existing = f.location.county ?? [];
-      const countyVal = c.county;
-      if (!existing.some((v: string) => v.toLowerCase() === countyVal.toLowerCase())) {
-        f.location.county = [...existing, countyVal];
-      }
-    }
-    return f;
-  });
+  // Folds the case county into the location filter when the requestee asked for
+  // locals OR the case is in person — attendees have to reach the venue. Same
+  // helper the session builder uses, so both candidate lists agree.
+  const filtersList = ((cases as CaseRow[] | null) ?? []).map((c) =>
+    withCountyRestriction((c.filters ?? {}) as CaseFilters, c),
+  );
   const combinedFilters = combineCaseFilters(filtersList);
 
   if (combinedFilters.ageRanges && cases) {
@@ -261,18 +264,25 @@ export default async function SessionsPage({
     .select("case_id");
   const scheduledCaseIds = new Set((allSessionCaseRows ?? []).map((r) => r.case_id));
 
-  // Fetch approved cases not yet in any session (replacement candidates)
+  // Fetch approved cases not yet in any session (replacement candidates).
+  // `delivery_mode` rides along so each Replace modal can offer only the cases
+  // that fit its session — swapping an online case for an in-person one would
+  // leave the session with two venues and two pay rates.
   const { data: rawCandidates } = await supabase
     .from("cases")
-    .select("id, title")
+    .select("id, title, delivery_mode")
     .eq("admin_status", "approved");
-  const replacementCandidates: ReplacementCandidate[] = (rawCandidates ?? []).filter(
-    (c) => !scheduledCaseIds.has(c.id)
-  );
+  const replacementCandidates: ReplacementCandidate[] = (rawCandidates ?? [])
+    .filter((c) => !scheduledCaseIds.has(c.id))
+    .map((c) => ({
+      id: c.id,
+      title: c.title,
+      deliveryMode: isOffline(c.delivery_mode) ? "offline" : "online",
+    }));
 
   const { data: sessions } = await supabase
     .from("sessions")
-    .select("id, session_date, created_by, completion_notification_enabled, completion_email_sent, zoom_link, participant_cap, waitlist_cap, session_full_notified")
+    .select("id, session_date, created_by, completion_notification_enabled, completion_email_sent, zoom_link, location, participant_cap, waitlist_cap, session_full_notified")
     .order("session_date", { ascending: false });
 
   /* =========================
@@ -322,9 +332,16 @@ export default async function SessionsPage({
       const { data: caseDetails } = caseIds.length
         ? await supabase
           .from("cases")
-          .select("id, title, admin_status, schedule_status")
+          .select("id, title, admin_status, schedule_status, delivery_mode")
           .in("id", caseIds)
         : { data: [] };
+
+      // Sessions do not store their own mode — it comes from the cases, which
+      // are kept single-valued by addCasesToSession, replaceCaseInSession and a
+      // database trigger. A session with no cases yet reads as online.
+      const deliveryMode = sessionDeliveryModeOrDefault(
+        (caseDetails ?? []).map((c) => c.delivery_mode as string | null),
+      );
 
       const alreadySubmitted = Boolean(
         caseDetails?.length &&
@@ -411,7 +428,7 @@ export default async function SessionsPage({
           ? await fetchCandidates(supabase, caseIds, alreadyInvitedSet, testTable, blacklistedIds, noLoginIds)
           : [];
 
-      return { s, scases, caseDetails, alreadySubmitted, canNotify, sParticipants: orderedParticipants, participantDetails, candidates };
+      return { s, scases, caseDetails, deliveryMode, alreadySubmitted, canNotify, sParticipants: orderedParticipants, participantDetails, candidates };
     })
   );
 
@@ -489,7 +506,7 @@ export default async function SessionsPage({
 
       {/* LIST */}
       {displayedSessions.length ? (
-        displayedSessions.map(({ s, scases, caseDetails, alreadySubmitted, canNotify, sParticipants, participantDetails, candidates }) => (
+        displayedSessions.map(({ s, scases, caseDetails, deliveryMode, alreadySubmitted, canNotify, sParticipants, participantDetails, candidates }) => (
           <div
             key={s.id}
             className="border rounded p-6 space-y-6 bg-white shadow-sm"
@@ -497,8 +514,27 @@ export default async function SessionsPage({
                 {/* SESSION INFO */}
                 <div className="flex justify-between items-start">
                   <div>
-                    <div className="text-lg font-semibold">
-                      {s.session_date}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-lg font-semibold">
+                        {s.session_date}
+                      </span>
+                      {/* Which way this session runs. Shown always, not only for
+                          in-person ones: an unlabelled session would read as
+                          online by omission, and the two pay differently. */}
+                      <span
+                        className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full border ${
+                          isOffline(deliveryMode)
+                            ? "text-green-700 bg-green-50 border-green-200"
+                            : "text-blue-700 bg-blue-50 border-blue-200"
+                        }`}
+                        title={
+                          isOffline(deliveryMode)
+                            ? `In-person session — participants attend at a venue and are paid ${formatCents(hourlyRateCents(deliveryMode))}/hr. Waitlisters hold on site for ${waitlistHoldMinutes(deliveryMode)} min and are paid ${formatCents(waitlistWaitFeeCents(deliveryMode))}.`
+                            : `Online session — participants join over Zoom and are paid ${formatCents(hourlyRateCents(deliveryMode))}/hr. Waitlisters hold for ${waitlistHoldMinutes(deliveryMode)} min and are paid ${formatCents(waitlistWaitFeeCents(deliveryMode))}.`
+                        }
+                      >
+                        {deliveryModeLabel(deliveryMode)}
+                      </span>
                     </div>
                     <div className="text-xs text-slate-500">
                       Session ID: {s.id}
@@ -514,9 +550,10 @@ export default async function SessionsPage({
                       {(() => {
                         // Always shown, even at 0, so the reserve capacity reads
                         // alongside the seat count rather than appearing out of
-                        // nowhere once someone lands on it.
+                        // nowhere once someone lands on it. Both formats have a
+                        // waitlist; only the hold window and the fee differ.
                         const onWaitlist = sParticipants.filter((p) => isWaitlisted(p.invite_status)).length;
-                        const waitlistCap = s.waitlist_cap ?? DEFAULT_WAITLIST_CAP;
+                        const waitlistCap = waitlistCapFor(deliveryMode, s.waitlist_cap);
                         return (
                           <span
                             className={
@@ -524,7 +561,7 @@ export default async function SessionsPage({
                                 ? "text-xs font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full"
                                 : "text-xs text-slate-500"
                             }
-                            title="Reserve slots. Waitlisters hold in the Zoom waiting room and are never counted in the accepted seats."
+                            title={`Reserve slots. Waitlisters ${isOffline(deliveryMode) ? "hold on site at the venue" : "hold in the Zoom waiting room"} for up to ${waitlistHoldMinutes(deliveryMode)} minutes and are paid ${formatCents(waitlistWaitFeeCents(deliveryMode))} if no seat opens. Never counted in the accepted seats.`}
                           >
                             Waitlist: {onWaitlist}/{waitlistCap}
                           </span>
@@ -610,7 +647,16 @@ export default async function SessionsPage({
                                   startTime={c.start_time}
                                   endTime={c.end_time}
                                   sessionDate={s.session_date}
-                                  candidates={replacementCandidates}
+                                  // Only same-mode cases. Filtered here as well
+                                  // as rejected server-side, so the offer is
+                                  // never made rather than made and refused —
+                                  // and an admin swapping the LAST case in a
+                                  // session still cannot flip its mode out from
+                                  // under people who already accepted.
+                                  candidates={replacementCandidates.filter(
+                                    (rc) => rc.deliveryMode === deliveryMode,
+                                  )}
+                                  deliveryMode={deliveryMode}
                                 />
                               )}
                               <LocalTimeRange
@@ -665,7 +711,7 @@ export default async function SessionsPage({
                                   className="text-xs font-semibold text-slate-500"
                                   title={
                                     p.waitlist_outcome === "waited_out"
-                                      ? `Waiting fee — held the slot for the full ${WAITLIST_HOLD_MINUTES} minutes and was not called in`
+                                      ? `Waiting fee — held the slot for the full ${waitlistHoldMinutes(deliveryMode)} minutes and was not called in`
                                       : p.waitlist_outcome === "called_in"
                                       ? "Called in from the waitlist — paid the full session rate"
                                       : "Session payment"
@@ -722,8 +768,12 @@ export default async function SessionsPage({
                   )}
                 </div>
 
-                {/* ZOOM LINK SENDER */}
-                <ZoomLinkSender sessionId={s.id} existingZoomLink={s.zoom_link} />
+                {/* HOW PARTICIPANTS ATTEND — a Zoom link or an address, never both */}
+                {isOffline(deliveryMode) ? (
+                  <LocationSender sessionId={s.id} existingLocation={s.location} />
+                ) : (
+                  <ZoomLinkSender sessionId={s.id} existingZoomLink={s.zoom_link} />
+                )}
 
                 {/* ACTIONS */}
                 <div className="flex justify-end gap-3">
