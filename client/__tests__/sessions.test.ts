@@ -695,6 +695,9 @@ describe("Sessions", () => {
       expect(html).toContain("Remote (Secure Zoom)");
       expect(html).toMatch(/join over Zoom/i);
       expect(html).toMatch(/waitlist spot/i);
+      // The cancellation warning is in-person only — it is about a wasted
+      // journey, so it must not leak into the online invite.
+      expect(html).not.toMatch(/will not be paid/i);
     });
 
     it("An in-person invite quotes $40/hr and the in-person waitlist terms", async () => {
@@ -718,6 +721,11 @@ describe("Sessions", () => {
       expect(html).toContain("30 minutes");
       expect(html).toContain("$30.00");
       expect(html).not.toMatch(/Zoom waiting room/i);
+      // Cancellation is stated before they commit to travelling: an in-person
+      // session can be called off right up to the start time, and a cancelled
+      // session pays nothing.
+      expect(html).toMatch(/cancelled at any time before its scheduled start time/i);
+      expect(html).toMatch(/will not be paid/i);
     });
 
     it("Drops blacklisted invitees (roles + blacklisted_at) and only invites the rest", async () => {

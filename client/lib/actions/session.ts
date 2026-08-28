@@ -554,8 +554,11 @@ async function inviteParticipantsInner(
                 <p style="margin:0 0 8px;font-size:14px;color:#166534;">
                   <strong>This session is held in person.</strong> You will need to travel to the venue, so please only accept if you can be there for the full session.
                 </p>
-                <p style="margin:0;font-size:13px;color:#166534;">
+                <p style="margin:0 0 8px;font-size:13px;color:#166534;">
                   We will email you the full address once you accept. Bring your <strong>Texas State ID</strong> and plan to arrive <strong>${OFFLINE_ARRIVE_EARLY_MINUTES} minutes early</strong> for check-in.
+                </p>
+                <p style="margin:0;font-size:13px;color:#166534;">
+                  <strong>Please note:</strong> an in-person session can be cancelled at any time before its scheduled start time. If it is cancelled, the session does not go ahead and <strong>you will not be paid</strong> for it. We will let you know as soon as we can, so please check your email before you set out.
                 </p>
               </td>
             </tr>
