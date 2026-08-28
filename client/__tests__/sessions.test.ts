@@ -1842,4 +1842,236 @@ describe("Sessions", () => {
       expect(rolesWrite).toBeUndefined();
     });
   });
+
+  // -------------------------------------------------------------------------
+  // reschedule-session.test.ts — real rescheduleSession
+  //
+  // payout_cents and eligible_after_at are snapshots of the session's schedule
+  // taken at accept time. Moving the schedule invalidates both, and nothing
+  // else in the app ever revisits them, so the resync lives here. These tests
+  // pin the three ways a naive resync goes wrong: repricing a flat waiting fee,
+  // originating money on a pre-backfill null row, and writing $0 when the times
+  // come back unreadable.
+  // -------------------------------------------------------------------------
+  describe("reschedule-session.test.ts", () => {
+    let rescheduleSession: (typeof import("@/lib/actions/session"))["rescheduleSession"];
+    beforeAll(async () => {
+      ({ rescheduleSession } = await import("@/lib/actions/session"));
+    });
+
+    const FUTURE = "2999-06-15";
+    const PAST = "2020-01-01";
+    const updates = [{ caseId: "case-A", start: "09:00", end: "14:00" }];
+
+    /**
+     * rescheduleSession's own writes, in order: the session date, then per case
+     * the session_cases times and cases.admin_scheduled_at, then the
+     * schedule_status reset.
+     */
+    const preamble = () => [
+      { error: null }, // sessions.update(session_date)
+      { error: null }, // session_cases.update(times)
+      { error: null }, // cases.update(admin_scheduled_at)
+      { error: null }, // cases.update(schedule_status)
+    ];
+
+    /** The resync reads: the new times, then the seated rows. */
+    const resyncReads = (
+      seated: { participant_id: string; payout_cents: number | null }[],
+      times: { start_time: string | null; end_time: string | null }[] = [
+        { start_time: "09:00:00", end_time: "14:00:00" }, // 5 hours
+      ],
+    ) => [
+      { data: times, error: null },
+      { data: seated, error: null },
+    ];
+
+    /** getSessionDeliveryModeOrDefault, then the payout write. */
+    const repriceWrites = (mode: "online" | "offline" = "online") => [
+      { data: [{ cases: { delivery_mode: mode } }], error: null },
+      { error: null },
+    ];
+
+    /** Cooldown write, then the two email lookups. */
+    const tail = () => [
+      { error: null },           // jury_participants.update(eligible_after_at)
+      { data: [], error: null }, // session_participants.select for emails
+      { data: [], error: null }, // cases.select(user_id)
+    ];
+
+    const payoutUpdate = () =>
+      state.captured.find(
+        (c) =>
+          c.table === "session_participants" &&
+          c.ops.some(
+            (o) =>
+              o.op === "update" &&
+              "payout_cents" in (o as { payload: Record<string, unknown> }).payload,
+          ),
+      );
+
+    it("Reprices seats to the new session length", async () => {
+      state.responses = [
+        ...preamble(),
+        ...resyncReads([{ participant_id: "p-1", payout_cents: 9000 }]), // was 3h x $30
+        ...repriceWrites("online"),
+        ...tail(),
+      ];
+
+      await rescheduleSession("s-1", FUTURE, updates, "UTC");
+
+      const upd = payoutUpdate()!.ops.find((o) => o.op === "update") as {
+        op: "update";
+        payload: Record<string, unknown>;
+      };
+      expect(upd.payload.payout_cents).toBe(15000); // 5h x $30
+    });
+
+    it("Uses the session's own rate, so an in-person seat reprices at $40/hr", async () => {
+      state.responses = [
+        ...preamble(),
+        ...resyncReads([{ participant_id: "p-1", payout_cents: 12000 }]),
+        ...repriceWrites("offline"),
+        ...tail(),
+      ];
+
+      await rescheduleSession("s-1", FUTURE, updates, "UTC");
+
+      const upd = payoutUpdate()!.ops.find((o) => o.op === "update") as {
+        op: "update";
+        payload: Record<string, unknown>;
+      };
+      expect(upd.payload.payout_cents).toBe(20000); // 5h x $40
+    });
+
+    it("Targets only seated rows, never a waitlister's flat fee", async () => {
+      // The seated select filters to invite_status='accepted', so a waitlisted
+      // row never reaches the update. Recomputing a $30 waiting fee as
+      // hours x rate would silently turn it into a full session payout.
+      state.responses = [
+        ...preamble(),
+        ...resyncReads([{ participant_id: "p-1", payout_cents: 9000 }]),
+        ...repriceWrites(),
+        ...tail(),
+      ];
+
+      await rescheduleSession("s-1", FUTURE, updates, "UTC");
+
+      const seatedSelect = state.captured.find(
+        (c) =>
+          c.table === "session_participants" &&
+          c.eqs.some(([col, val]) => col === "invite_status" && val === "accepted"),
+      );
+      expect(seatedSelect).toBeDefined();
+
+      const ids = payoutUpdate()!.ins.find(([col]) => col === "participant_id")?.[1];
+      expect(ids).toEqual(["p-1"]);
+    });
+
+    it("Never originates money on a pre-backfill null payout", async () => {
+      // payout_cents was added 2026-08-20 with no backfill, so older accepted
+      // rows are null. Repricing on invite_status alone would invent a payout
+      // for a historical session that never had one.
+      state.responses = [
+        ...preamble(),
+        ...resyncReads([
+          { participant_id: "p-old", payout_cents: null },
+          { participant_id: "p-new", payout_cents: 9000 },
+        ]),
+        ...repriceWrites(),
+        ...tail(),
+      ];
+
+      await rescheduleSession("s-1", FUTURE, updates, "UTC");
+
+      const ids = payoutUpdate()!.ins.find(([col]) => col === "participant_id")?.[1];
+      expect(ids).toEqual(["p-new"]);
+    });
+
+    it("Refuses to write $0 when the times come back unreadable", async () => {
+      // sessionLengthHours returns 0 for missing or unparseable times, and
+      // seatPayoutCents(0) is 0 — a failed read would zero every seat.
+      state.responses = [
+        ...preamble(),
+        ...resyncReads([{ participant_id: "p-1", payout_cents: 9000 }], [
+          { start_time: null, end_time: null },
+        ]),
+        { data: [], error: null },
+        { data: [], error: null },
+      ];
+
+      await rescheduleSession("s-1", FUTURE, updates, "UTC");
+
+      expect(payoutUpdate()).toBeUndefined();
+      // Witness that we got as far as reading the seated rows and then
+      // declined to write, rather than failing earlier.
+      const seatedRead = state.captured.some(
+        (c) =>
+          c.table === "session_participants" &&
+          c.eqs.some(([col, val]) => col === "invite_status" && val === "accepted"),
+      );
+      expect(seatedRead).toBe(true);
+    });
+
+    it("Leaves a past-dated session's payouts alone", async () => {
+      // There is no paid flag anywhere in the schema and Reschedule is
+      // reachable from the Past tab, so rewriting the amount could contradict
+      // money already sent by hand.
+      state.responses = [
+        ...preamble(),
+        ...resyncReads([{ participant_id: "p-1", payout_cents: 9000 }]),
+        { error: null },           // cooldown still runs — inert for a past date
+        { data: [], error: null },
+        { data: [], error: null },
+      ];
+
+      await rescheduleSession("s-1", PAST, updates, "UTC");
+
+      expect(payoutUpdate()).toBeUndefined();
+      // Witness that the resync actually ran and chose to skip, rather than
+      // the whole thing erroring out before it got here: the cooldown write
+      // sits after the payout branch and still happened.
+      const cooldownRan = state.captured.some(
+        (c) =>
+          c.table === "jury_participants" &&
+          c.ops.some(
+            (o) =>
+              o.op === "update" &&
+              "eligible_after_at" in (o as { payload: Record<string, unknown> }).payload,
+          ),
+      );
+      expect(cooldownRan).toBe(true);
+    });
+
+    it("Moves the cooldown with the session", async () => {
+      // Anchored to the session end. Left stale on a session moved LATER, the
+      // participant becomes eligible again before the session they are still
+      // committed to, and can be invited onto a second one.
+      state.responses = [
+        ...preamble(),
+        ...resyncReads([{ participant_id: "p-1", payout_cents: 9000 }]),
+        ...repriceWrites(),
+        ...tail(),
+      ];
+
+      await rescheduleSession("s-1", FUTURE, updates, "UTC");
+
+      const cooldown = state.captured.find(
+        (c) =>
+          c.table === "jury_participants" &&
+          c.ops.some(
+            (o) =>
+              o.op === "update" &&
+              "eligible_after_at" in (o as { payload: Record<string, unknown> }).payload,
+          ),
+      )!;
+      const upd = cooldown.ops.find((o) => o.op === "update") as {
+        op: "update";
+        payload: Record<string, unknown>;
+      };
+      // Day after the 2999-06-15 session ends, not the old date.
+      expect(String(upd.payload.eligible_after_at)).toContain("2999-06-16");
+    });
+  });
+
 });
