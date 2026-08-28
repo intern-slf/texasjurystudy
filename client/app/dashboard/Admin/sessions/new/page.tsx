@@ -22,7 +22,8 @@ import {
   checkFilterMatch,
   attachMultiCaseScores,
   sortParticipantsByMultiCaseMatch,
-  withCountyRestriction
+  withCountyRestriction,
+  applyOfflineCatchment
 } from "@/lib/filter-utils";
 import {
   getAncestorCaseIds,
@@ -31,6 +32,7 @@ import {
   type LineageInvolvement,
 } from "@/lib/case-lineage";
 import BackButton from "@/components/BackButton";
+import { catchmentSentence } from "@/lib/constants/offline-catchment";
 import Link from "next/link";
 import {
   assertCasesShareDeliveryMode,
@@ -138,8 +140,9 @@ export default async function NewSessionPage({
   const sessionMode = sessionDeliveryModeOrDefault(caseRows.map((c) => c.delivery_mode ?? null));
   const sessionIsOffline = !hasMixedModes && isOffline(sessionMode);
 
-  // withCountyRestriction folds the case's county into the location filter when
-  // the requestee asked for locals OR the case is in person — see filter-utils.
+  // Folds the case's county in only when the requestee ticked "participants from
+  // my county". In-person cases are NOT handled here — their travel radius is a
+  // fixed catchment applied as a hard, non-relaxable constraint below.
   const filtersList = caseRows.map((c) =>
     withCountyRestriction((c.filters ?? {}) as CaseFilters, c),
   );
@@ -255,6 +258,13 @@ export default async function NewSessionPage({
       // 4. Only active panel members may attend, so never recommend anyone else.
       //    Enforced for real in inviteParticipants.
       query = query.eq("reactivation_status", ACTIVE_STATUS);
+      // 5. In person: only people who can physically reach the venue. Sits here,
+      //    among the never-relaxed exclusions, rather than in filters.location —
+      //    that key is FILTER_PRIORITY[0] and would be dropped on the first
+      //    relaxation pass, surfacing candidates who could only decline.
+      if (sessionIsOffline) {
+        query = applyOfflineCatchment(query);
+      }
     }
     // ─────────────────────────────────────────────────────────────────
 
@@ -468,8 +478,9 @@ export default async function NewSessionPage({
               {formatCents(hourlyRateCents("offline"))}/hr. Waitlisters hold on site for{" "}
               {waitlistHoldMinutes("offline")} minutes and are paid{" "}
               {formatCents(waitlistWaitFeeCents("offline"))} if no seat opens. Candidates are
-              restricted to each case&apos;s county because they have to travel there. You will
-              send the address from the sessions page once the venue is booked.
+              drawn only from the venue catchment &mdash; {catchmentSentence()} &mdash; and that
+              restriction is never relaxed, so the list may be short. You will send the address
+              from the sessions page once the venue is booked.
             </>
           ) : (
             <>

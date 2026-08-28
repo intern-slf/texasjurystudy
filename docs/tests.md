@@ -2,7 +2,7 @@
 
 **Project:** Texas Jury Study
 **Scope:** [client/__tests__/](../client/__tests__/) (Vitest) + [.github/workflows/ci.yml](../.github/workflows/ci.yml) (GitHub Actions)
-**Last reviewed:** 2026-08-25
+**Last reviewed:** 2026-08-26
 
 This document is the canonical reference for every automated check that runs against this repository. It tells new contributors **what each test guards, why it exists, how to run it locally, and what to do when it fails**. Pair it with [schema.md](./schema.md) and [rls-policies.md](./rls-policies.md) when changing data-layer code.
 
@@ -195,6 +195,9 @@ Both Supabase clients (`server` and `admin`) share the same stateful mock so a s
 | `requestee pricing` | $850/hr vs $1,500/hr base; the $100-per-filter add-ons are **unchanged** by mode (asserted equal across both); omitting the mode argument reproduces the pre-feature quote exactly, which is what keeps every existing call site correct. |
 | `participant payout` | $30/hr vs $40/hr, scaled by session length; omitting the mode gives the online rate; a called-in waitlister is paid at the session's own rate; the flat waiting fee is **$10 online vs $30 in person** and is asserted flat (session length must not move it). |
 | `waitlist terms` | Both formats offer the **same number** of slots (the stored cap, default 2) — asserted across online, offline and null. What differs is the hold window (15 vs 30 min) and the waiting fee ($10 vs $30), each asserted against its named constant. |
+
+| `county name matching` | The `'Harris'` vs `'Harris County'` normalisation, both directions. Includes the negative that shapes the implementation: **Harris must not match Harrison County**, which is why the query lists two exact spellings instead of a `Harris%` prefix — asserted by checking no query form contains a wildcard. |
+| `in-person catchment` | The six counties match participants under either spelling and exclude Collin / Dallas / Smith / Lubbock, where most of the panel actually lives. Asserts the catchment is **not** expressed as a `location` filter (`FILTER_PRIORITY[0]`, which `relaxFilters` drops first), and that `withCountyRestriction` no longer forces an offline case's own county while still honouring an explicit "participants from my county". |
 
 The write-side counterparts live in [sessions.test.ts](../client/__tests__/sessions.test.ts): the no-mixing rejection at `addCasesToSession`, the in-person seat payout ($40/hr), "a full in-person session offers a waitlist slot on IN-PERSON terms" (paired with an identical online session, so the mode is proven to be what changes the terms), "an in-person waitlist accept records the $30 waiting fee, not $10", and the invite-email assertions for both formats.
 

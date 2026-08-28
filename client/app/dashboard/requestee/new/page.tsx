@@ -13,6 +13,7 @@ import {
 } from "@/lib/case/deliveryMode";
 import { baseRatePerHourCents, formatCents } from "@/lib/receipt-pricing";
 import { TEXAS_COUNTIES } from "@/lib/constants/texas-counties";
+import { catchmentSentence } from "@/lib/constants/offline-catchment";
 import { CaseFilters } from "@/lib/filter-utils";
 import { ChevronDown, ChevronUp, Play } from "lucide-react";
 import { FOCUS_GROUP_VIDEOS } from "@/lib/focus-group-videos";
@@ -467,11 +468,17 @@ export default function NewCasePage() {
                   })}
                 </div>
                 {form.delivery_mode === "offline" && (
-                  <p className="text-xs text-muted-foreground">
-                    In-person focus groups are drawn from the county you name below, since
-                    participants have to travel to the venue. We will confirm the location with
-                    you before the session.
-                  </p>
+                  <div className="rounded-lg border border-green-200 bg-green-50/60 p-3 space-y-1">
+                    <p className="text-xs font-semibold text-green-900">
+                      In-person panels are drawn from these counties
+                    </p>
+                    <p className="text-xs text-green-800">{catchmentSentence()}.</p>
+                    <p className="text-xs text-green-700">
+                      This is the travel radius around our venue, so it does not change with the
+                      county your case is pending in. We will confirm the exact location with you
+                      before the session.
+                    </p>
+                  </div>
                 )}
               </div>
 

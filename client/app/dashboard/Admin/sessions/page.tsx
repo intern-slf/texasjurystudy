@@ -12,6 +12,7 @@ import {
   attachMultiCaseScores,
   sortParticipantsByMultiCaseMatch,
   withCountyRestriction,
+  applyOfflineCatchment,
 } from "@/lib/filter-utils";
 import { getLineageInvolvementForCases, splitLineageInvolvement } from "@/lib/case-lineage";
 import { sortRoster, rosterStatusLabel } from "@/lib/participant/rosterOrder";
@@ -71,11 +72,14 @@ async function fetchCandidates(
     participants_from_county?: string | null;
     delivery_mode?: string | null;
   };
-  // Folds the case county into the location filter when the requestee asked for
-  // locals OR the case is in person — attendees have to reach the venue. Same
-  // helper the session builder uses, so both candidate lists agree.
+  // Folds the case county in only when the requestee asked for locals. An
+  // in-person session's travel radius is the fixed catchment, applied as a hard
+  // constraint below rather than as a relaxable location filter.
   const filtersList = ((cases as CaseRow[] | null) ?? []).map((c) =>
     withCountyRestriction((c.filters ?? {}) as CaseFilters, c),
+  );
+  const catchmentApplies = ((cases as CaseRow[] | null) ?? []).some((c) =>
+    isOffline(c.delivery_mode),
   );
   const combinedFilters = combineCaseFilters(filtersList);
 
@@ -165,6 +169,15 @@ async function fetchCandidates(
       .is("blacklisted_at", null)
       .eq("reactivation_status", ACTIVE_STATUS);
 
+    // The catchment is never relaxed either, so it belongs in the ceiling too.
+    // Without it the bound reads as the whole active panel (~142) while the
+    // catchment holds ~12, and the loop below runs every relaxation level
+    // chasing a target it can never reach — the exact waste this count exists
+    // to prevent.
+    if (catchmentApplies) {
+      countQuery = applyOfflineCatchment(countQuery);
+    }
+
     const ceilingExclusions = Array.from(
       new Set([...blacklistedIds, ...noLoginIds, ...allLineageIds, ...seenIds])
     );
@@ -197,6 +210,11 @@ async function fetchCandidates(
       // Only active panel members may attend (enforced in inviteParticipants), so
       // the recommended list never offers anyone else.
       query = query.eq("reactivation_status", ACTIVE_STATUS);
+      // In person: only people who can reach the venue. Never relaxed — see
+      // applyOfflineCatchment.
+      if (catchmentApplies) {
+        query = applyOfflineCatchment(query);
+      }
     }
 
     if (seenIds.size > 0) {
