@@ -27,7 +27,16 @@ import {
   waitlistWaitFeeCents,
   waitlistPayoutCents,
 } from "@/lib/participant/waitlist";
-import type { CaseFilters } from "@/lib/filter-utils";
+import {
+  FILTER_PRIORITY,
+  countyMatches,
+  countyQueryForms,
+  normalizeCountyName,
+  relaxFilters,
+  withCountyRestriction,
+  type CaseFilters,
+} from "@/lib/filter-utils";
+import { OFFLINE_CATCHMENT_COUNTIES } from "@/lib/constants/offline-catchment";
 
 /* ---------------------------------------------------------------------------
    ONLINE vs IN-PERSON
@@ -231,5 +240,110 @@ describe("waitlist terms", () => {
     expect(waitlistWaitFeeCents("online")).toBe(1_000);
     expect(waitlistWaitFeeCents("offline")).toBe(3_000);
     expect(waitlistWaitFeeCents(null)).toBe(1_000);
+  });
+});
+
+/* ---------------------------------------------------------------------------
+   IN-PERSON CATCHMENT
+
+   Offline sessions draw from a fixed set of counties around the venue. Two
+   things make this subtle enough to test directly:
+
+   1. County names are stored with a " County" suffix that no picker uses, so a
+      naive comparison matched a handful of rows and silently missed the rest.
+   2. The catchment must NOT behave like a normal location filter — location is
+      the first thing relaxFilters drops.
+--------------------------------------------------------------------------- */
+
+describe("county name matching", () => {
+  it("treats the stored and picker spellings as the same county", () => {
+    // This is the bug: jury_participants stores "Harris County", every filter
+    // offers "Harris", and the old comparison was a plain equality.
+    expect(normalizeCountyName("Harris County")).toBe("harris");
+    expect(normalizeCountyName("Harris")).toBe("harris");
+    expect(normalizeCountyName("  harris   COUNTY ")).toBe("harris");
+    expect(countyMatches(["Harris"], "Harris County")).toBe(true);
+    expect(countyMatches(["Harris County"], "Harris")).toBe(true);
+  });
+
+  it("keeps multi-word counties intact", () => {
+    expect(normalizeCountyName("San Jacinto County")).toBe("san jacinto");
+    expect(countyMatches(["San Jacinto"], "San Jacinto County")).toBe(true);
+  });
+
+  it("does not confuse Harris with Harrison", () => {
+    // The reason the query uses two exact ilikes rather than `Harris%`:
+    // Harrison County is a different place 200 miles away.
+    expect(countyMatches(["Harris"], "Harrison County")).toBe(false);
+    expect(normalizeCountyName("Harrison County")).toBe("harrison");
+  });
+
+  it("an empty filter matches everyone; an empty value matches nothing", () => {
+    expect(countyMatches([], "Harris County")).toBe(true);
+    expect(countyMatches(undefined, "Harris County")).toBe(true);
+    expect(countyMatches(["Harris"], null)).toBe(false);
+    expect(countyMatches(["Harris"], "")).toBe(false);
+  });
+
+  it("queries both stored spellings, never a prefix wildcard", () => {
+    expect(countyQueryForms("Harris")).toEqual(["Harris", "Harris County"]);
+    expect(countyQueryForms("Harris County")).toEqual(["Harris", "Harris County"]);
+    for (const form of countyQueryForms("Harris")) {
+      expect(form).not.toContain("%");
+      expect(form).not.toContain("*");
+    }
+  });
+});
+
+describe("in-person catchment", () => {
+  it("is the six counties around the venue", () => {
+    expect([...OFFLINE_CATCHMENT_COUNTIES]).toEqual([
+      "Montgomery", "Walker", "San Jacinto", "Grimes", "Harris", "Houston",
+    ]);
+  });
+
+  it("matches participants however their county is spelled", () => {
+    const inside = ["Harris County", "Montgomery County", "San Jacinto County", "Harris"];
+    for (const c of inside) {
+      expect(countyMatches([...OFFLINE_CATCHMENT_COUNTIES], c)).toBe(true);
+    }
+  });
+
+  it("excludes the counties the panel actually lives in", () => {
+    // Collin, Dallas, Smith and Lubbock hold most of the panel and are all far
+    // outside the travel radius. If any of these ever passes, the catchment has
+    // silently stopped working.
+    for (const c of ["Collin County", "Dallas County", "Smith County", "Lubbock County"]) {
+      expect(countyMatches([...OFFLINE_CATCHMENT_COUNTIES], c)).toBe(false);
+    }
+  });
+
+  it("is NOT expressed as a location filter, so relaxation cannot drop it", () => {
+    // location is FILTER_PRIORITY[0]. Anything the catchment put there would be
+    // gone at the first relaxation level, which is why applyOfflineCatchment
+    // writes a query constraint instead.
+    expect(FILTER_PRIORITY[0]).toBe("location");
+    const relaxed = relaxFilters({ location: { county: ["Harris"] } }, 1);
+    expect(relaxed.location).toBeUndefined();
+  });
+
+  it("an in-person case no longer forces its own county into the filters", () => {
+    // Superseded rule: the travel radius belongs to the venue, not the lawsuit,
+    // so a case pending in Dallas still draws from the catchment.
+    const f = withCountyRestriction({}, {
+      county: "Dallas",
+      participants_from_county: "No",
+      delivery_mode: "offline",
+    });
+    expect(f.location?.county).toBeUndefined();
+  });
+
+  it("still honours an explicit 'participants from my county' request", () => {
+    const f = withCountyRestriction({}, {
+      county: "Harris",
+      participants_from_county: "Yes",
+      delivery_mode: "online",
+    });
+    expect(f.location?.county).toEqual(["Harris"]);
   });
 });

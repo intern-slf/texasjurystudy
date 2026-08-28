@@ -1,3 +1,5 @@
+import { OFFLINE_CATCHMENT_COUNTIES } from "@/lib/constants/offline-catchment";
+
 export interface AgeRange {
   min: number;
   max: number;
@@ -15,10 +17,47 @@ export function calcAgeFromDob(dob: string): number {
   return age;
 }
 
-/** Case-insensitive check: does the array contain this value? */
-function includesCI(arr: string[], val: string): boolean {
-  const lower = val.toLowerCase();
-  return arr.some((v) => v.toLowerCase() === lower);
+/**
+ * County names arrive in two shapes and must compare equal:
+ *
+ *   jury_participants.county   "Harris County"   (what signup writes)
+ *   TEXAS_COUNTIES / filters   "Harris"          (what every picker offers)
+ *
+ * Before this existed the two were compared with a plain case-insensitive
+ * equality, so a Harris filter matched the 4 rows stored bare and missed the 68
+ * stored with the suffix. Every county-filtered case was quietly drawing from a
+ * fraction of its county.
+ *
+ * Normalising rather than prefix-matching is deliberate: `ilike 'Harris%'` also
+ * matches Harrison County, which is a different place 200 miles away.
+ */
+export function normalizeCountyName(value: string | null | undefined): string {
+  return (value ?? "")
+    .trim()
+    .replace(/\s+county$/i, "")
+    .trim()
+    .toLowerCase();
+}
+
+/** Tolerant membership test for county lists. The only county comparison. */
+export function countyMatches(
+  list: readonly string[] | null | undefined,
+  value: string | null | undefined,
+): boolean {
+  if (!list?.length) return true; // no filter = everyone passes
+  const v = normalizeCountyName(value);
+  if (!v) return false;
+  return list.some((c) => normalizeCountyName(c) === v);
+}
+
+/**
+ * The two stored spellings of one county, for a PostgREST `ilike` OR chain.
+ * `ilike` without a wildcard is an exact case-insensitive match, so both forms
+ * have to be listed explicitly.
+ */
+export function countyQueryForms(county: string): string[] {
+  const bare = county.trim().replace(/\s+county$/i, "").trim();
+  return [bare, `${bare} County`];
 }
 
 export interface CaseFilters {
@@ -140,13 +179,11 @@ export function applyCaseFilters<Q extends FilterQueryBuilder>(
     query = query.in("state", filters.location.state);
   }
   if (filters.location?.county?.length) {
-    // Case-insensitive: use ilike OR chain instead of .in()
-    const counties = filters.location.county;
-    if (counties.length === 1) {
-      query = query.ilike("county", counties[0]);
-    } else {
-      query = query.or(counties.map((c) => `county.ilike.${c}`).join(","));
-    }
+    // Case-insensitive, and tolerant of the " County" suffix the signup form
+    // writes. `ilike` carries no wildcard here on purpose — a trailing % would
+    // make Harris match Harrison County too.
+    const forms = filters.location.county.flatMap(countyQueryForms);
+    query = query.or(forms.map((c) => `county.ilike.${c}`).join(","));
   }
 
   // --- POLITICAL ---
@@ -207,13 +244,34 @@ export function applyCaseFilters<Q extends FilterQueryBuilder>(
 }
 
 /**
- * A case's filters with its county folded into the location filter, when the
- * case should only draw local participants. Two reasons that happens:
+ * Restricts a candidate query to the in-person catchment.
  *
- *   - the requestee ticked "participants from my county"
- *   - the case is IN PERSON, whether or not they ticked it — attendees have to
- *     physically reach the venue, so someone four hours away is not a weaker
- *     match, they are a no-show
+ * Applied as a HARD constraint, next to the blacklist / no-login / cooldown
+ * exclusions, and deliberately NOT through `filters.location`: location is
+ * FILTER_PRIORITY[0], so `relaxFilters` would drop it on the first pass and hand
+ * the admin people who cannot physically reach the venue.
+ *
+ * Layering with a requestee's own county filter resolves itself. Both are ANDed
+ * at level 0 — a contradictory request (an in-person case asking for Dallas
+ * jurors) legitimately returns nobody. At level 1 relaxation drops their
+ * location filter while this one survives, so the list falls back to the
+ * catchment rather than to the whole state.
+ */
+export function applyOfflineCatchment<Q extends FilterQueryBuilder>(query: Q): Q {
+  const forms = OFFLINE_CATCHMENT_COUNTIES.flatMap(countyQueryForms);
+  return query.or(forms.map((c) => `county.ilike.${c}`).join(","));
+}
+
+/**
+ * A case's filters with its county folded into the location filter, when the
+ * requestee ticked "participants from my county".
+ *
+ * In-person cases are deliberately NOT handled here any more. Their travel
+ * radius is a property of the venue, not of the case, so it is a fixed
+ * catchment (lib/constants/offline-catchment) applied as a hard constraint that
+ * `relaxFilters` cannot drop — see `applyOfflineCatchment`. Folding it in here
+ * would put it in `filters.location`, which is FILTER_PRIORITY[0] and therefore
+ * the first thing discarded when candidates run short.
  *
  * Every candidate list builds its filter set through here, so the rule has one
  * definition. Mutates and returns the same `filters` object, matching how the
@@ -227,9 +285,7 @@ export function withCountyRestriction(
     delivery_mode?: string | null;
   },
 ): CaseFilters {
-  const restrict =
-    caseRow.participants_from_county === "Yes" || caseRow.delivery_mode === "offline";
-  if (!restrict || !caseRow.county) return filters;
+  if (caseRow.participants_from_county !== "Yes" || !caseRow.county) return filters;
 
   if (!filters.location) filters.location = {};
   const existing = filters.location.county ?? [];
@@ -480,7 +536,7 @@ export function checkFilterMatch(
         for (const pc of perCase!) {
           const caseCounties = pc.filters.location?.county;
           const noFilter = !caseCounties || caseCounties.length === 0;
-          const pass = noFilter || includesCI(caseCounties!, pCounty);
+          const pass = noFilter || countyMatches(caseCounties, pCounty);
           if (!pass) countyPass = false;
           const needs = noFilter ? "Any" : caseCounties!.join(", ");
           countyRows.push(`${pc.caseTitle}: ${needs} (participant: ${pCounty || "N/A"}) ${pass ? "✅" : "❌"}`);
@@ -493,7 +549,7 @@ export function checkFilterMatch(
 
       const loc = filterVal as { state?: string[]; county?: string[] } | undefined;
       const stateMatch = !loc?.state?.length || loc.state.includes(pState);
-      const countyMatch = !loc?.county?.length || includesCI(loc.county, pCounty);
+      const countyMatch = countyMatches(loc?.county, pCounty);
       const match = stateMatch && countyMatch;
 
       const subTypes: { label: string; passes: boolean; subRows: string[] }[] = [];
@@ -739,7 +795,7 @@ export function getMatchScoreDetailed(
   }
   if (filters.location?.county?.length) {
     total++;
-    if (includesCI(filters.location.county, participant.county ?? "")) score++;
+    if (countyMatches(filters.location.county, participant.county ?? "")) score++;
   }
 
   // --- SOCIOECONOMIC ---

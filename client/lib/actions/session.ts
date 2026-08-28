@@ -730,6 +730,128 @@ export async function notifyRequesteesSessionCreated(
   }
 }
 
+/**
+ * Bring the two values DERIVED from a session's schedule back in line after the
+ * schedule moves.
+ *
+ * `payout_cents` and `jury_participants.eligible_after_at` are both snapshots
+ * taken when someone accepted, computed from the session_cases rows as they
+ * stood at that moment. `rescheduleSession` rewrites those rows — the modal
+ * edits each case's start AND end time, not just the date — so both snapshots
+ * go stale the moment a reschedule changes the duration. Nothing else in the
+ * app, and no database trigger, ever revisits them.
+ *
+ * Left unfixed this pays two people differently for the same hours: a seat is
+ * priced at accept time, while `callInWaitlistParticipant` prices a called-in
+ * waitlister live from the current session_cases. Reschedule 3h → 5h and the
+ * seat is still on 3h while the waitlister gets 5h.
+ *
+ * WHAT IS REPRICED, and what deliberately is not:
+ *
+ *   accepted (incl. called_in)  repriced — the only hours-derived payout
+ *   waitlisted / waited_out     NOT — a flat per-mode fee that takes no hours
+ *                               argument; recomputing it as hours × rate would
+ *                               turn a $30 waiting fee into a full session
+ *   payout_cents IS NULL        NOT — the column was added 2026-08-20 with no
+ *                               backfill, so older accepted rows are null.
+ *                               Repricing on status alone would ORIGINATE money
+ *                               on historical sessions that never had a payout
+ *   declined / rejected         NOT — already null, and excluded by both rules
+ *
+ * Two further guards, both of which have a real failure mode behind them:
+ *
+ *   hours <= 0   `sessionLengthHours` returns 0 for missing or unparseable
+ *                times, and seatPayoutCents(0) is 0 — so a failed read would
+ *                silently write $0 to every seat. Bail instead.
+ *   past date    there is no paid flag, no paid_at and no payout ledger
+ *                anywhere in the schema, and Reschedule is reachable from the
+ *                Past tab. Rewriting the amount on a session that has already
+ *                happened could silently contradict money already sent by hand.
+ *                Cooldown is still corrected — for a past session it is inert.
+ */
+async function resyncScheduleDerivedValues(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  sessionId: string,
+  newDate: string,
+) {
+  const { data: caseRows, error: caseErr } = await supabase
+    .from("session_cases")
+    .select("start_time, end_time")
+    .eq("session_id", sessionId);
+
+  if (caseErr || !caseRows?.length) {
+    console.error(
+      `[resyncScheduleDerived] Could not re-read session_cases for ${sessionId}; ` +
+      `payouts and cooldowns left untouched.`,
+      caseErr?.message,
+    );
+    return;
+  }
+
+  const starts = caseRows.map((r) => r.start_time as string | null);
+  const ends = caseRows.map((r) => r.end_time as string | null);
+  const hours = sessionLengthHours(starts, ends);
+
+  // Everyone holding a seat. Called-in waitlisters are 'accepted' too, which is
+  // exactly right — their payout is hours-derived like any other seat.
+  const { data: seated } = await supabase
+    .from("session_participants")
+    .select("participant_id, payout_cents")
+    .eq("session_id", sessionId)
+    .eq("invite_status", "accepted");
+
+  if (!seated?.length) return;
+
+  // --- money ---
+  const isPast = newDate < new Date().toISOString().slice(0, 10);
+  const repriceIds = seated
+    .filter((r) => typeof r.payout_cents === "number")
+    .map((r) => r.participant_id);
+
+  if (hours <= 0) {
+    console.error(
+      `[resyncScheduleDerived] Session ${sessionId} has unreadable times after ` +
+      `reschedule (hours=0); refusing to reprice ${repriceIds.length} seat(s) to $0.`,
+    );
+  } else if (isPast) {
+    console.warn(
+      `[resyncScheduleDerived] Session ${sessionId} is dated in the past; ` +
+      `leaving ${repriceIds.length} payout(s) alone — they may already have been paid.`,
+    );
+  } else if (repriceIds.length) {
+    const mode = await getSessionDeliveryModeOrDefault(sessionId);
+    const payout = seatPayoutCents(hours, mode);
+    const { error } = await supabase
+      .from("session_participants")
+      .update({ payout_cents: payout })
+      .eq("session_id", sessionId)
+      .in("participant_id", repriceIds);
+    if (error) {
+      console.error(`[resyncScheduleDerived] Reprice failed for ${sessionId}:`, error.message);
+    } else {
+      console.log(
+        `[resyncScheduleDerived] Repriced ${repriceIds.length} seat(s) on ${sessionId} ` +
+        `to ${formatCents(payout)} (${hours}h, ${mode}).`,
+      );
+    }
+  }
+
+  // --- cooldown ---
+  // Anchored to the session's end, so moving the session must move it. Left
+  // stale and moved LATER, a participant becomes eligible again before the
+  // session they are still committed to, and can be invited onto a second one.
+  const cooldown = cooldownAfterSession(newDate, starts, ends);
+  if (cooldown) {
+    const { error } = await supabaseAdmin
+      .from("jury_participants")
+      .update({ eligible_after_at: cooldown })
+      .in("user_id", seated.map((r) => r.participant_id));
+    if (error) {
+      console.error(`[resyncScheduleDerived] Cooldown update failed:`, error.message);
+    }
+  }
+}
+
 /* =========================
    RESCHEDULE SESSION
 ========================= */
@@ -777,6 +899,9 @@ export async function rescheduleSession(
       .update({ schedule_status: null })
       .in("id", caseUpdates.map((cu) => cu.caseId));
   }
+
+  // The times just changed, so anything derived from them is now stale.
+  await resyncScheduleDerivedValues(supabase, sessionId, newDate);
 
   // Human-readable date for emails
   const newDateStr = new Date(newDate).toLocaleDateString("en-US", {
