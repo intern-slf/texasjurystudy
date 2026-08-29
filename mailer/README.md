@@ -159,8 +159,7 @@ gcloud run deploy tjs-mailer \
   --source . \
   --region "$REGION" \
   --service-account "$SA_EMAIL" \
-  --set-env-vars "SEND_AS=support@texasjurystudy.com" \
-  --set-env-vars "MAILER_SHARED_SECRET=${MAILER_SHARED_SECRET}" \
+  --set-env-vars "IMPERSONATE_USER=info@texasjurystudy.com,FROM_ADDRESS=support@texasjurystudy.com,MAILER_SHARED_SECRET=${MAILER_SHARED_SECRET}" \
   --max-instances 1 \
   --allow-unauthenticated
 ```
@@ -245,16 +244,40 @@ $MAILER_SHARED_SECRET = ($bytes | ForEach-Object { $_.ToString('x2') }) -join ''
 $MAILER_SHARED_SECRET   # save this — it also goes into Vercel
 
 cd mailer
-gcloud run deploy tjs-mailer --source . --region $REGION --service-account $SA_EMAIL --set-env-vars "IMPERSONATE_USER=info@texasjurystudy.com,FROM_ADDRESS=support@texasjurystudy.com,MAILER_SHARED_SECRET=$MAILER_SHARED_SECRET" --max-instances 1 --allow-unauthenticated
+gcloud run deploy tjs-mailer --source . --region $REGION --service-account $SA_EMAIL --set-env-vars "IMPERSONATE_USER=intern@texasjurystudy.com,FROM_ADDRESS=support@texasjurystudy.com,MAILER_SHARED_SECRET=$MAILER_SHARED_SECRET" --max-instances 1 --allow-unauthenticated
 
 $MAILER_URL = gcloud run services describe tjs-mailer --region $REGION --format="value(status.url)"
 $MAILER_URL
 ```
 
-> Drop `FROM_ADDRESS=support@texasjurystudy.com` if `support@` is **not** a
-> verified "Send mail as" alias on `info@`. Leaving it set when the alias does
-> not exist means Gmail rewrites the From to `info@` silently — mail still sends,
-> just under an identity you did not choose.
+> **Keep `FROM_ADDRESS` set.** If `support@` is not a verified "Send mail as"
+> alias on `IMPERSONATE_USER`'s account, Gmail rewrites the From back to that
+> mailbox and the mail still sends — the fix is to create the alias (in that
+> mailbox: Gmail **Settings → Accounts and Import → Send mail as**), not to
+> remove the variable. Dropping it makes `FROM_ADDRESS || IMPERSONATE_USER`
+> fall back **unconditionally**, which guarantees the wrong sender instead of
+> merely risking it — and the two are indistinguishable in delivered mail.
+
+`intern@texasjurystudy.com` is the impersonated mailbox because it both mints
+`gmail.send` tokens (see above) and already holds `support@` as a verified send-as
+alias. Either half alone is not enough: the token proves the delegation works, the
+alias is what stops Gmail rewriting the header.
+
+### Changing the sending identity on a running service
+
+Never re-deploy for this. `--set-env-vars` replaces the *entire* environment, and
+`$MAILER_SHARED_SECRET` is generated inline above and never persisted — in a fresh
+shell it is empty, so a re-deploy silently blanks it and every send 401s.
+
+```powershell
+gcloud run services update tjs-mailer --region us-central1 --update-env-vars "IMPERSONATE_USER=intern@texasjurystudy.com,FROM_ADDRESS=support@texasjurystudy.com"
+```
+
+Then confirm the secret survived, and that both addresses are what you expect:
+
+```powershell
+gcloud run services describe tjs-mailer --region us-central1 --format="value(spec.template.spec.containers[0].env)"
+```
 
 ### Building this from scratch elsewhere
 
@@ -391,11 +414,15 @@ Put it in `MAILER_ID_TOKEN` in `client/.env.local`. Valid about an hour.
 
 ## Verifying
 
-Health check needs no auth:
+The health check needs no *shared secret*, but the service is **not** publicly
+invocable — `roles/run.invoker` is granted only to the Vercel production identity
+and `vercel-invoker@`, never `allUsers` (the org's
+`constraints/iam.allowedPolicyMemberDomains` forbids it). An anonymous request gets
+`403` from Cloud Run before it ever reaches this code, so pass an identity token:
 
 ```bash
-curl "$MAILER_URL/health"
-# {"ok":true,"sendAs":"support@texasjurystudy.com"}
+curl -H "Authorization: Bearer $(gcloud auth print-identity-token)" "$MAILER_URL/health"
+# {"ok":true,"impersonating":"intern@texasjurystudy.com","from":"support@texasjurystudy.com"}
 ```
 
 A real send, including a non-ASCII subject to confirm RFC 2047 encoding
@@ -409,14 +436,22 @@ curl -X POST "$MAILER_URL/send" \
 # {"id":"1936...","threadId":"1936..."}
 ```
 
-Check the delivered message shows the en dash correctly and comes `From`
-`Texas Jury Study <support@...>`. Then confirm it also lands in `support@`'s
-Gmail **Sent** folder — Gmail API sends do, which is a genuine improvement over
-SMTP relay for auditing what the system sent.
+Check the delivered message shows the en dash correctly, then open **Show
+original** and read the raw `From:` line. An `X-Google-Original-From` header
+naming `support@` means Gmail rewrote the address — the alias is not verified.
+
+Do **not** verify this by looking for the message in `support@`'s Sent folder. A
+Gmail API send always files its Sent copy in the **authenticated** mailbox
+(`IMPERSONATE_USER`, i.e. `info@`) regardless of the From header, so where the
+copy lands proves nothing either way.
 
 ## API
 
-`GET /health` → `200 {"ok":true,"sendAs":"..."}`
+`GET /health` → `200 {"ok":true,"impersonating":"...","from":"..."}`
+
+`from` is the resolved `FROM_ADDRESS` constant. It reports what the service is
+**configured** to send as — not what Gmail actually stamped, which only a
+delivered message can tell you.
 
 `POST /send`, bearer auth required:
 
@@ -498,6 +533,7 @@ Cloud Run service can be left running or deleted with
 | `unauthorized_client` on token exchange | Delegation not authorised, not yet propagated, the scope doesn't match exactly — **or `IMPERSONATE_USER` is a group/alias rather than a real user**, which is the same error and the easiest to misdiagnose. |
 | Mail arrives from the wrong address | `FROM_ADDRESS` is not a verified "Send mail as" alias on `IMPERSONATE_USER`, so Gmail rewrote it. Check the startup log warning. |
 | `Cannot reach the GCP metadata server` | Running off-platform, or no service account attached to the revision. |
-| `400 Precondition check failed` from Gmail | `SEND_AS` isn't a real mailbox in the delegated domain. |
+| `400 Precondition check failed` from Gmail | `IMPERSONATE_USER` isn't a real mailbox in the delegated domain. |
+| Mail arrives from `IMPERSONATE_USER` when `FROM_ADDRESS` names someone else | Either `FROM_ADDRESS` is unset, or it is set but not a verified "Send mail as" alias. `GET /health` tells you which: `from` is the configured value. |
 | `401` from this service | `MAILER_SHARED_SECRET` differs between Vercel and Cloud Run. |
 | Mangled subject lines | Should not happen — report it, `encodeHeaderValue` handles RFC 2047. |

@@ -595,6 +595,17 @@ if (process.env.MAILER_IMPORT_ONLY !== "1") {
           `unless ${FROM_ADDRESS} is a verified "Send mail as" alias on ` +
           `${IMPERSONATE_USER}.`
       );
+    } else if (!process.env.FROM_ADDRESS) {
+      // The silent case, and the one that actually bites: an unset FROM_ADDRESS
+      // is indistinguishable at the recipient from a Gmail rewrite, because both
+      // land on IMPERSONATE_USER. Without this line the only way to tell them
+      // apart is /health, and nothing prompts you to look.
+      console.log(
+        `NOTE: FROM_ADDRESS is unset, so all mail goes out as ${IMPERSONATE_USER}. ` +
+          `If you meant a different sender, set FROM_ADDRESS *and* verify it as a ` +
+          `"Send mail as" alias on ${IMPERSONATE_USER} — setting it alone changes ` +
+          `nothing a recipient can see.`
+      );
     }
   });
 }
