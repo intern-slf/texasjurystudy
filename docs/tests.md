@@ -4,7 +4,7 @@
 **Scope:** [client/__tests__/](../client/__tests__/) (Vitest) + [.github/workflows/ci.yml](../.github/workflows/ci.yml) (GitHub Actions)
 **Last reviewed:** 2026-08-26
 
-This document is the canonical reference for every automated check that runs against this repository. It tells new contributors **what each test guards, why it exists, how to run it locally, and what to do when it fails**. Pair it with [schema.md](./schema.md) and [rls-policies.md](./rls-policies.md) when changing data-layer code.
+This document is the canonical reference for every automated check that runs against this repository. It tells new contributors **what each test guards, why it exists, how to run it locally, and what to do when it fails**. Pair it with [schema.md](./schema.md) and [rls-policies.md](./rls-policies.md) when changing data-layer code. For a flat list of every test name mapped to the function it exercises, see [test-inventory.md](./test-inventory.md).
 
 ---
 

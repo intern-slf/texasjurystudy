@@ -7,7 +7,12 @@ import Footer from "@/components/Footer-temp";
 import { createClient } from "@/lib/supabase/server";
 import { readRole } from "@/lib/auth-role";
 
+// Without this, Next.js resolves the og/twitter image URLs against Vercel's
+// project URL, which pointed link previews at the old *.vercel.app domain.
+const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+
 export const metadata: Metadata = {
+  metadataBase: appUrl ? new URL(appUrl) : undefined,
   title: "Texas Jury Study",
   description: "Structured focus groups with the right people",
   icons: {
