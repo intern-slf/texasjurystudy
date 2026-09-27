@@ -225,6 +225,30 @@ describe("API Route Handlers", () => {
       const body = await res.json();
       expect(String(body.error)).toMatch(/too large|Payload/i);
     }, 15_000);
+
+    it("Non-form-data body is a 400, not a 500", async () => {
+      const res = await POST(
+        new NextRequest("http://test.local/api/convert-heic", { method: "POST" })
+      );
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(String(body.error)).toMatch(/multipart/i);
+    });
+
+    it("Missing file field is a 400", async () => {
+      const res = await POST(makeRequest(null));
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toBe("No file provided");
+    });
+
+    it("Text value in the file field is a 400", async () => {
+      const fd = new FormData();
+      fd.set("file", "not-a-file");
+      const res = await POST(
+        new NextRequest("http://test.local/api/convert-heic", { method: "POST", body: fd })
+      );
+      expect(res.status).toBe(400);
+    });
   });
 
   // -----------------------------------------------------------------------

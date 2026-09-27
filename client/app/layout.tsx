@@ -15,10 +15,11 @@ export const metadata: Metadata = {
   metadataBase: appUrl ? new URL(appUrl) : undefined,
   title: "Texas Jury Study",
   description: "Structured focus groups with the right people",
+  // app/apple-icon.png is served by Next.js, but an explicit `icons` object
+  // suppresses its automatic <link>, so it is listed here too.
   icons: {
     icon: "/cropped-tjs-fav@2x-8-32x32.png",
-    shortcut: "/icon.png?v=1",
-    apple: "/icon.png?v=1",
+    apple: "/apple-icon.png",
   },
 };
 
