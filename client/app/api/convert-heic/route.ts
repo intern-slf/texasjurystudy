@@ -1,13 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(req: NextRequest) {
+  // A body that isn't form data is a bad request, not a conversion failure.
+  let formData: FormData;
   try {
-    const formData = await req.formData();
-    const file = formData.get("file") as File | null;
+    formData = await req.formData();
+  } catch {
+    return NextResponse.json(
+      { error: "Expected a multipart/form-data upload" },
+      { status: 400 }
+    );
+  }
 
-    if (!file) {
-      return NextResponse.json({ error: "No file provided" }, { status: 400 });
-    }
+  const file = formData.get("file");
+  if (!(file instanceof Blob)) {
+    return NextResponse.json({ error: "No file provided" }, { status: 400 });
+  }
+
+  try {
 
     const arrayBuffer = await file.arrayBuffer();
     const inputBuffer = Buffer.from(arrayBuffer);
