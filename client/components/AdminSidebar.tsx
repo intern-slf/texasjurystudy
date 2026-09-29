@@ -10,6 +10,7 @@ type Counts = {
   approvedParticipants: number;
   newParticipants: number;
   blacklistedParticipants: number;
+  requestees: number;
 };
 
 const caseItems = [
@@ -24,6 +25,16 @@ const participantItems = [
   { id: "blacklisted", label: "Blacklisted", countKey: "blacklistedParticipants" },
 ] as const;
 
+const requesteeItems = [
+  { id: "requestees", label: "All Requestees", countKey: "requestees" },
+] as const;
+
+const modes = [
+  { id: "cases", label: "Cases", href: "/dashboard/Admin?tab=requested" },
+  { id: "participants", label: "Participants", href: "/dashboard/Admin/participants?tab=new" },
+  { id: "requestees", label: "Requestees", href: "/dashboard/Admin/requestees" },
+] as const;
+
 function getHref(id: string) {
   switch (id) {
     case "sessions":
@@ -34,6 +45,8 @@ function getHref(id: string) {
       return "/dashboard/Admin/participants?tab=new";
     case "blacklisted":
       return "/dashboard/Admin/participants?tab=blacklisted";
+    case "requestees":
+      return "/dashboard/Admin/requestees";
     default:
       return `/dashboard/Admin?tab=${id}`;
   }
@@ -49,6 +62,8 @@ function isActive(id: string, pathname: string, currentTab: string) {
       return pathname.startsWith("/dashboard/Admin/participants") && currentTab !== "new" && currentTab !== "blacklisted";
     case "blacklisted":
       return pathname.startsWith("/dashboard/Admin/participants") && currentTab === "blacklisted";
+    case "requestees":
+      return pathname.startsWith("/dashboard/Admin/requestees");
     default:
       return pathname === "/dashboard/Admin" && currentTab === id;
   }
@@ -65,40 +80,41 @@ export default function AdminSidebar({
   const pathname = usePathname();
 
   const currentTab = searchParams.get("tab") || active;
-  const isOnParticipants = pathname.startsWith("/dashboard/Admin/participants");
-
-  const activeMode = isOnParticipants ? "participants" : "cases";
-  const items = activeMode === "cases" ? caseItems : participantItems;
+  const activeMode = pathname.startsWith("/dashboard/Admin/participants")
+    ? "participants"
+    : pathname.startsWith("/dashboard/Admin/requestees")
+      ? "requestees"
+      : "cases";
+  const items =
+    activeMode === "participants"
+      ? participantItems
+      : activeMode === "requestees"
+        ? requesteeItems
+        : caseItems;
 
   return (
-    /* Full-width band above the content on phones, fixed rail from lg up. */
-    <aside className="w-full shrink-0 border-b bg-slate-50 p-4 flex flex-col sm:p-6 lg:w-64 lg:min-h-screen lg:border-b-0 lg:border-r">
+    /* Full-width band above the content on phones, fixed rail from lg up.
+       w-72 (not w-64) so the three-way mode toggle fits "Participants". */
+    <aside className="w-full shrink-0 border-b bg-slate-50 p-4 flex flex-col sm:p-6 lg:w-72 lg:min-h-screen lg:border-b-0 lg:border-r">
       <h2 className="text-xs font-semibold uppercase text-slate-500 mb-4 tracking-wider">
         Admin Panel
       </h2>
 
       {/* ====== MODE TOGGLE ====== */}
       <div className="flex bg-slate-200/70 p-1 rounded-lg mb-4 lg:mb-6">
-        <Link
-          href="/dashboard/Admin?tab=requested"
-          className={`flex-1 text-center py-1.5 text-xs font-semibold rounded-md transition-all ${
-            activeMode === "cases"
-              ? "bg-white text-slate-900 shadow-sm"
-              : "text-slate-500 hover:text-slate-700"
-          }`}
-        >
-          Cases
-        </Link>
-        <Link
-          href="/dashboard/Admin/participants?tab=new"
-          className={`flex-1 text-center py-1.5 text-xs font-semibold rounded-md transition-all ${
-            activeMode === "participants"
-              ? "bg-white text-slate-900 shadow-sm"
-              : "text-slate-500 hover:text-slate-700"
-          }`}
-        >
-          Participants
-        </Link>
+        {modes.map((m) => (
+          <Link
+            key={m.id}
+            href={m.href}
+            className={`flex-1 text-center py-1.5 text-xs font-semibold rounded-md transition-all ${
+              activeMode === m.id
+                ? "bg-white text-slate-900 shadow-sm"
+                : "text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            {m.label}
+          </Link>
+        ))}
       </div>
 
       {/* ====== NAV ITEMS ======
