@@ -15,6 +15,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { dateOfBirthError, todayIso } from "@/lib/age-gate";
 import {
   Loader2,
   Sparkles,
@@ -60,12 +61,16 @@ export default function DashboardPage() {
     agreed: false,
   });
 
+  // Only shown once a date is entered; the empty case is covered by isFormValid.
+  const dobError =
+    role === "participant" && form.dob !== "" ? dateOfBirthError(form.dob) : null;
+
   const isFormValid =
     form.agreed &&
     form.firstName.trim() !== "" &&
     form.lastName.trim() !== "" &&
     signature !== "" &&
-    (role === "requestee" || form.dob !== "");
+    (role === "requestee" || (form.dob !== "" && !dobError));
 
   useEffect(() => {
     let mounted = true;
@@ -390,12 +395,20 @@ export default function DashboardPage() {
                   <Input
                     id="dob"
                     type="date"
+                    max={todayIso()}
                     value={form.dob}
                     onChange={(e) =>
                       setForm({ ...form, dob: e.target.value })
                     }
+                    aria-invalid={dobError ? true : undefined}
+                    aria-describedby={dobError ? "dob-error" : undefined}
                     className="h-11 bg-background/60"
                   />
+                  {dobError && (
+                    <p id="dob-error" className="text-sm text-red-500">
+                      {dobError}
+                    </p>
+                  )}
                 </div>
               )}
             </div>

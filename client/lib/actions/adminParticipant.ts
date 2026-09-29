@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
 import { sendProfileUpdatedEmail, sendReactivationEmail } from "@/lib/mail";
 import { generateReactivationToken } from "@/lib/reactivationToken";
+import { dateOfBirthError } from "@/lib/age-gate";
 
 const FIELD_LABELS: Record<string, string> = {
     first_name: "First Name",
@@ -166,6 +167,9 @@ export async function adminUpdateParticipant(userId: string, payload: Record<str
 }
 
 export async function adminUpdateParticipantDob(userId: string, dateOfBirth: string) {
+    const dobError = dateOfBirthError(dateOfBirth);
+    if (dobError) throw new Error(dobError);
+
     const { error } = await supabaseAdmin
         .from("jury_participants")
         .update({ date_of_birth: dateOfBirth })

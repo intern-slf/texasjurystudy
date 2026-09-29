@@ -3,6 +3,7 @@
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { sendEmail, emailWrapper } from '@/lib/mail';
 import { readRole } from '@/lib/auth-role';
+import { dateOfBirthError } from '@/lib/age-gate';
 
 export async function signupWithCustomEmail(formData: FormData) {
     try {
@@ -16,6 +17,14 @@ export async function signupWithCustomEmail(formData: FormData) {
         const role = readRole(formData.get('role'));
         if (!role) {
             return { error: "Invalid role" };
+        }
+
+        // Checked before createUser so nothing (not even the email) is stored for a minor.
+        // Validated here, not just in the form, because the action can be called directly.
+        // The DOB itself is not kept — participants give it again on the signed agreement.
+        const dobError = dateOfBirthError(formData.get('dateOfBirth') as string | null);
+        if (dobError) {
+            return { error: dobError };
         }
 
         const { data: userCreatedData, error: createError } = await supabaseAdmin.auth.admin.createUser({

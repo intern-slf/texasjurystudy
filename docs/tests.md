@@ -144,7 +144,7 @@ The sections below document every file in [client/__tests__/](../client/__tests_
 
 | `describe` | Coverage |
 |---|---|
-| `signup-with-custom-email.test.ts` | Participant signup writes a `roles` row with `role: "participant"` and sends a verification email containing the action link; same for `requestee`; duplicate-email flow returns `{ error: "User already registered" }` and **does not** insert a role row or send an email; a missing `role` — and `role: "admin"` — is rejected with `{ error: "Invalid role" }` **before** `createUser` runs, so no auth user, `roles` row or email is ever produced (regression guard: the server action is a public endpoint and `roles.role`'s CHECK allows `admin`, so this allowlist is the only thing stopping self-service admin signup). |
+| `signup-with-custom-email.test.ts` | **Age gate:** an under-18 date of birth, and a missing or malformed one, is rejected **before** `createUser` runs — no auth user, `roles` row or email exists for a minor (the action is called directly here, proving the check is server-side, not just in the form); an accepted DOB is **not** written to `user_metadata`. Participant signup writes a `roles` row with `role: "participant"` and sends a verification email containing the action link; same for `requestee`; duplicate-email flow returns `{ error: "User already registered" }` and **does not** insert a role row or send an email; a missing `role` — and `role: "admin"` — is rejected with `{ error: "Invalid role" }` **before** `createUser` runs, so no auth user, `roles` row or email is ever produced (regression guard: the server action is a public endpoint and `roles.role`'s CHECK allows `admin`, so this allowlist is the only thing stopping self-service admin signup). |
 | `reset-password-with-custom-email.test.ts` | Known email sends a "Password Reset" subject line to the right recipient with the verification link in the body; **unknown email does not leak** — no email is sent, and the email address is not echoed in the response (defends against user-enumeration via differential output). |
 | `update-password.test.ts` | Mocks the browser Supabase client. Valid recovery session calls `setSession` once and `updateUser` with the new password; expired session surfaces an `expired|missing` error; **mismatched confirm-password short-circuits before any Supabase call** (the submit guard, not the server, is the safety net). |
 | `middleware.test.ts` | Unauthenticated request to `/dashboard` returns a 307 to `/auth/login`; authenticated request passes through (200, no `Location`); both `requestee` and `participant` are allowed through to `/dashboard` so the page's own role-router can run (regression guard — the middleware must not itself bounce them). |
@@ -301,6 +301,18 @@ Uses a **table-keyed** fake client rather than the FIFO response queue of 4.1: t
 | `sessionLengthHours` | Spans the earliest start to the latest end across every case; handles a single case, a half-hour session, and one running past midnight. **Regression:** a 19:30→22:30 plus 22:30→00:30 session measured 3 hours instead of 5, because `max()` picked 22:30 over 00:30 and the midnight wrap was never detected — each end is now rolled past midnight *before* the maximum is taken. Missing or unparseable times yield 0. |
 | `payouts` | A seat earns the hourly rate × session length, rounded to whole cents; a **called-in** waitlister earns the FULL session, not the remainder from when they were admitted; a **waited-out** waitlister earns the flat fee regardless of how long the session ran. `formatCents` renders a missing amount as an em dash rather than `$0.00`, so an unrecorded payout never reads as "owed nothing". |
 | `isWaitlisted` | Matches only the `waitlisted` status — never `accepted`, `pending`, or null. |
+
+### 3.17 [age-gate.test.ts](../client/__tests__/age-gate.test.ts) — minimum-age rule
+
+**Subject:** the real `ageOn` / `dateOfBirthError` / `todayIso` from [lib/age-gate](../client/lib/age-gate.ts) — pure.
+
+**Why this exists:** every account must be 18+ (Terms §2, Privacy §12, Texas juror eligibility), and a stored date of birth showing a child under 13 is COPPA "actual knowledge". The same helper backs signup, the confidentiality agreement, profile edit and the admin DOB action, so its boundaries are pinned here once. The database has a matching trigger (`supabase/migrations/20260929_adult_date_of_birth.sql`) that these tests do not cover.
+
+| `describe` | Coverage |
+|---|---|
+| `ageOn` | Birthday already passed / not yet reached this year; the birthday itself counts; the day before is one short; a Feb 29 birthday is reached on Mar 1 in non-leap years. Non-existent dates (`2001-02-29`, `2000-04-31`, month 13) and anything not `YYYY-MM-DD` return null rather than rolling over into a real date. `today` is built with the local-time constructor so results don't depend on the machine's timezone. |
+| `dateOfBirthError` | Exactly 18 today passes; one day short is rejected with `UNDERAGE_MESSAGE`, as is a child under 13; empty / null / undefined asks for a date; future dates, ages over 120 and garbage are "invalid", not "underage". |
+| `todayIso` | Local date, zero-padded, for a date input's `max`. |
 
 ---
 

@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { autoBlacklistIfIneligible } from "@/lib/actions/autoBlacklist";
 import { Pencil, Upload, X, CreditCard } from "lucide-react";
 import { TEXAS_COUNTIES } from "@/lib/constants/texas-counties";
+import { ageOn, dateOfBirthError } from "@/lib/age-gate";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -114,13 +115,8 @@ export default function EditProfileForm({ participant, adminMode, onUpdate, onUp
   }, [adminMode, participant.user_id, supabase]);
 
   const calculatedAge = useMemo(() => {
-    if (!dob) return null;
-    const birth = new Date(dob + "T00:00:00");
-    const today = new Date();
-    let age = today.getFullYear() - birth.getFullYear();
-    const monthDiff = today.getMonth() - birth.getMonth();
-    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) age--;
-    return age >= 0 ? age : null;
+    const age = dob ? ageOn(dob) : null;
+    return age !== null && age >= 0 ? age : null;
   }, [dob]);
   const [gender, setGender] = useState(participant.gender || "");
   const [race, setRace] = useState(participant.race || "");
@@ -316,6 +312,14 @@ export default function EditProfileForm({ participant, adminMode, onUpdate, onUp
       !servedOnJury || !convictedFelon || !usCitizen || !hasChildren || !servedArmedForces
     ) {
       setError("Please complete all dropdown selections.");
+      setLoading(false);
+      return;
+    }
+
+    // Before any write, so an under-18 date never lands partway through a save.
+    const dobError = dob ? dateOfBirthError(dob) : null;
+    if (dobError) {
+      setError(dobError);
       setLoading(false);
       return;
     }

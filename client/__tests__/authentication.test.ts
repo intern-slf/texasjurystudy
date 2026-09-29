@@ -7,6 +7,7 @@ import {
   beforeEach,
 } from "vitest";
 import { NextRequest } from "next/server";
+import { UNDERAGE_MESSAGE } from "@/lib/age-gate";
 
 process.env.NEXT_PUBLIC_SUPABASE_URL ||= "http://supabase.test";
 process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||= "anon-test-key";
@@ -135,6 +136,10 @@ describe("Authentication", () => {
       ({ signupWithCustomEmail } = await import("@/app/auth/actions"));
     });
 
+    const ADULT_DOB = "1990-06-15";
+    // Relative to the real clock so this stays under 18 whenever the suite runs.
+    const CHILD_DOB = `${new Date().getFullYear() - 10}-01-01`;
+
     function makeForm(fields: Record<string, string | undefined>) {
       const fd = new FormData();
       for (const [k, v] of Object.entries(fields)) {
@@ -148,6 +153,7 @@ describe("Authentication", () => {
         makeForm({
           email: "participant@example.com",
           password: "Secret123!",
+          dateOfBirth: ADULT_DOB,
           role: "participant",
           origin: "http://test.local",
         })
@@ -172,6 +178,7 @@ describe("Authentication", () => {
         makeForm({
           email: "requestee@example.com",
           password: "Secret123!",
+          dateOfBirth: ADULT_DOB,
           role: "requestee",
           origin: "http://test.local",
         })
@@ -194,6 +201,7 @@ describe("Authentication", () => {
         makeForm({
           email: "dup@example.com",
           password: "Secret123!",
+          dateOfBirth: ADULT_DOB,
           role: "participant",
           origin: "http://test.local",
         })
@@ -210,6 +218,7 @@ describe("Authentication", () => {
         makeForm({
           email: "noroleuser@example.com",
           password: "Secret123!",
+          dateOfBirth: ADULT_DOB,
           origin: "http://test.local",
         })
       );
@@ -225,6 +234,7 @@ describe("Authentication", () => {
         makeForm({
           email: "attacker@example.com",
           password: "Secret123!",
+          dateOfBirth: ADULT_DOB,
           role: "admin",
           origin: "http://test.local",
         })
@@ -235,6 +245,56 @@ describe("Authentication", () => {
       expect(createUserSpy).not.toHaveBeenCalled();
       expect(fromInsertSpy).not.toHaveBeenCalled();
       expect(sendEmailSpy).not.toHaveBeenCalled();
+    });
+    it("Under-18 date of birth is rejected before any account is created", async () => {
+      const result = await signupWithCustomEmail(
+        makeForm({
+          email: "kid@example.com",
+          password: "Secret123!",
+          dateOfBirth: CHILD_DOB,
+          role: "participant",
+          origin: "http://test.local",
+        })
+      );
+
+      expect(result).toEqual({ error: UNDERAGE_MESSAGE });
+      // Nothing about a minor may be stored — not even the email on an auth user
+      expect(createUserSpy).not.toHaveBeenCalled();
+      expect(fromInsertSpy).not.toHaveBeenCalled();
+      expect(sendEmailSpy).not.toHaveBeenCalled();
+    });
+
+    it("Missing or malformed date of birth is rejected (server action called directly)", async () => {
+      for (const dateOfBirth of [undefined, "", "2001-02-29", "tomorrow"]) {
+        const result = await signupWithCustomEmail(
+          makeForm({
+            email: "nodob@example.com",
+            password: "Secret123!",
+            dateOfBirth,
+            role: "requestee",
+            origin: "http://test.local",
+          })
+        );
+        expect(result).toMatchObject({ error: expect.stringMatching(/date of birth/) });
+      }
+      expect(createUserSpy).not.toHaveBeenCalled();
+      expect(sendEmailSpy).not.toHaveBeenCalled();
+    });
+
+    it("Date of birth is checked but not stored on the auth user", async () => {
+      await signupWithCustomEmail(
+        makeForm({
+          email: "adult@example.com",
+          password: "Secret123!",
+          dateOfBirth: ADULT_DOB,
+          role: "participant",
+          origin: "http://test.local",
+        })
+      );
+
+      expect(createUserSpy).toHaveBeenCalledTimes(1);
+      const [args] = createUserSpy.mock.calls[0] as [{ user_metadata: Record<string, unknown> }];
+      expect(args.user_metadata).toEqual({ role: "participant" });
     });
   });
 
