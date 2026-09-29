@@ -34,6 +34,7 @@ const supabaseAdminState: {
 };
 
 const fromInsertSpy = vi.fn();
+const createUserSpy = vi.fn();
 const fromSelectChain = () => {
   const builder: Record<string, unknown> = {};
   builder.select = vi.fn(() => builder);
@@ -47,7 +48,10 @@ vi.mock("@/lib/supabase/admin", () => ({
   supabaseAdmin: {
     auth: {
       admin: {
-        createUser: vi.fn(async () => supabaseAdminState.createUser),
+        createUser: vi.fn(async (...args: unknown[]) => {
+          createUserSpy(...args);
+          return supabaseAdminState.createUser;
+        }),
         generateLink: vi.fn(async () => supabaseAdminState.generateLink),
       },
     },
@@ -118,6 +122,7 @@ describe("Authentication", () => {
     middlewareState.claims = null;
     gateState.agreementRow = { data: null, error: null };
     fromInsertSpy.mockClear();
+    createUserSpy.mockClear();
     sendEmailSpy.mockClear();
   });
 
@@ -201,11 +206,6 @@ describe("Authentication", () => {
     });
 
     it("Missing role parameter", async () => {
-      // Simulate a real DB NOT-NULL constraint on roles.role when role is missing
-      supabaseAdminState.roleInsert = {
-        error: { message: 'null value in column "role" violates not-null constraint' },
-      };
-
       const result = await signupWithCustomEmail(
         makeForm({
           email: "noroleuser@example.com",
@@ -214,10 +214,26 @@ describe("Authentication", () => {
         })
       );
 
-      expect(result).toMatchObject({
-        error: expect.stringContaining("Failed to assign role"),
-      });
-      // The downstream verification email must not be sent if role assignment failed
+      expect(result).toEqual({ error: "Invalid role" });
+      expect(createUserSpy).not.toHaveBeenCalled();
+      expect(fromInsertSpy).not.toHaveBeenCalled();
+      expect(sendEmailSpy).not.toHaveBeenCalled();
+    });
+
+    it("Admin role is rejected (no self-service privilege escalation)", async () => {
+      const result = await signupWithCustomEmail(
+        makeForm({
+          email: "attacker@example.com",
+          password: "Secret123!",
+          role: "admin",
+          origin: "http://test.local",
+        })
+      );
+
+      expect(result).toEqual({ error: "Invalid role" });
+      // Rejected before an auth user exists, so no admin row can ever be written
+      expect(createUserSpy).not.toHaveBeenCalled();
+      expect(fromInsertSpy).not.toHaveBeenCalled();
       expect(sendEmailSpy).not.toHaveBeenCalled();
     });
   });

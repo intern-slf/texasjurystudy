@@ -2,13 +2,21 @@
 
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { sendEmail, emailWrapper } from '@/lib/mail';
+import { readRole } from '@/lib/auth-role';
 
 export async function signupWithCustomEmail(formData: FormData) {
     try {
         const email = formData.get('email') as string;
         const password = formData.get('password') as string;
-        const role = formData.get('role') as string;
         const origin = formData.get('origin') as string;
+
+        // A server action is a public POST endpoint, so `role` is attacker-controlled.
+        // roles.role's CHECK allows 'admin', and this insert runs as service role —
+        // without this allowlist anyone could sign themselves up as an admin.
+        const role = readRole(formData.get('role'));
+        if (!role) {
+            return { error: "Invalid role" };
+        }
 
         const { data: userCreatedData, error: createError } = await supabaseAdmin.auth.admin.createUser({
             email,
