@@ -15,6 +15,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { dateOfBirthError, isUnderage, todayIso, UNDERAGE_MESSAGE } from "@/lib/age-gate";
+import { deleteAccountIfUnderage } from "@/lib/actions/underageAccount";
 import {
   Loader2,
   Sparkles,
@@ -60,12 +62,22 @@ export default function DashboardPage() {
     agreed: false,
   });
 
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  // Only shown once a date is entered; the empty case is covered by isFormValid. An
+  // under-18 date isn't flagged here — flagging it would just tell a child which dates get
+  // through. It deletes the account on submit instead.
+  const dobError =
+    role === "participant" && form.dob !== "" && !isUnderage(form.dob)
+      ? dateOfBirthError(form.dob)
+      : null;
+
   const isFormValid =
     form.agreed &&
     form.firstName.trim() !== "" &&
     form.lastName.trim() !== "" &&
     signature !== "" &&
-    (role === "requestee" || form.dob !== "");
+    (role === "requestee" || (form.dob !== "" && !dobError));
 
   useEffect(() => {
     let mounted = true;
@@ -149,6 +161,22 @@ export default function DashboardPage() {
     } = await supabase.auth.getUser();
 
     if (!user) {
+      setSubmitting(false);
+      return;
+    }
+
+    setSubmitError(null);
+
+    // Never stored: the agreement would be a record of a minor's name, DOB and signature.
+    if (role === "participant" && isUnderage(form.dob)) {
+      const result = await deleteAccountIfUnderage(form.dob);
+      if (result.deleted) {
+        // The user no longer exists, so there's no server session left to revoke.
+        await supabase.auth.signOut({ scope: "local" });
+        router.replace("/auth/account-removed");
+        return;
+      }
+      setSubmitError(result.error ?? UNDERAGE_MESSAGE);
       setSubmitting(false);
       return;
     }
@@ -390,12 +418,20 @@ export default function DashboardPage() {
                   <Input
                     id="dob"
                     type="date"
+                    max={todayIso()}
                     value={form.dob}
                     onChange={(e) =>
                       setForm({ ...form, dob: e.target.value })
                     }
+                    aria-invalid={dobError ? true : undefined}
+                    aria-describedby={dobError ? "dob-error" : undefined}
                     className="h-11 bg-background/60"
                   />
+                  {dobError && (
+                    <p id="dob-error" className="text-sm text-red-500">
+                      {dobError}
+                    </p>
+                  )}
                 </div>
               )}
             </div>
@@ -415,6 +451,9 @@ export default function DashboardPage() {
             </div>
 
             {/* Submit */}
+            {submitError && (
+              <p className="text-sm text-center text-red-500">{submitError}</p>
+            )}
             <Button
               disabled={!isFormValid || submitting}
               onClick={submit}

@@ -16,10 +16,12 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, Suspense } from "react";
 import { Loader2 } from "lucide-react";
+import { dateOfBirthError, todayIso } from "@/lib/age-gate";
 
 // 1. Move the logic into a internal component
 function SignUpFormFields({ className, ...props }: React.ComponentPropsWithoutRef<"div">) {
   const [email, setEmail] = useState("");
+  const [dateOfBirth, setDateOfBirth] = useState("");
   const [password, setPassword] = useState("");
   const [repeatPassword, setRepeatPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -36,6 +38,13 @@ function SignUpFormFields({ className, ...props }: React.ComponentPropsWithoutRe
     setIsLoading(true);
     setError(null);
 
+    const dobError = dateOfBirthError(dateOfBirth);
+    if (dobError) {
+      setError(dobError);
+      setIsLoading(false);
+      return;
+    }
+
     if (password !== repeatPassword) {
       setError("Passwords do not match");
       setIsLoading(false);
@@ -47,6 +56,7 @@ function SignUpFormFields({ className, ...props }: React.ComponentPropsWithoutRe
       const formData = new FormData();
       formData.append('email', email);
       formData.append('password', password);
+      formData.append('dateOfBirth', dateOfBirth);
       formData.append('role', role);
       formData.append('origin', window.location.origin);
 
@@ -85,6 +95,18 @@ function SignUpFormFields({ className, ...props }: React.ComponentPropsWithoutRe
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  className="bg-background/50 focus:ring-primary focus:border-primary transition-all"
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="date-of-birth">Date of birth</Label>
+                <Input
+                  id="date-of-birth"
+                  type="date"
+                  required
+                  max={todayIso()}
+                  value={dateOfBirth}
+                  onChange={(e) => setDateOfBirth(e.target.value)}
                   className="bg-background/50 focus:ring-primary focus:border-primary transition-all"
                 />
               </div>

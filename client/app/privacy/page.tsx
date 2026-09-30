@@ -5,7 +5,7 @@ import { ShieldCheck } from "lucide-react";
 import BackButton from "@/components/BackButton";
 import {
   EFFECTIVE_DATE,
-  LAST_UPDATED,
+  PRIVACY_LAST_UPDATED,
   LEGAL_ENTITY,
   MAILING_ADDRESS,
   SUPPORT_EMAIL,
@@ -70,6 +70,11 @@ const SECTIONS: Section[] = [
           This policy explains what we collect from each group, what we do with
           it, who else sees it, and the rights you have under Texas law. It
           applies to this website and to the sessions we run.
+        </p>
+        <p>
+          The service is offered only in the United States. It is not directed
+          at people in the European Union, the United Kingdom or anywhere else
+          outside the US.
         </p>
       </>
     ),
@@ -317,14 +322,22 @@ const SECTIONS: Section[] = [
           <DataGroup label="PayPal">
             Receives the payment we send to the username on your profile.
           </DataGroup>
-          <DataGroup label="Email delivery">
+          <DataGroup label="Google Workspace (Gmail)">
             Sends invitations, reminders, password resets and other
-            transactional email to your address.
+            transactional email from our own account, so Google processes your
+            email address and the messages we send you.
           </DataGroup>
           <DataGroup label="ZIP code lookup">
             When you type a ZIP code at sign-up we send just that ZIP code to
             two public lookup services, Zippopotam.us and the FCC area API, to
             fill in your state and county. No other information is sent.
+          </DataGroup>
+          <DataGroup label="Loom">
+            Hosts the short how-to videos on the attorney dashboard. Nothing is
+            loaded from Loom until you press play on a video. When you do, your
+            browser connects to Loom, which receives your IP address and
+            browser details and may set its own cookies under Loom&rsquo;s
+            privacy policy.
           </DataGroup>
         </div>
         <p>
@@ -347,6 +360,14 @@ const SECTIONS: Section[] = [
           </li>
           <li>We do not run advertising or cross-site tracking on this site.</li>
           <li>
+            Opening a page does not make your browser contact anyone but us and
+            the two providers that run the site, Vercel and Supabase. Fonts
+            come from your own device,
+            and we load no scripts, fonts, analytics or images from other
+            companies&rsquo; servers. The one exception is a Loom video, and
+            only after you press play on it (see section 6).
+          </li>
+          <li>
             We do not use your information to make automated decisions that
             produce legal effects about you.
           </li>
@@ -368,6 +389,12 @@ const SECTIONS: Section[] = [
         <p>
           There are no advertising cookies, no analytics cookies and no
           third-party tracking pixels on this site.
+        </p>
+        <p>
+          The only way a third-party cookie can reach your browser here is if
+          you press play on one of the Loom videos on the attorney dashboard.
+          Loom may then set its own cookies, which we do not control. If you
+          never press play, Loom never loads.
         </p>
       </>
     ),
@@ -579,7 +606,7 @@ export default function PrivacyPolicyPage() {
           <div className="flex gap-2">
             <dt className="text-muted-foreground">Last updated</dt>
             <dd className="font-medium text-foreground">
-              {formatLegalDate(LAST_UPDATED)}
+              {formatLegalDate(PRIVACY_LAST_UPDATED)}
             </dd>
           </div>
         </dl>

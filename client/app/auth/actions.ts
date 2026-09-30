@@ -2,13 +2,30 @@
 
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { sendEmail, emailWrapper } from '@/lib/mail';
+import { readRole } from '@/lib/auth-role';
+import { dateOfBirthError } from '@/lib/age-gate';
 
 export async function signupWithCustomEmail(formData: FormData) {
     try {
         const email = formData.get('email') as string;
         const password = formData.get('password') as string;
-        const role = formData.get('role') as string;
         const origin = formData.get('origin') as string;
+
+        // A server action is a public POST endpoint, so `role` is attacker-controlled.
+        // roles.role's CHECK allows 'admin', and this insert runs as service role —
+        // without this allowlist anyone could sign themselves up as an admin.
+        const role = readRole(formData.get('role'));
+        if (!role) {
+            return { error: "Invalid role" };
+        }
+
+        // Checked before createUser so nothing (not even the email) is stored for a minor.
+        // Validated here, not just in the form, because the action can be called directly.
+        // The DOB itself is not kept — participants give it again on the signed agreement.
+        const dobError = dateOfBirthError(formData.get('dateOfBirth') as string | null);
+        if (dobError) {
+            return { error: dobError };
+        }
 
         const { data: userCreatedData, error: createError } = await supabaseAdmin.auth.admin.createUser({
             email,

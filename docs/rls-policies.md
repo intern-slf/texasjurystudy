@@ -311,6 +311,8 @@ Removed: writes were never read. Insert calls deleted from `client/app/dashboard
 - No admin SELECT (admins read via `supabaseAdmin` only). Confirm `client/app/dashboard/page.tsx:137` works — that path uses anon client, so admin-on-other-participants reads will fail.
 - No UPDATE/DELETE policies → correctly immutable for authenticated, admin edits via `supabaseAdmin` only.
 
+**Trigger (2026-09-29):** `confidentiality_agreements_adult_dob` (BEFORE INSERT OR UPDATE OF `date_of_birth`) rejects a date of birth under 18 — the app checks too (`client/lib/age-gate.ts`), and on the agreement and profile edit deletes the participant's account instead of writing (`client/lib/actions/underageAccount.ts`), but this row is written from the browser with the anon key, so the trigger is the only check a modified client can't skip. It only fires when `date_of_birth` is written or changed, so an existing bad row doesn't break unrelated updates. See `supabase/migrations/20260929_adult_date_of_birth.sql`.
+
 ---
 
 ### 🟩 `confidentiality_agreements_requestee` — RLS enabled
@@ -374,6 +376,8 @@ This is the table where column-level policies matter most. Recommend documenting
 - UPDATE allows participant to write any column of their own row — no column-level grant. Recommendation called for blocking `approved_by_admin`, `blacklisted_at`, `blacklist_reason`. Open follow-up.
 - No DELETE policy → admin deletes via `supabaseAdmin` only.
 - `reviewer` role appears in policy but not in `roles.role` CHECK constraint — F18.
+
+**Trigger (2026-09-29):** `jury_participants_adult_dob` (BEFORE INSERT OR UPDATE OF `date_of_birth`) rejects a date of birth under 18 — the app checks too (`client/lib/age-gate.ts`), and on the agreement and profile edit deletes the participant's account instead of writing (`client/lib/actions/underageAccount.ts`), but this row is written from the browser with the anon key, so the trigger is the only check a modified client can't skip. It only fires when `date_of_birth` is written or changed, so an existing bad row doesn't break unrelated updates. See `supabase/migrations/20260929_adult_date_of_birth.sql`.
 
 ---
 

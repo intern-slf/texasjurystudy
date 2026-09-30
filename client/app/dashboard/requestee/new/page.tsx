@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import RequesteeSidebar from "@/components/RequesteeSidebar";
+import LoomEmbed from "@/components/LoomEmbed";
 import BackButton from "@/components/BackButton";
 import CaseDocumentUploader from "@/components/CaseDocumentUploader";
 import ReceiptPricingPreview from "@/components/ReceiptPricingPreview";
@@ -31,16 +32,7 @@ function VideoPlayer({ url, className = "" }: { url: string; className?: string 
   }
   const loomMatch = url.match(/loom\.com\/(?:share|embed)\/([a-zA-Z0-9]+)/);
   if (loomMatch) {
-    return (
-      <div className={`aspect-video bg-slate-900 rounded-xl w-full overflow-hidden ${className}`}>
-        <iframe
-          src={`https://www.loom.com/embed/${loomMatch[1]}`}
-          allow="fullscreen"
-          allowFullScreen
-          className="w-full h-full"
-        />
-      </div>
-    );
+    return <LoomEmbed videoId={loomMatch[1]} className={`rounded-xl ${className}`} />;
   }
   return (
     <video

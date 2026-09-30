@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import RequesteeSidebar from "@/components/RequesteeSidebar";
+import LoomEmbed from "@/components/LoomEmbed";
 import { ChevronDown, ChevronUp, AlertCircle, ArrowRight, Play } from "lucide-react";
 import { FOCUS_GROUP_VIDEOS } from "@/lib/focus-group-videos";
 
@@ -28,16 +29,7 @@ function VideoPlayer({ url }: { url: string }) {
   }
   const loomMatch = url.match(/loom\.com\/(?:share|embed)\/([a-zA-Z0-9]+)/);
   if (loomMatch) {
-    return (
-      <div className="aspect-video bg-slate-900 rounded-xl w-full overflow-hidden">
-        <iframe
-          src={`https://www.loom.com/embed/${loomMatch[1]}`}
-          allow="fullscreen"
-          allowFullScreen
-          className="w-full h-full"
-        />
-      </div>
-    );
+    return <LoomEmbed videoId={loomMatch[1]} />;
   }
   return (
     <video
