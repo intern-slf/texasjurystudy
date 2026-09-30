@@ -304,7 +304,7 @@ Uses a **table-keyed** fake client rather than the FIFO response queue of 4.1: t
 
 ### 3.17 [age-gate.test.ts](../client/__tests__/age-gate.test.ts) — minimum-age rule
 
-**Subject:** the real `ageOn` / `dateOfBirthError` / `todayIso` from [lib/age-gate](../client/lib/age-gate.ts) — pure.
+**Subject:** the real `ageOn` / `dateOfBirthError` / `isUnderage` / `todayIso` from [lib/age-gate](../client/lib/age-gate.ts) — pure.
 
 **Why this exists:** every account must be 18+ (Terms §2, Privacy §12, Texas juror eligibility), and a stored date of birth showing a child under 13 is COPPA "actual knowledge". The same helper backs signup, the confidentiality agreement, profile edit and the admin DOB action, so its boundaries are pinned here once. The database has a matching trigger (`supabase/migrations/20260929_adult_date_of_birth.sql`) that these tests do not cover.
 
@@ -312,7 +312,22 @@ Uses a **table-keyed** fake client rather than the FIFO response queue of 4.1: t
 |---|---|
 | `ageOn` | Birthday already passed / not yet reached this year; the birthday itself counts; the day before is one short; a Feb 29 birthday is reached on Mar 1 in non-leap years. Non-existent dates (`2001-02-29`, `2000-04-31`, month 13) and anything not `YYYY-MM-DD` return null rather than rolling over into a real date. `today` is built with the local-time constructor so results don't depend on the machine's timezone. |
 | `dateOfBirthError` | Exactly 18 today passes; one day short is rejected with `UNDERAGE_MESSAGE`, as is a child under 13; empty / null / undefined asks for a date; future dates, ages over 120 and garbage are "invalid", not "underage". |
+| `isUnderage` | True one day short of 18 and for a child under 13; false on the 18th birthday. Missing, malformed, future and implausible dates are all **false** — this is the flag that deletes an account, so a bad date must stay a form error. |
 | `todayIso` | Local date, zero-padded, for a date input's `max`. |
+
+### 3.18 [underage-account.test.ts](../client/__tests__/underage-account.test.ts) — deleting an under-18 account
+
+**Subject:** the real `deleteAccountIfUnderage` server action from [lib/actions/underageAccount](../client/lib/actions/underageAccount.ts), with `@/lib/supabase/server` (the caller's session) and `@/lib/supabase/admin` (rows, the `id-documents` bucket, `auth.admin.deleteUser`) mocked. Every mutating call is appended to one ordered log, so the tests assert both *what* was deleted and *in what order*.
+
+**Why this exists:** when a participant enters an under-18 date of birth on the confidentiality agreement or their profile, we now have actual knowledge they're a minor, so the account and everything stored about them is permanently deleted rather than the date just being refused. This is irreversible, so the guards matter as much as the deletion.
+
+| Case | Coverage |
+|---|---|
+| Nothing deleted | An adult date; a missing, malformed or future date; a signed-out caller; an admin or requestee (refused with `UNDERAGE_MESSAGE` — neither enters a DOB after signup, and a requestee's cases are shared with other people). |
+| What is deleted | Every ID image under `id-documents/<userId>/` plus the path `driver_license_image_url` points at (even outside that folder), then `session_participants` → `jury_participants` → `confidentiality_agreements` → `roles`, then the auth user. Every call is keyed on the **session's** user id — the action takes no id argument. Legacy participants with no `roles` row and blacklisted participants are deleted too; an empty bucket skips the storage call. |
+| Failure | A failed row delete stops **before** the auth user goes, so the login survives and a retry can finish (every step is idempotent). The server log names the user id, never the date of birth. A failed auth delete is reported, not claimed as success. |
+
+Not covered: the two callers (`app/dashboard/page.tsx`, `components/EditProfileForm.tsx`), which sign the user out locally and route to `/auth/account-removed` — this suite runs in a node environment with no component rendering.
 
 ---
 

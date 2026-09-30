@@ -7,10 +7,12 @@
 -- under COPPA, which is what turns an 18+ promise into per-violation liability.
 --
 -- The app now checks at signup, on the agreement, and on profile edit
--- (client/lib/age-gate.ts), but the agreement and participant profile edits
--- write straight from the browser with the anon key, so the database is the
--- only check a modified client can't skip. Same message as the app, so the rare
--- case that reaches it still reads sensibly.
+-- (client/lib/age-gate.ts) — and on the agreement and profile edit it deletes the
+-- participant's account outright rather than just refusing the date
+-- (client/lib/actions/underageAccount.ts). But those two forms write straight from
+-- the browser with the anon key, so the database is the only check a modified
+-- client can't skip. Same message as the app, so the rare case that reaches it
+-- still reads sensibly.
 --
 -- Trigger rather than CHECK: it only fires when date_of_birth is written or
 -- changed, so an existing row with bad data (a typo'd import, say) doesn't make

@@ -52,6 +52,18 @@ export function dateOfBirthError(
   return null;
 }
 
+/**
+ * True only for a real date that makes the person under MINIMUM_AGE. A missing or
+ * malformed date is a form error, not "underage" — the distinction matters because an
+ * underage date gets the account deleted (lib/actions/underageAccount.ts).
+ */
+export function isUnderage(
+  dateOfBirth: string | null | undefined,
+  today: Date = new Date()
+): boolean {
+  return dateOfBirthError(dateOfBirth, today) === UNDERAGE_MESSAGE;
+}
+
 /** Today as "YYYY-MM-DD" in local time, for a date input's `max`. */
 export function todayIso(today: Date = new Date()): string {
   const y = today.getFullYear();

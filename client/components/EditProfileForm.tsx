@@ -1,11 +1,13 @@
 "use client";
 
 import { useState, useRef, useEffect, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { autoBlacklistIfIneligible } from "@/lib/actions/autoBlacklist";
+import { deleteAccountIfUnderage } from "@/lib/actions/underageAccount";
 import { Pencil, Upload, X, CreditCard } from "lucide-react";
 import { TEXAS_COUNTIES } from "@/lib/constants/texas-counties";
-import { ageOn, dateOfBirthError } from "@/lib/age-gate";
+import { ageOn, dateOfBirthError, isUnderage, UNDERAGE_MESSAGE } from "@/lib/age-gate";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -78,6 +80,7 @@ type Props = {
 
 export default function EditProfileForm({ participant, adminMode, onUpdate, onUpdateDob, backHref }: Props) {
   const supabase = createClient();
+  const router = useRouter();
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -316,7 +319,22 @@ export default function EditProfileForm({ participant, adminMode, onUpdate, onUp
       return;
     }
 
-    // Before any write, so an under-18 date never lands partway through a save.
+    // Before any write, so an under-18 date never lands partway through a save. A
+    // participant giving one has their account deleted; an admin is only refused, so a
+    // typo on someone else's profile can't wipe it.
+    if (dob && !adminMode && isUnderage(dob)) {
+      const result = await deleteAccountIfUnderage(dob);
+      if (result.deleted) {
+        // The user no longer exists, so there's no server session left to revoke.
+        await supabase.auth.signOut({ scope: "local" });
+        router.replace("/auth/account-removed");
+        return;
+      }
+      setError(result.error ?? UNDERAGE_MESSAGE);
+      setLoading(false);
+      return;
+    }
+
     const dobError = dob ? dateOfBirthError(dob) : null;
     if (dobError) {
       setError(dobError);

@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   ageOn,
   dateOfBirthError,
+  isUnderage,
   todayIso,
   MINIMUM_AGE,
   UNDERAGE_MESSAGE,
@@ -69,6 +70,24 @@ describe("dateOfBirthError", () => {
     expect(dateOfBirthError("2027-01-01", TODAY)).toMatch(/valid date of birth/);
     expect(dateOfBirthError("1900-01-01", TODAY)).toMatch(/valid date of birth/);
     expect(dateOfBirthError("not-a-date", TODAY)).toMatch(/valid date of birth/);
+  });
+});
+
+// An underage date deletes the account, so anything that is merely a bad date must not count.
+describe("isUnderage", () => {
+  it("is true one day short of 18 and for a child under 13", () => {
+    expect(isUnderage("2008-09-30", TODAY)).toBe(true);
+    expect(isUnderage("2016-05-01", TODAY)).toBe(true);
+  });
+
+  it("is false for someone who turns 18 today", () => {
+    expect(isUnderage("2008-09-29", TODAY)).toBe(false);
+  });
+
+  it("is false for missing, malformed, future and implausible dates", () => {
+    for (const dob of ["", null, undefined, "2001-02-29", "not-a-date", "2027-01-01", "1900-01-01"]) {
+      expect(isUnderage(dob, TODAY)).toBe(false);
+    }
   });
 });
 

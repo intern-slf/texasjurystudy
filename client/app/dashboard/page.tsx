@@ -15,7 +15,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { dateOfBirthError, todayIso } from "@/lib/age-gate";
+import { dateOfBirthError, isUnderage, todayIso, UNDERAGE_MESSAGE } from "@/lib/age-gate";
+import { deleteAccountIfUnderage } from "@/lib/actions/underageAccount";
 import {
   Loader2,
   Sparkles,
@@ -61,9 +62,15 @@ export default function DashboardPage() {
     agreed: false,
   });
 
-  // Only shown once a date is entered; the empty case is covered by isFormValid.
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  // Only shown once a date is entered; the empty case is covered by isFormValid. An
+  // under-18 date isn't flagged here — flagging it would just tell a child which dates get
+  // through. It deletes the account on submit instead.
   const dobError =
-    role === "participant" && form.dob !== "" ? dateOfBirthError(form.dob) : null;
+    role === "participant" && form.dob !== "" && !isUnderage(form.dob)
+      ? dateOfBirthError(form.dob)
+      : null;
 
   const isFormValid =
     form.agreed &&
@@ -154,6 +161,22 @@ export default function DashboardPage() {
     } = await supabase.auth.getUser();
 
     if (!user) {
+      setSubmitting(false);
+      return;
+    }
+
+    setSubmitError(null);
+
+    // Never stored: the agreement would be a record of a minor's name, DOB and signature.
+    if (role === "participant" && isUnderage(form.dob)) {
+      const result = await deleteAccountIfUnderage(form.dob);
+      if (result.deleted) {
+        // The user no longer exists, so there's no server session left to revoke.
+        await supabase.auth.signOut({ scope: "local" });
+        router.replace("/auth/account-removed");
+        return;
+      }
+      setSubmitError(result.error ?? UNDERAGE_MESSAGE);
       setSubmitting(false);
       return;
     }
@@ -428,6 +451,9 @@ export default function DashboardPage() {
             </div>
 
             {/* Submit */}
+            {submitError && (
+              <p className="text-sm text-center text-red-500">{submitError}</p>
+            )}
             <Button
               disabled={!isFormValid || submitting}
               onClick={submit}
