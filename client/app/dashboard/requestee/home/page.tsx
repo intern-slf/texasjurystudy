@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import RequesteeSidebar from "@/components/RequesteeSidebar";
+import LoomEmbed from "@/components/LoomEmbed";
 import {
   ArrowRight,
   Play,
@@ -43,16 +44,7 @@ function VideoPlayer({ url, label }: { url: string; label?: string }) {
   }
   const loomMatch = url.match(/loom\.com\/(?:share|embed)\/([a-zA-Z0-9]+)/);
   if (loomMatch) {
-    return (
-      <div className="aspect-video bg-slate-900 rounded-md w-full overflow-hidden">
-        <iframe
-          src={`https://www.loom.com/embed/${loomMatch[1]}`}
-          allow="fullscreen"
-          allowFullScreen
-          className="w-full h-full"
-        />
-      </div>
-    );
+    return <LoomEmbed videoId={loomMatch[1]} className="rounded-md" />;
   }
   return (
     <video

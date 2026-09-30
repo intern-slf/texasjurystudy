@@ -5,7 +5,7 @@ import { Scale } from "lucide-react";
 import BackButton from "@/components/BackButton";
 import {
   EFFECTIVE_DATE,
-  LAST_UPDATED,
+  TERMS_LAST_UPDATED,
   LEGAL_ENTITY,
   MAILING_ADDRESS,
   SUPPORT_EMAIL,
@@ -531,7 +531,7 @@ export default function TermsOfServicePage() {
           <div className="flex gap-2">
             <dt className="text-muted-foreground">Last updated</dt>
             <dd className="font-medium text-foreground">
-              {formatLegalDate(LAST_UPDATED)}
+              {formatLegalDate(TERMS_LAST_UPDATED)}
             </dd>
           </div>
         </dl>

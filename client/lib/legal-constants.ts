@@ -13,8 +13,9 @@
  *                      While this is null every page hides the address block
  *                      entirely, so nothing renders as "null".
  *
- *   3. EFFECTIVE_DATE  Set both to the date the firm signs off on the wording.
- *      LAST_UPDATED    Update LAST_UPDATED on every substantive edit.
+ *   3. EFFECTIVE_DATE  Set all three to the date the firm signs off on the
+ *      *_LAST_UPDATED  wording. Update a page's LAST_UPDATED on every
+ *                      substantive edit to that page, and only that page's.
  * ---------------------------------------------------------------------------
  */
 
@@ -28,8 +29,11 @@ export const MAILING_ADDRESS: string | null = null;
 /** ISO yyyy-mm-dd. */
 export const EFFECTIVE_DATE = "2026-07-28";
 
-/** ISO yyyy-mm-dd. */
-export const LAST_UPDATED = "2026-08-26";
+/** ISO yyyy-mm-dd. Last substantive edit to /privacy. */
+export const PRIVACY_LAST_UPDATED = "2026-09-30";
+
+/** ISO yyyy-mm-dd. Last substantive edit to /terms. */
+export const TERMS_LAST_UPDATED = "2026-08-26";
 
 const MONTH_NAMES = [
   "January",
