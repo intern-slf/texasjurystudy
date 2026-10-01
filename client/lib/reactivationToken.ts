@@ -1,8 +1,19 @@
 import crypto from "crypto";
 
 const THIRTY_DAYS_SECONDS = 60 * 60 * 24 * 30;
+// CAN-SPAM requires an unsubscribe link to keep working for at least 30 days
+// after the email is sent. A year leaves a wide margin for someone who digs up
+// an old email, and all the token can do is set its own participant to "no".
+const ONE_YEAR_SECONDS = 60 * 60 * 24 * 365;
 
-export type ReactivationAction = "yes" | "no" | "edit";
+export type ReactivationAction = "yes" | "no" | "edit" | "unsubscribe";
+
+const TTL_SECONDS: Record<ReactivationAction, number> = {
+  yes: THIRTY_DAYS_SECONDS,
+  no: THIRTY_DAYS_SECONDS,
+  edit: THIRTY_DAYS_SECONDS,
+  unsubscribe: ONE_YEAR_SECONDS,
+};
 
 function toBase64Url(str: string): string {
   return Buffer.from(str)
@@ -34,7 +45,7 @@ export function generateReactivationToken(
   action: ReactivationAction,
   secret: string
 ): string {
-  const exp = Math.floor(Date.now() / 1000) + THIRTY_DAYS_SECONDS;
+  const exp = Math.floor(Date.now() / 1000) + TTL_SECONDS[action];
   const payload = toBase64Url(JSON.stringify({ participantId, action, exp }));
   return `${payload}.${sign(payload, secret)}`;
 }
@@ -58,7 +69,10 @@ export function verifyReactivationToken(
 
     if (
       typeof data.participantId !== "string" ||
-      (data.action !== "yes" && data.action !== "no" && data.action !== "edit") ||
+      (data.action !== "yes" &&
+        data.action !== "no" &&
+        data.action !== "edit" &&
+        data.action !== "unsubscribe") ||
       typeof data.exp !== "number"
     ) {
       return null;

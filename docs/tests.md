@@ -329,6 +329,21 @@ Uses a **table-keyed** fake client rather than the FIFO response queue of 4.1: t
 
 Not covered: the two callers (`app/dashboard/page.tsx`, `components/EditProfileForm.tsx`), which sign the user out locally and route to `/auth/account-removed` — this suite runs in a node environment with no component rendering.
 
+### 3.19 [reactivation-email.test.ts](../client/__tests__/reactivation-email.test.ts) — the campaign's Unsubscribe link
+
+**Subject:** the real token helpers from [lib/reactivationToken](../client/lib/reactivationToken.ts), the real `emailWrapper` from [lib/mail](../client/lib/mail.ts) (loaded with `vi.importActual`; nothing is sent), `sendReactivationEmails` from [lib/actions/adminParticipant](../client/lib/actions/adminParticipant.ts), and the GET/POST handlers of [/api/email-action/reactivate](../client/app/api/email-action/reactivate/route.ts). `@/lib/supabase/admin` is a builder that records every query, and `MAILING_ADDRESS` is a getter so each test can set it.
+
+**Why this exists:** the reactivation ("are you still interested?") email is commercial email under CAN-SPAM, so it must say it is a solicitation, carry an unsubscribe link that keeps working for at least 30 days, and stop going to anyone who opted out. Unsubscribing sets `reactivation_status` to `no`, the same as answering No, and the send skips `no`.
+
+| `describe` | Coverage |
+|---|---|
+| `unsubscribe token` | Round-trips participant and action; still valid 364 days later; a Yes token still expires after 30 days. |
+| `emailWrapper footer` | With `unsubscribeUrl`: the solicitation line and the link. Without it (transactional email): neither. The postal address renders, HTML-escaped, once `MAILING_ADDRESS` is set. |
+| `sendReactivationEmails` | Sends while `MAILING_ADDRESS` is still null; the participant query excludes `reactivation_status = 'no'`; every email gets an unsubscribe token signed for its own recipient. |
+| `reactivate route` | Opening the Unsubscribe link only renders the button and runs no query, so a scanner that opens it can't unsubscribe anyone. The button's POST sets `reactivation_status = 'no'` whether it was `pending` or `yes` (`.neq("reactivation_status", "no")` keeps the first timestamp on a repeat), and the page says seats already accepted are not cancelled; a failed write names the support address; Yes, No and edit tokens and a tampered token are refused with 400. The No link is unchanged: a plain GET still moves a `pending` row to `no` (so a scanner opening it has the same effect as unsubscribing) and never overwrites an earlier answer. |
+
+Not covered: the admin send-mail confirm page (a server component; this suite renders none), and the real `sendReactivationEmail` template, which is mocked here, so the footer is pinned at `emailWrapper` and at the `unsubscribeUrl` the action passes.
+
 ---
 
 ## 4. Mocking patterns used across the suite

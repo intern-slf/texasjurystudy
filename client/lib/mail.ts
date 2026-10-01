@@ -1,10 +1,19 @@
 import { randomUUID } from 'crypto';
 import { getMailerAuthToken } from '@/lib/mailerAuth';
+import { MAILING_ADDRESS } from '@/lib/legal-constants';
 
 // ---------------------------------------------------------------------------
 // Shared email wrapper – provides consistent branded header and footer
+//
+// Pass `unsubscribeUrl` for campaign (commercial) email. CAN-SPAM requires
+// those to say they are a solicitation and to carry a visible unsubscribe link
+// and the sender's postal address; the address renders on every email once
+// MAILING_ADDRESS is set.
 // ---------------------------------------------------------------------------
-export function emailWrapper(content: string): string {
+export function emailWrapper(
+  content: string,
+  { unsubscribeUrl }: { unsubscribeUrl?: string } = {}
+): string {
   return `
 <!DOCTYPE html>
 <html lang="en">
@@ -35,6 +44,8 @@ export function emailWrapper(content: string): string {
           <!-- Footer -->
           <tr>
             <td style="background-color:#f8fafc;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 8px 8px;padding:20px 36px;text-align:center;">
+              ${unsubscribeUrl ? `<p style="margin:0 0 8px;font-size:12px;color:#475569;line-height:1.6;">This is a solicitation from Texas Jury Study. You are receiving it because you signed up for the Texas Jury Study participant panel. <a href="${unsubscribeUrl}" style="color:#1e3a8a;font-weight:600;text-decoration:underline;">Unsubscribe</a></p>` : ''}
+              ${MAILING_ADDRESS ? `<p style="margin:0 0 8px;font-size:12px;color:#475569;line-height:1.6;">${escHtml(MAILING_ADDRESS)}</p>` : ''}
               <p style="margin:0;font-size:11px;color:#cbd5e1;">© ${new Date().getFullYear()} Texas Jury Study. All rights reserved.</p>
             </td>
           </tr>
@@ -1563,6 +1574,8 @@ export async function sendPresenterInfoEmail(
 // ---------------------------------------------------------------------------
 // Reactivation campaign — "Are you still interested?" email
 // Two HMAC-signed CTAs: a green Yes button and a red No button.
+// This is commercial email under CAN-SPAM, so it also carries an Unsubscribe
+// link in the footer, plus the postal address once MAILING_ADDRESS is set.
 // ---------------------------------------------------------------------------
 export async function sendReactivationEmail(opts: {
   to: string;
@@ -1570,8 +1583,9 @@ export async function sendReactivationEmail(opts: {
   yesUrl: string;
   noUrl: string;
   profileEditUrl: string;
+  unsubscribeUrl: string;
 }) {
-  const { to, firstName, yesUrl, noUrl, profileEditUrl } = opts;
+  const { to, firstName, yesUrl, noUrl, profileEditUrl, unsubscribeUrl } = opts;
   const salutation = firstName ? `Dear ${firstName},` : "Dear Participant,";
 
   const html = emailWrapper(`
@@ -1647,7 +1661,7 @@ export async function sendReactivationEmail(opts: {
       Sincerely,<br/>
       <strong>The Texas Jury Study Team</strong>
     </p>
-  `);
+  `, { unsubscribeUrl });
 
   await sendEmail({
     to,

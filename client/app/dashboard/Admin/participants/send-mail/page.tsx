@@ -3,6 +3,7 @@ import Link from "next/link";
 import BackButton from "@/components/BackButton";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { sendReactivationEmails } from "@/lib/actions/adminParticipant";
+import { MAILING_ADDRESS } from "@/lib/legal-constants";
 import SubmitButton from "./SubmitButton";
 import {
   Table,
@@ -52,12 +53,15 @@ export default async function SendMailConfirmPage({
     redirect("/dashboard/Admin/participants");
   }
 
+  // Same eligibility as sendReactivationEmails; anyone at "no" (answered No or
+  // unsubscribed) lands in the "not eligible" count.
   const { data: rows } = await supabaseAdmin
     .from("jury_participants")
     .select("user_id, first_name, last_name, email, reactivation_email_sent_at, reactivation_status")
     .in("user_id", idList)
     .eq("approved_by_admin", true)
     .is("blacklisted_at", null)
+    .or("reactivation_status.is.null,reactivation_status.neq.no")
     .order("first_name", { ascending: true });
 
   const recipients = rows ?? [];
@@ -88,8 +92,9 @@ export default async function SendMailConfirmPage({
 
       {idList.length !== recipients.length && (
         <div className="rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
-          {idList.length - recipients.length} of your selected rows are no longer eligible
-          (unapproved or blacklisted) and will be skipped.
+          {idList.length - recipients.length} of your selected rows are not eligible
+          (unapproved, blacklisted, unsubscribed, or previously answered No) and will be
+          skipped.
         </div>
       )}
 
@@ -126,6 +131,14 @@ export default async function SendMailConfirmPage({
                 If you no longer wish to participate, simply ignore this email. You have
                 30 days to respond.
               </p>
+              <div className="border-t pt-3 text-center text-xs text-slate-500 space-y-1">
+                <p>
+                  This is a solicitation from Texas Jury Study. You are receiving it
+                  because you signed up for the Texas Jury Study participant panel.{" "}
+                  <span className="font-semibold text-blue-900 underline">Unsubscribe</span>
+                </p>
+                {MAILING_ADDRESS && <p>{MAILING_ADDRESS}</p>}
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -165,11 +178,9 @@ export default async function SendMailConfirmPage({
                       <TableCell className="py-3 pr-6 text-xs text-muted-foreground">
                         {r.reactivation_status === "yes"
                           ? "Already confirmed"
-                          : r.reactivation_status === "no"
-                            ? "Previously opted out"
-                            : r.reactivation_email_sent_at
-                              ? `Re-send (last: ${new Date(r.reactivation_email_sent_at).toLocaleDateString()})`
-                              : "First send"}
+                          : r.reactivation_email_sent_at
+                            ? `Re-send (last: ${new Date(r.reactivation_email_sent_at).toLocaleDateString()})`
+                            : "First send"}
                       </TableCell>
                     </TableRow>
                   ))}
