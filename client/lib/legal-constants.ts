@@ -25,7 +25,7 @@ export const LEGAL_ENTITY = "Texas Jury Study";
 export const SUPPORT_EMAIL = "info@texasjurystudy.com";
 
 /** Set to the firm's postal address to show it on the legal pages and in every email's footer. */
-export const MAILING_ADDRESS: string | null = null;
+export const MAILING_ADDRESS: string | null = "402 Simonton St, Conroe, TX 77301";
 
 /** ISO yyyy-mm-dd. */
 export const EFFECTIVE_DATE = "2026-07-28";
