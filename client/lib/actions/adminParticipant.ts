@@ -212,13 +212,16 @@ export async function sendReactivationEmails(userIds: string[]): Promise<Reactiv
     const ids = Array.from(new Set(userIds)).slice(0, 500);
 
     // Only target approved, non-blacklisted rows; defense-in-depth against
-    // URL-tampered IDs reaching this action.
+    // URL-tampered IDs reaching this action. Anyone at "no" (they answered "No,
+    // please remove me" or unsubscribed) is out too; the NULL arm keeps a
+    // status-less row eligible.
     const { data: rows, error } = await supabaseAdmin
         .from("jury_participants")
         .select("user_id, email, first_name, reactivation_email_sent_at")
         .in("user_id", ids)
         .eq("approved_by_admin", true)
-        .is("blacklisted_at", null);
+        .is("blacklisted_at", null)
+        .or("reactivation_status.is.null,reactivation_status.neq.no");
 
     if (error) {
         throw new Error(`Failed to load participants: ${error.message}`);
@@ -256,9 +259,11 @@ export async function sendReactivationEmails(userIds: string[]): Promise<Reactiv
             const yesToken = generateReactivationToken(row.user_id, "yes", secret);
             const noToken = generateReactivationToken(row.user_id, "no", secret);
             const editToken = generateReactivationToken(row.user_id, "edit", secret);
+            const unsubscribeToken = generateReactivationToken(row.user_id, "unsubscribe", secret);
             const yesUrl = `${appUrl}/api/email-action/reactivate?token=${encodeURIComponent(yesToken)}`;
             const noUrl = `${appUrl}/api/email-action/reactivate?token=${encodeURIComponent(noToken)}`;
             const profileEditUrl = `${appUrl}/api/email-action/reactivate?token=${encodeURIComponent(editToken)}`;
+            const unsubscribeUrl = `${appUrl}/api/email-action/reactivate?token=${encodeURIComponent(unsubscribeToken)}`;
 
             await sendReactivationEmail({
                 to: row.email,
@@ -266,6 +271,7 @@ export async function sendReactivationEmails(userIds: string[]): Promise<Reactiv
                 yesUrl,
                 noUrl,
                 profileEditUrl,
+                unsubscribeUrl,
             });
         })
     );

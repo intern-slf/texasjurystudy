@@ -9,9 +9,10 @@
  *                      entity, which is fine for a soft launch but should be
  *                      the real entity before real money changes hands.
  *
- *   2. MAILING_ADDRESS A postal address belongs in a complete privacy notice.
- *                      While this is null every page hides the address block
- *                      entirely, so nothing renders as "null".
+ *   2. MAILING_ADDRESS A postal address belongs in a complete privacy notice,
+ *                      and CAN-SPAM requires one in marketing email such as the
+ *                      reactivation campaign. While this is null every page
+ *                      and email hides it entirely, so nothing renders as "null".
  *
  *   3. EFFECTIVE_DATE  Set all three to the date the firm signs off on the
  *      *_LAST_UPDATED  wording. Update a page's LAST_UPDATED on every
@@ -23,7 +24,7 @@ export const LEGAL_ENTITY = "Texas Jury Study";
 
 export const SUPPORT_EMAIL = "info@texasjurystudy.com";
 
-/** Set to the firm's postal address to reveal the address block on the legal pages. */
+/** Set to the firm's postal address to show it on the legal pages and in every email's footer. */
 export const MAILING_ADDRESS: string | null = null;
 
 /** ISO yyyy-mm-dd. */

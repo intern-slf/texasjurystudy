@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyReactivationToken } from "@/lib/reactivationToken";
+import { verifyReactivationToken, type ReactivationAction } from "@/lib/reactivationToken";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { SUPPORT_EMAIL } from "@/lib/legal-constants";
 
 export const runtime = "nodejs";
 
@@ -11,27 +12,16 @@ export async function GET(req: NextRequest) {
     return html(errorPage("Missing Token", "No action token was provided in this link."));
   }
 
-  const secret = process.env.EMAIL_ACTION_SECRET;
-  if (!secret) {
-    console.error("[reactivate] EMAIL_ACTION_SECRET is not set");
-    return html(
-      errorPage("Configuration Error", "The server is not configured correctly. Please contact support."),
-      500
-    );
-  }
+  const verified = verify(token);
+  if (verified instanceof NextResponse) return verified;
+  const { participantId, action } = verified;
 
-  const payload = verifyReactivationToken(token, secret);
-  if (!payload) {
-    return html(
-      errorPage(
-        "Link Expired or Invalid",
-        "This link has expired or is not valid. Reactivation links expire after 30 days. Please contact Texas Jury Study if you would still like to participate."
-      ),
-      400
-    );
+  // The Unsubscribe link only shows the button; pressing it (POST) is what
+  // unsubscribes. Email scanners open every link in a message, and a click
+  // alone would let one take an active member off the panel.
+  if (action === "unsubscribe") {
+    return html(unsubscribeConfirmPage(token));
   }
-
-  const { participantId, action } = payload;
 
   // "edit" action just bounces the user into the profile editor via a freshly
   // minted Supabase magic link. The HMAC token can live for 30 days, but the
@@ -98,10 +88,81 @@ export async function GET(req: NextRequest) {
   } catch (err) {
     console.error("[reactivate] Unexpected error:", err);
     return html(
-      errorPage("Something Went Wrong", "We could not record your response. Please try again or contact support."),
+      errorPage(
+        "Something Went Wrong",
+        `We could not record your response. Please try again, or email ${SUPPORT_EMAIL}.`
+      ),
       500
     );
   }
+}
+
+// The Unsubscribe button. Sets reactivation_status to "no" whatever it was
+// before, which is the same as answering No: sendReactivationEmails skips
+// "no", and only "yes" gets invited. A repeat keeps the first timestamp.
+export async function POST(req: NextRequest) {
+  let form: FormData;
+  try {
+    form = await req.formData();
+  } catch {
+    return html(invalidRequestPage(), 400);
+  }
+
+  const token = form.get("token");
+  if (typeof token !== "string" || !token) {
+    return html(errorPage("Missing Token", "No action token was provided with this request."), 400);
+  }
+
+  const verified = verify(token);
+  if (verified instanceof NextResponse) return verified;
+  const { participantId, action } = verified;
+
+  if (action !== "unsubscribe") return html(invalidRequestPage(), 400);
+
+  const { error } = await supabaseAdmin
+    .from("jury_participants")
+    .update({
+      reactivation_status: "no",
+      reactivation_confirmed_at: new Date().toISOString(),
+    })
+    .eq("user_id", participantId)
+    .neq("reactivation_status", "no");
+
+  if (error) {
+    console.error("[reactivate] Failed to unsubscribe participant:", error);
+    return html(
+      errorPage(
+        "Something Went Wrong",
+        `We could not unsubscribe you. Please try again, or email ${SUPPORT_EMAIL} and we will do it for you.`
+      ),
+      500
+    );
+  }
+
+  return html(unsubscribedPage());
+}
+
+function verify(token: string): { participantId: string; action: ReactivationAction } | NextResponse {
+  const secret = process.env.EMAIL_ACTION_SECRET;
+  if (!secret) {
+    console.error("[reactivate] EMAIL_ACTION_SECRET is not set");
+    return html(
+      errorPage("Configuration Error", "The server is not configured correctly. Please contact support."),
+      500
+    );
+  }
+
+  const payload = verifyReactivationToken(token, secret);
+  if (!payload) {
+    return html(
+      errorPage(
+        "Link Expired or Invalid",
+        `This link has expired or is not valid. To rejoin the panel, or to stop receiving these emails, email us at ${SUPPORT_EMAIL}.`
+      ),
+      400
+    );
+  }
+  return payload;
 }
 
 async function getMagicLink(participantId: string): Promise<string> {
@@ -187,7 +248,7 @@ function submittedPage(choice: "yes" | "no", repeatClick: boolean): string {
   const bg = isYes ? "#E3EFE6" : "#F9E9EA";
   const subtitle = isYes
     ? "Thanks for confirming. You&rsquo;ll continue to receive invitations to Texas Jury Study focus groups."
-    : "Thanks for letting us know. You have been removed from active invitations.";
+    : "Thanks for letting us know. You have been removed from active invitations, and you will not receive these emails again.";
   const repeatNote = repeatClick
     ? `<p style="margin:16px 0 0;font-size:13px;color:#6B6960;">We already had your response on file &mdash; no changes were made.</p>`
     : "";
@@ -198,6 +259,40 @@ function submittedPage(choice: "yes" | "no", repeatClick: boolean): string {
     <p style="margin:0;font-size:15px;color:#3F3E38;line-height:1.6;">${subtitle}</p>
     ${repeatNote}
   `);
+}
+
+function unsubscribeConfirmPage(token: string): string {
+  return page("Unsubscribe", `
+    <h1 style="margin:0 0 12px;font-size:24px;font-weight:700;color:#012A68;">Unsubscribe from these emails?</h1>
+    <p style="margin:0 0 24px;font-size:15px;color:#3F3E38;line-height:1.6;">You will stop receiving these emails, and we will no longer invite you to Texas Jury Study focus groups. Sessions you have already accepted are not cancelled.</p>
+    <form method="post" action="/api/email-action/reactivate" style="margin:0;">
+      <input type="hidden" name="token" value="${escAttr(token)}"/>
+      <button type="submit" style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;background-color:#C32130;border:none;border-radius:6px;cursor:pointer;">Unsubscribe</button>
+    </form>
+  `);
+}
+
+function unsubscribedPage(): string {
+  return page("Unsubscribed", `
+    <div style="width:64px;height:64px;border-radius:50%;background-color:#E3EFE6;border:2px solid #2D6A3E;margin:0 auto 20px;font-size:32px;line-height:60px;color:#2D6A3E;">✓</div>
+    <h1 style="margin:0 0 12px;font-size:24px;font-weight:700;color:#2D6A3E;">You have been unsubscribed</h1>
+    <p style="margin:0;font-size:15px;color:#3F3E38;line-height:1.6;">You will not receive these emails again, and we will no longer invite you to focus groups. Sessions you have already accepted are not cancelled; if you can&rsquo;t attend one, email ${SUPPORT_EMAIL}.</p>
+  `);
+}
+
+function invalidRequestPage(): string {
+  return errorPage(
+    "Invalid Request",
+    "This link can&rsquo;t be used for that. Please use the buttons in the email."
+  );
+}
+
+function escAttr(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
 function missingProfilePage(missing: string[], dashboardUrl: string): string {
