@@ -32,7 +32,6 @@ export function ForgotPasswordForm({
     try {
       const formData = new FormData();
       formData.append('email', email);
-      formData.append('origin', window.location.origin);
 
       const result = await resetPasswordWithCustomEmail(formData);
 

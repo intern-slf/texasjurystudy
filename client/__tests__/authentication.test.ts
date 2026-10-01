@@ -12,6 +12,8 @@ import { UNDERAGE_MESSAGE } from "@/lib/age-gate";
 process.env.NEXT_PUBLIC_SUPABASE_URL ||= "http://supabase.test";
 process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||= "anon-test-key";
 process.env.SUPABASE_SERVICE_ROLE_KEY ||= "service-role-test-key";
+process.env.NEXT_PUBLIC_APP_URL ||= "http://test.local";
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "");
 
 // ---------------------------------------------------------------------------
 // supabaseAdmin mock (for app/auth/actions.ts)
@@ -36,6 +38,7 @@ const supabaseAdminState: {
 
 const fromInsertSpy = vi.fn();
 const createUserSpy = vi.fn();
+const generateLinkSpy = vi.fn();
 const fromSelectChain = () => {
   const builder: Record<string, unknown> = {};
   builder.select = vi.fn(() => builder);
@@ -53,7 +56,10 @@ vi.mock("@/lib/supabase/admin", () => ({
           createUserSpy(...args);
           return supabaseAdminState.createUser;
         }),
-        generateLink: vi.fn(async () => supabaseAdminState.generateLink),
+        generateLink: vi.fn(async (...args: unknown[]) => {
+          generateLinkSpy(...args);
+          return supabaseAdminState.generateLink;
+        }),
       },
     },
     from: vi.fn((_table: string) => {
@@ -124,6 +130,7 @@ describe("Authentication", () => {
     gateState.agreementRow = { data: null, error: null };
     fromInsertSpy.mockClear();
     createUserSpy.mockClear();
+    generateLinkSpy.mockClear();
     sendEmailSpy.mockClear();
   });
 
@@ -155,7 +162,6 @@ describe("Authentication", () => {
           password: "Secret123!",
           dateOfBirth: ADULT_DOB,
           role: "participant",
-          origin: "http://test.local",
         })
       );
 
@@ -180,7 +186,6 @@ describe("Authentication", () => {
           password: "Secret123!",
           dateOfBirth: ADULT_DOB,
           role: "requestee",
-          origin: "http://test.local",
         })
       );
 
@@ -203,7 +208,6 @@ describe("Authentication", () => {
           password: "Secret123!",
           dateOfBirth: ADULT_DOB,
           role: "participant",
-          origin: "http://test.local",
         })
       );
 
@@ -219,7 +223,6 @@ describe("Authentication", () => {
           email: "noroleuser@example.com",
           password: "Secret123!",
           dateOfBirth: ADULT_DOB,
-          origin: "http://test.local",
         })
       );
 
@@ -236,7 +239,6 @@ describe("Authentication", () => {
           password: "Secret123!",
           dateOfBirth: ADULT_DOB,
           role: "admin",
-          origin: "http://test.local",
         })
       );
 
@@ -253,7 +255,6 @@ describe("Authentication", () => {
           password: "Secret123!",
           dateOfBirth: CHILD_DOB,
           role: "participant",
-          origin: "http://test.local",
         })
       );
 
@@ -272,7 +273,6 @@ describe("Authentication", () => {
             password: "Secret123!",
             dateOfBirth,
             role: "requestee",
-            origin: "http://test.local",
           })
         );
         expect(result).toMatchObject({ error: expect.stringMatching(/date of birth/) });
@@ -288,13 +288,27 @@ describe("Authentication", () => {
           password: "Secret123!",
           dateOfBirth: ADULT_DOB,
           role: "participant",
-          origin: "http://test.local",
         })
       );
 
       expect(createUserSpy).toHaveBeenCalledTimes(1);
       const [args] = createUserSpy.mock.calls[0] as [{ user_metadata: Record<string, unknown> }];
       expect(args.user_metadata).toEqual({ role: "participant" });
+    });
+
+    it("Confirm link lands on NEXT_PUBLIC_APP_URL, never on a posted origin", async () => {
+      await signupWithCustomEmail(
+        makeForm({
+          email: "adult@example.com",
+          password: "Secret123!",
+          dateOfBirth: ADULT_DOB,
+          role: "participant",
+          origin: "https://texasjurystudy.vercel.app",
+        })
+      );
+
+      const [args] = generateLinkSpy.mock.calls[0] as [{ options: { redirectTo: string } }];
+      expect(args.options.redirectTo).toBe(`${APP_URL}/auth/callback`);
     });
   });
 
@@ -310,7 +324,6 @@ describe("Authentication", () => {
     function makeForm(email: string) {
       const fd = new FormData();
       fd.set("email", email);
-      fd.set("origin", "http://test.local");
       return fd;
     }
 
@@ -343,6 +356,16 @@ describe("Authentication", () => {
       expect(sendEmailSpy).not.toHaveBeenCalled();
       // The response must not echo the email address that was probed
       expect(JSON.stringify(result)).not.toContain("unknown@example.com");
+    });
+
+    it("Reset link lands on NEXT_PUBLIC_APP_URL, never on a posted origin", async () => {
+      const fd = makeForm("known@example.com");
+      fd.set("origin", "https://texasjurystudy.vercel.app");
+
+      await resetPasswordWithCustomEmail(fd);
+
+      const [args] = generateLinkSpy.mock.calls[0] as [{ options: { redirectTo: string } }];
+      expect(args.options.redirectTo).toBe(`${APP_URL}/auth/update-password`);
     });
   });
 

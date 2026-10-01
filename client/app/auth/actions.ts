@@ -5,11 +5,18 @@ import { sendEmail, emailWrapper } from '@/lib/mail';
 import { readRole } from '@/lib/auth-role';
 import { dateOfBirthError } from '@/lib/age-gate';
 
+// Where the emailed confirm/reset link lands. Built on the server like every
+// other email link, never from a value the browser posts: these actions are
+// public endpoints, so a posted origin is whatever the caller sends, including
+// the old *.vercel.app address.
+function appUrl(): string {
+    return (process.env.NEXT_PUBLIC_APP_URL || '').replace(/\/$/, '');
+}
+
 export async function signupWithCustomEmail(formData: FormData) {
     try {
         const email = formData.get('email') as string;
         const password = formData.get('password') as string;
-        const origin = formData.get('origin') as string;
 
         // A server action is a public POST endpoint, so `role` is attacker-controlled.
         // roles.role's CHECK allows 'admin', and this insert runs as service role —
@@ -56,7 +63,7 @@ export async function signupWithCustomEmail(formData: FormData) {
             email,
             password,
             options: {
-                redirectTo: `${origin}/auth/callback`
+                redirectTo: `${appUrl()}/auth/callback`
             }
         });
 
@@ -101,13 +108,12 @@ export async function signupWithCustomEmail(formData: FormData) {
 
 export async function resetPasswordWithCustomEmail(formData: FormData) {
     const email = formData.get('email') as string;
-    const origin = formData.get('origin') as string;
 
     const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
         type: 'recovery',
         email,
         options: {
-            redirectTo: `${origin}/auth/update-password`
+            redirectTo: `${appUrl()}/auth/update-password`
         }
     });
 

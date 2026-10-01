@@ -58,7 +58,6 @@ function SignUpFormFields({ className, ...props }: React.ComponentPropsWithoutRe
       formData.append('password', password);
       formData.append('dateOfBirth', dateOfBirth);
       formData.append('role', role);
-      formData.append('origin', window.location.origin);
 
       const result = await signupWithCustomEmail(formData);
       
