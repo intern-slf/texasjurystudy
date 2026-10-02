@@ -1,6 +1,6 @@
 # Test inventory
 
-Generated 2026-10-01 from `vitest run`: **356 tests** — 346 passed, 0 failed, 10 todo.
+Generated 2026-10-02 from `vitest run`: **372 tests** — 362 passed, 0 failed, 10 todo.
 
 Every test in [client/__tests__/](../client/__tests__/), grouped by file and `describe` block, with the production function each group exercises (`→`). For *why* each test exists and how the mocks work, see [tests.md](./tests.md).
 
@@ -431,253 +431,284 @@ Also: the invalid-URL test in `add-drive-link.test.ts` checks validation done by
 207. takes a pending participant off the panel ✅
 208. never overwrites an earlier answer ✅
 
+### client/__tests__/requestee-participant-access.test.ts (16)
+
+
+**requestee participant access > the fields a firm may see** → `toRequesteeProfile, ageOf, toRequesteeSearchResult — lib/participant/requesteeAccess.ts`
+
+209. keeps the profile fields and an age, and drops every private field ✅
+210. works out the age from date_of_birth, oldData's dob, or its age column ✅
+211. search results carry an age, never the date of birth ✅
+
+**requestee participant access > getCaseParticipantNames** → `getCaseParticipantNames — lib/actions/requesteeParticipant.ts; participantNamesForCases, ownsAllCases — lib/participant/requesteeAccess.ts`
+
+212. returns names only, for people on the firm's own case, with legacy rows from oldData ✅
+213. leaves out anyone not on the case, and waitlisters ✅
+214. refuses a case the firm doesn't own, before reading any participant table ✅
+215. accepts a case the firm is the assigned requestee on ✅
+216. lets an admin read any case ✅
+217. refuses a signed-out caller ✅
+
+**requestee participant access > getParticipantProfile for a firm** → `getParticipantProfile — lib/participant/getParticipantProfile.ts; requesteeParticipantProfile — lib/participant/requesteeAccess.ts`
+
+218. shows a participant on the firm's case, without any private field ✅
+219. refuses a participant who isn't on that case, even with the firm's own case id ✅
+220. refuses a case the firm doesn't own ✅
+221. refuses without a case ✅
+
+**requestee participant access > searchParticipantsForCase** → `searchParticipantsForCase — lib/actions/requesteeParticipant.ts`
+
+222. returns only name, city, age and political affiliation ✅
+223. strips characters that would add filters to the database query ✅
+224. refuses a case the firm doesn't own ✅
+
 ### client/__tests__/rls.test.ts (18)
 
 
 **RLS (Row Level Security) > rls-roles.test.ts** → `(none — TypeScript RLS simulator inside the test, not real Postgres)`
 
-209. Roles immutable ✅
-210. No self-promotion ✅
+225. Roles immutable ✅
+226. No self-promotion ✅
 
 **RLS (Row Level Security) > rls-cases.test.ts** → `(none — TypeScript RLS simulator inside the test, not real Postgres)`
 
-211. Requestee sees own cases only ✅
-212. Participant sees none ✅
-213. Admin sees all ✅
+227. Requestee sees own cases only ✅
+228. Participant sees none ✅
+229. Admin sees all ✅
 
 **RLS (Row Level Security) > rls-case-documents.test.ts** → `(none — TypeScript RLS simulator inside the test, not real Postgres)`
 
-214. Same access partitioning as cases ✅
+230. Same access partitioning as cases ✅
 
 **RLS (Row Level Security) > rls-session-participants.test.ts** → `(none — TypeScript RLS simulator inside the test, not real Postgres)`
 
-215. Participants see only their own invites ✅
+231. Participants see only their own invites ✅
 
 **RLS (Row Level Security) > rls-jury-participants.test.ts** → `(none — TypeScript RLS simulator inside the test, not real Postgres)`
 
-216. Participant sees own row ✅
-217. Admin sees all ✅
-218. Requestee gets filter-projected view only ✅
+232. Participant sees own row ✅
+233. Admin sees all ✅
+234. Requestee reads no participant rows directly ✅
 
 **RLS (Row Level Security) > rls-storage-objects.test.ts** → `(none — TypeScript RLS simulator inside the test, not real Postgres)`
 
-219. Participant reads only their OWN driver license ✅
-220. Participant cannot read case documents ✅
-221. Admin reads any license and any case document ✅
-222. Requestee reads/deletes only their OWN case documents ✅
-223. Owner may overwrite/delete own file; non-owner non-admin cannot ✅
-224. Admin can overwrite an existing participant license (policy #4) but not a case doc ✅
-225. INSERT is owner-scoped: the caller becomes the owner ✅
-226. service_role bypasses storage RLS (video upload script) ✅
+235. Participant reads only their OWN driver license ✅
+236. Participant cannot read case documents ✅
+237. Admin reads any license and any case document ✅
+238. Requestee reads/deletes only their OWN case documents ✅
+239. Owner may overwrite/delete own file; non-owner non-admin cannot ✅
+240. Admin can overwrite an existing participant license (policy #4) but not a case doc ✅
+241. INSERT is owner-scoped: the caller becomes the owner ✅
+242. service_role bypasses storage RLS (video upload script) ✅
 
 ### client/__tests__/roster-order.test.ts (14)
 
 
 **rosterGroup** → `rosterGroup — lib/participant/rosterOrder.ts`
 
-227. buckets each invite status ✅
-228. treats the legacy 'rejected' spelling as declined ✅
-229. reads null and unknown statuses as pending ✅
-230. lets a strike outrank the status it was applied to ✅
+243. buckets each invite status ✅
+244. treats the legacy 'rejected' spelling as declined ✅
+245. reads null and unknown statuses as pending ✅
+246. lets a strike outrank the status it was applied to ✅
 
 **rosterStatusLabel** → `rosterStatusLabel — lib/participant/rosterOrder.ts`
 
-231. labels every group ✅
+247. labels every group ✅
 
 **sortRoster** → `sortRoster, compareRosterEntries — lib/participant/rosterOrder.ts`
 
-232. orders accepted → waitlisted → declined → pending → struck ✅
-233. matches the declared group order ✅
-234. keeps the reserve out of the seated group ✅
-235. lets a strike outrank a waitlist slot ✅
-236. sorts alphabetically inside a group, not across groups ✅
-237. sorts on the displayed 'First Last' string ✅
-238. does not mutate the input array ✅
-239. keeps equal entries stable ✅
-240. handles an empty roster ✅
+248. orders accepted → waitlisted → declined → pending → struck ✅
+249. matches the declared group order ✅
+250. keeps the reserve out of the seated group ✅
+251. lets a strike outrank a waitlist slot ✅
+252. sorts alphabetically inside a group, not across groups ✅
+253. sorts on the displayed 'First Last' string ✅
+254. does not mutate the input array ✅
+255. keeps equal entries stable ✅
+256. handles an empty roster ✅
 
 ### client/__tests__/session-start.test.ts (20)
 
 
 **sessionStartInstant** → `sessionStartInstant — lib/participant/sessionStart.ts`
 
-241. anchors to the earliest case start time, not the first row ✅
-242. accepts HH:MM as well as HH:MM:SS ✅
-243. tolerates a full timestamp in the date column ✅
-244. falls back to midnight UTC when the session has no case times ✅
-245. returns null when there is no usable date ✅
-246. ignores unparseable times rather than throwing ✅
+257. anchors to the earliest case start time, not the first row ✅
+258. accepts HH:MM as well as HH:MM:SS ✅
+259. tolerates a full timestamp in the date column ✅
+260. falls back to midnight UTC when the session has no case times ✅
+261. returns null when there is no usable date ✅
+262. ignores unparseable times rather than throwing ✅
 
 **hasSessionStarted** → `hasSessionStarted — lib/participant/sessionStart.ts`
 
-247. is false a minute before the first case begins ✅
-248. is true exactly at the first case start ✅
-249. stays true while the session runs and after it ends ✅
-250. is false earlier the same day ✅
-251. does not block when the date cannot be read ✅
+263. is false a minute before the first case begins ✅
+264. is true exactly at the first case start ✅
+265. stays true while the session runs and after it ends ✅
+266. is false earlier the same day ✅
+267. does not block when the date cannot be read ✅
 
 **sessionEndInstant** → `sessionEndInstant — lib/participant/sessionStart.ts`
 
-252. takes the latest case end ✅
-253. rolls an end past midnight onto the next day ✅
-254. falls back to the start when there are no end times ✅
-255. returns null when the date cannot be read ✅
+268. takes the latest case end ✅
+269. rolls an end past midnight onto the next day ✅
+270. falls back to the start when there are no end times ✅
+271. returns null when the date cannot be read ✅
 
 **cooldownAfterSession** → `cooldownAfterSession — lib/participant/sessionStart.ts`
 
-256. is the day after the session ends, in UTC ✅
-257. counts from the real end of a session that runs past midnight ✅
-258. crosses a month boundary without drifting ✅
-259. crosses a year boundary ✅
-260. returns null when the session times cannot be read, so the cooldown is left alone ✅
+272. is the day after the session ends, in UTC ✅
+273. counts from the real end of a session that runs past midnight ✅
+274. crosses a month boundary without drifting ✅
+275. crosses a year boundary ✅
+276. returns null when the session times cannot be read, so the cooldown is left alone ✅
 
 ### client/__tests__/sessions.test.ts (60)
 
 
 **Sessions > create-session.test.ts** → `createSession — lib/actions/session.ts`
 
-261. Inserts row with admin as created_by ✅
-262. Non-admin blocked ✅
+277. Inserts row with admin as created_by ✅
+278. Non-admin blocked ✅
 
 **Sessions > add-cases-to-session.test.ts** → `addCasesToSession — lib/actions/session.ts (+ localToUTCTime)`
 
-263. Creates one row per case ✅
-264. Correct UTC time conversion ✅
-265. Updates each case's admin_scheduled_at ✅
-266. Attaching all-offline cases is fine ✅
-267. Refuses a selection that mixes in-person and online cases ✅
-268. Refuses an online case joining a session that already holds in-person ones ✅
-269. An in-person case may join a session that already holds in-person ones ✅
+279. Creates one row per case ✅
+280. Correct UTC time conversion ✅
+281. Updates each case's admin_scheduled_at ✅
+282. Attaching all-offline cases is fine ✅
+283. Refuses a selection that mixes in-person and online cases ✅
+284. Refuses an online case joining a session that already holds in-person ones ✅
+285. An in-person case may join a session that already holds in-person ones ✅
 
 **Sessions > replace-case-in-session.test.ts** → `replaceCaseInSession — lib/actions/session.ts`
 
-270. Swaps in a case of the same format ✅
-271. Refuses a replacement of the other format ✅
-272. Refuses to flip the format of a session by replacing its ONLY case ✅
+286. Swaps in a case of the same format ✅
+287. Refuses a replacement of the other format ✅
+288. Refuses to flip the format of a session by replacing its ONLY case ✅
 
 **Sessions > invite-participants.test.ts** → `inviteParticipants — lib/actions/session.ts`
 
-273. One pending row per invitee ✅
-274. Never exceeds number_of_attendees ✅
-275. Sends one email per invitee ✅
-276. An online invite quotes $30/hr, says Zoom, and mentions the waitlist ✅
-277. An in-person invite quotes $40/hr and the in-person waitlist terms ✅
-278. Drops blacklisted invitees (roles + blacklisted_at) and only invites the rest ✅
-279. Inserts nothing when every invitee is blacklisted ✅
-280. One FK-rejected participant does not block the rest of the batch ✅
-281. Never inserts a participant who has no login account ✅
-282. Inserts nothing when no selected participant has a login account ✅
-283. Resolves the invite email from jury_participants, not the auth admin API ✅
-284. Reports the all-skipped case as a failure, not a silent success ✅
-285. Drops invitees who are not active panel members ✅
-286. Inserts nothing when no invitee is an active panel member ✅
+289. One pending row per invitee ✅
+290. Never exceeds number_of_attendees ✅
+291. Sends one email per invitee ✅
+292. An online invite quotes $30/hr, says Zoom, and mentions the waitlist ✅
+293. An in-person invite quotes $40/hr and the in-person waitlist terms ✅
+294. Drops blacklisted invitees (roles + blacklisted_at) and only invites the rest ✅
+295. Inserts nothing when every invitee is blacklisted ✅
+296. One FK-rejected participant does not block the rest of the batch ✅
+297. Never inserts a participant who has no login account ✅
+298. Inserts nothing when no selected participant has a login account ✅
+299. Resolves the invite email from jury_participants, not the auth admin API ✅
+300. Reports the all-skipped case as a failure, not a silent success ✅
+301. Drops invitees who are not active panel members ✅
+302. Inserts nothing when no invitee is an active panel member ✅
 
 **Sessions > update-invite-status.test.ts** → `updateInviteStatus — lib/participant/updateInviteStatus.ts`
 
-287. pending → accepted ✅
-288. pending → declined ✅
-289. Session full blocked ✅
-290. Incomplete profile blocked ✅
-291. Non-active participant blocked from accepting ✅
-292. Active status is checked before the profile gate ✅
-293. Accepting is blocked once the session has started ✅
-294. Accepting once the seats are gone ASKS first and writes nothing ✅
-295. Confirming the offer writes the reserve slot ✅
-296. Turning down the offer declines, and records that it was the waitlist ✅
-297. A plain decline records no waitlist reason but still clears the money ✅
-298. Takes the second waitlist slot when one is already filled ✅
-299. A seat records the hourly payout for the session length ✅
-300. A seat on an in-person session is paid the in-person rate ✅
-301. A full in-person session offers a waitlist slot on IN-PERSON terms ✅
-302. An in-person waitlist accept records the $30 waiting fee, not $10 ✅
-303. The same session online WOULD offer a waitlist slot ✅
-304. Declining still works after the session has started ✅
-305. A non-active participant can still decline ✅
-306. Double response blocked ✅
+303. pending → accepted ✅
+304. pending → declined ✅
+305. Session full blocked ✅
+306. Incomplete profile blocked ✅
+307. Non-active participant blocked from accepting ✅
+308. Active status is checked before the profile gate ✅
+309. Accepting is blocked once the session has started ✅
+310. Accepting once the seats are gone ASKS first and writes nothing ✅
+311. Confirming the offer writes the reserve slot ✅
+312. Turning down the offer declines, and records that it was the waitlist ✅
+313. A plain decline records no waitlist reason but still clears the money ✅
+314. Takes the second waitlist slot when one is already filled ✅
+315. A seat records the hourly payout for the session length ✅
+316. A seat on an in-person session is paid the in-person rate ✅
+317. A full in-person session offers a waitlist slot on IN-PERSON terms ✅
+318. An in-person waitlist accept records the $30 waiting fee, not $10 ✅
+319. The same session online WOULD offer a waitlist slot ✅
+320. Declining still works after the session has started ✅
+321. A non-active participant can still decline ✅
+322. Double response blocked ✅
 
 **Sessions > recordBackoutStrike** → `recordBackoutStrike — lib/actions/participantFlags.ts`
 
-307. stamps struck_at on the session invite row ✅
-308. records struck_by when the acting admin is known ✅
-309. is idempotent per session — an already-struck invite is a no-op ✅
-310. no-ops when the participant has no invite for that session ✅
-311. increments flag_count and does NOT blacklist below the limit ✅
-312. auto-blacklists when the third flag is reached ✅
-313. records the session strike but counts no flag for a legacy (oldData) id ✅
+323. stamps struck_at on the session invite row ✅
+324. records struck_by when the acting admin is known ✅
+325. is idempotent per session — an already-struck invite is a no-op ✅
+326. no-ops when the participant has no invite for that session ✅
+327. increments flag_count and does NOT blacklist below the limit ✅
+328. auto-blacklists when the third flag is reached ✅
+329. records the session strike but counts no flag for a legacy (oldData) id ✅
 
 **Sessions > reschedule-session.test.ts** → `rescheduleSession — lib/actions/session.ts`
 
-314. Reprices seats to the new session length ✅
-315. Uses the session's own rate, so an in-person seat reprices at $40/hr ✅
-316. Targets only seated rows, never a waitlister's flat fee ✅
-317. Never originates money on a pre-backfill null payout ✅
-318. Refuses to write $0 when the times come back unreadable ✅
-319. Leaves a past-dated session's payouts alone ✅
-320. Moves the cooldown with the session ✅
+330. Reprices seats to the new session length ✅
+331. Uses the session's own rate, so an in-person seat reprices at $40/hr ✅
+332. Targets only seated rows, never a waitlister's flat fee ✅
+333. Never originates money on a pre-backfill null payout ✅
+334. Refuses to write $0 when the times come back unreadable ✅
+335. Leaves a past-dated session's payouts alone ✅
+336. Moves the cooldown with the session ✅
 
 ### client/__tests__/timezone.test.ts (10)
 
 
 **localToUTC** → `localToUTC — lib/timezone.ts`
 
-321. returns the same instant when the timezone is UTC ✅
-322. adds 5h for America/New_York during standard time (January) ✅
-323. adds 4h for America/New_York during DST (July) ✅
-324. subtracts 5:30 for Asia/Kolkata (non-whole-hour offset) ✅
-325. handles a date inside the spring-forward window without throwing ✅
-326. handles a date inside the fall-back ambiguous window without throwing ✅
-327. throws for an invalid IANA zone string ✅
+337. returns the same instant when the timezone is UTC ✅
+338. adds 5h for America/New_York during standard time (January) ✅
+339. adds 4h for America/New_York during DST (July) ✅
+340. subtracts 5:30 for Asia/Kolkata (non-whole-hour offset) ✅
+341. handles a date inside the spring-forward window without throwing ✅
+342. handles a date inside the fall-back ambiguous window without throwing ✅
+343. throws for an invalid IANA zone string ✅
 
 **localToUTCTime** → `localToUTCTime — lib/timezone.ts`
 
-328. returns the HH:MM:SS portion of the UTC instant ✅
-329. returns the DST-adjusted time in July ✅
-330. returns 04:30:00 for 10:00 Asia/Kolkata ✅
+344. returns the HH:MM:SS portion of the UTC instant ✅
+345. returns the DST-adjusted time in July ✅
+346. returns 04:30:00 for 10:00 Asia/Kolkata ✅
 
 ### client/__tests__/underage-account.test.ts (10)
 
 
 **deleteAccountIfUnderage** → `deleteAccountIfUnderage — lib/actions/underageAccount.ts`
 
-331. deletes nothing for an adult ✅
-332. deletes nothing for a missing, malformed or future date (a form error, not an age) ✅
-333. removes the ID images, every row and then the login — all for the caller only ✅
-334. also removes an ID image stored outside the user's folder ✅
-335. deletes a legacy participant with no roles row, and skips storage when there's nothing in it ✅
-336. deletes a blacklisted participant ✅
-337. refuses admins and requestees without deleting anything ✅
-338. deletes nothing when signed out ✅
-339. stops before removing the login when a row can't be deleted, so a retry can finish ✅
-340. reports a failed login delete instead of claiming success ✅
+347. deletes nothing for an adult ✅
+348. deletes nothing for a missing, malformed or future date (a form error, not an age) ✅
+349. removes the ID images, every row and then the login — all for the caller only ✅
+350. also removes an ID image stored outside the user's folder ✅
+351. deletes a legacy participant with no roles row, and skips storage when there's nothing in it ✅
+352. deletes a blacklisted participant ✅
+353. refuses admins and requestees without deleting anything ✅
+354. deletes nothing when signed out ✅
+355. stops before removing the login when a row can't be deleted, so a retry can finish ✅
+356. reports a failed login delete instead of claiming success ✅
 
 ### client/__tests__/waitlist.test.ts (16)
 
 
 **assignSlot** → `assignSlot — lib/participant/waitlist.ts`
 
-341. gives a seat while seats remain ✅
-342. starts the waitlist exactly at the cap ✅
-343. refuses only once both the seats and the waitlist are gone ✅
-344. still offers a seat when a called-in waitlister pushed the count past the cap ✅
-345. honours a per-session waitlist cap of zero ✅
+357. gives a seat while seats remain ✅
+358. starts the waitlist exactly at the cap ✅
+359. refuses only once both the seats and the waitlist are gone ✅
+360. still offers a seat when a called-in waitlister pushed the count past the cap ✅
+361. honours a per-session waitlist cap of zero ✅
 
 **sessionLengthHours** → `sessionLengthHours — lib/participant/waitlist.ts`
 
-346. spans the earliest start to the latest end across every case ✅
-347. measures a single case ✅
-348. handles a half-hour session ✅
-349. treats an end before the start as running past midnight ✅
-350. returns 0 when times are missing or unparseable ✅
+362. spans the earliest start to the latest end across every case ✅
+363. measures a single case ✅
+364. handles a half-hour session ✅
+365. treats an end before the start as running past midnight ✅
+366. returns 0 when times are missing or unparseable ✅
 
 **payouts** → `seatPayoutCents, waitlistPayoutCents, formatCents — lib/participant/waitlist.ts`
 
-351. pays a seat the hourly rate for the session length ✅
-352. rounds a fractional session to whole cents ✅
-353. pays a called-in waitlister the FULL session, not the remainder ✅
-354. pays a waited-out waitlister the flat fee regardless of session length ✅
-355. renders a missing amount as a dash rather than $0.00 ✅
+367. pays a seat the hourly rate for the session length ✅
+368. rounds a fractional session to whole cents ✅
+369. pays a called-in waitlister the FULL session, not the remainder ✅
+370. pays a waited-out waitlister the flat fee regardless of session length ✅
+371. renders a missing amount as a dash rather than $0.00 ✅
 
 **isWaitlisted** → `isWaitlisted — lib/participant/waitlist.ts`
 
-356. matches only the waitlisted status ✅
+372. matches only the waitlisted status ✅
 

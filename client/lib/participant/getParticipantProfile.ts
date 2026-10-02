@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { ownsAllCases, requesteeParticipantProfile } from "@/lib/participant/requesteeAccess";
 
 export async function getParticipantProfile(
   requestedId: string,
@@ -54,26 +55,22 @@ export async function getParticipantProfile(
   /* =========================
      REQUESTEE / REVIEWER LIMIT
      ========================= */
+  // A firm sees a participant only if they are on one of the firm's own cases,
+  // and only the fields in lib/participant/requesteeAccess. Requestee logins
+  // can't read participant tables, so this goes through the server.
   if (role === "requestee" || role === "reviewer") {
     if (!context?.caseId) {
       throw new Error("Case context required");
     }
-
-    const { data: caseRow } = await supabase
-      .from("cases")
-      .select("user_id, requestee_id")
-      .eq("id", context.caseId)
-      .single();
-
-    const isOwner =
-      caseRow?.user_id === user.id || caseRow?.requestee_id === user.id;
-
-    if (!caseRow || !isOwner) {
+    if (!(await ownsAllCases(user.id, [context.caseId]))) {
       throw new Error("Access denied");
     }
 
-    // No participant mapping table yet,
-    // so if they came from their case → allow.
+    const participant = await requesteeParticipantProfile(context.caseId, requestedId);
+    if (!participant) {
+      throw new Error("Access denied");
+    }
+    return { participant, role };
   }
 
   /* =========================

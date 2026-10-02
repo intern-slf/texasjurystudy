@@ -306,7 +306,7 @@ export default function Home() {
                 {[
                   "Paid sessions, 100% remote",
                   "No legal background needed",
-                  "Anonymous & confidential",
+                  "Your ID and payment details stay private",
                 ].map((point, i) => (
                   <li key={i} className="flex items-start gap-2.5 text-sm">
                     <Check className="h-5 w-5 flex-shrink-0 text-primary" />

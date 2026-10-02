@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { getCaseParticipantNames } from "@/lib/actions/requesteeParticipant";
 import Link from "next/link";
 import { sortRoster, rosterGroup, rosterStatusLabel } from "@/lib/participant/rosterOrder";
 import { isWaitlisted } from "@/lib/participant/waitlist";
@@ -10,7 +11,6 @@ interface ChainParticipant {
   id: string;
   first_name: string;
   last_name: string;
-  email: string;
   invite_status: string;
   /** `session_participants.struck_at` — accepted, then backed out or no-showed. */
   struck: boolean;
@@ -130,30 +130,11 @@ export default function RequesteeParticipantHistory({ caseId, currentCaseId }: P
         for (const p of sessions) allPIds.add(p.participant_id);
       }
 
-      const detailsMap: Record<string, { first_name: string; last_name: string; email: string }> = {};
+      // Names come from the server: requestee logins can't read participant
+      // tables (lib/participant/requesteeAccess).
       const pIds = Array.from(allPIds);
-      if (pIds.length > 0) {
-        const { data: juryData } = await supabase
-          .from("jury_participants")
-          .select("user_id, first_name, last_name, email")
-          .in("user_id", pIds);
-
-        for (const jd of juryData ?? []) {
-          detailsMap[jd.user_id] = jd;
-        }
-
-        const missing = pIds.filter((id) => !detailsMap[id]);
-        if (missing.length > 0) {
-          const { data: oldData } = await supabase
-            .from("oldData")
-            .select("id, first_name, last_name, email")
-            .in("id", missing);
-
-          for (const od of oldData ?? []) {
-            detailsMap[od.id] = { first_name: od.first_name, last_name: od.last_name, email: od.email };
-          }
-        }
-      }
+      const detailsMap =
+        pIds.length > 0 ? await getCaseParticipantNames(cases.map((c) => c.id), pIds) : {};
 
       // Build nodes
       const nodes: ChainNode[] = cases.map((c) => {
@@ -174,7 +155,6 @@ export default function RequesteeParticipantHistory({ caseId, currentCaseId }: P
               id: sp.participant_id,
               first_name: d?.first_name ?? "Unknown",
               last_name: d?.last_name ?? "",
-              email: d?.email ?? "",
               invite_status: sp.invite_status,
               struck: Boolean(sp.struck_at),
             });

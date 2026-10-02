@@ -71,7 +71,7 @@ export default function ParticipantsLanding() {
               </span>
               <span className="text-muted-foreground/40">•</span>
               <span className="inline-flex items-center gap-1.5">
-                <Users className="h-4 w-4 text-primary" /> Anonymous
+                <Users className="h-4 w-4 text-primary" /> Private
               </span>
               <span className="text-muted-foreground/40">•</span>
               <span className="inline-flex items-center gap-1.5">
@@ -87,7 +87,7 @@ export default function ParticipantsLanding() {
                 { value: "1–3 hrs", label: "average session" },
                 { value: "Paid", label: "after each session" },
                 { value: "100%", label: "remote via Zoom" },
-                { value: "Anonymous", label: "identity protected" },
+                { value: "Private", label: "ID & payment details" },
               ].map((stat, i) => (
                 <div key={i} className="bg-background px-6 py-6 text-center">
                   <div className="text-2xl md:text-3xl font-extrabold text-primary">{stat.value}</div>
@@ -125,8 +125,8 @@ export default function ParticipantsLanding() {
             },
             {
               icon: ShieldCheck,
-              title: "Private & anonymous",
-              desc: "Your identity stays protected. Attorneys only see your demographic profile and your honest feedback.",
+              title: "Private & confidential",
+              desc: "The attorney team sees your name, email and demographic profile so they can run the session. Your ID and payment details are never shared with them.",
             },
           ].map((item, i) => {
             const Icon = item.icon;
@@ -225,7 +225,7 @@ export default function ParticipantsLanding() {
             },
             {
               q: "Will my name be shared?",
-              a: "Yes. Your name is visible to the attorney's case team along with your responses and demographic profile. Sensitive details such as your driver's license and payment information are never shared.",
+              a: "Yes. The attorney's case team sees your name, email address and demographic profile, along with your responses in the session. Your driver's license, payment details, phone number and street address are never shared with them.",
             },
             {
               q: "How am I paid?",

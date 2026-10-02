@@ -5,6 +5,7 @@ import BackButton from "@/components/BackButton";
 import AdminParticipantControls from "@/components/AdminParticipantControls";
 import ParticipantSessionHistory from "@/components/ParticipantSessionHistory";
 import { BACKOUT_FLAG_LIMIT } from "@/lib/actions/participantFlags";
+import { calcAgeFromDob } from "@/lib/filter-utils";
 
 const fmtDate = (v: string | null | undefined) =>
   v
@@ -99,15 +100,9 @@ export default async function ParticipantProfilePage({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <p>Gender: {participant.gender}</p>
             <p>Race: {participant.race}</p>
-            {participant.date_of_birth && (
-              <p>Age: {(() => {
-                const b = new Date(participant.date_of_birth);
-                const t = new Date();
-                let a = t.getFullYear() - b.getFullYear();
-                const m = t.getMonth() - b.getMonth();
-                if (m < 0 || (m === 0 && t.getDate() < b.getDate())) a--;
-                return a;
-              })()}</p>
+            {/* A firm's view carries the age only, never the date of birth. */}
+            {(participant.age ?? (participant.date_of_birth ? calcAgeFromDob(participant.date_of_birth) : null)) != null && (
+              <p>Age: {participant.age ?? calcAgeFromDob(participant.date_of_birth)}</p>
             )}
             <p>Marital Status: {participant.marital_status}</p>
             <p>Has Children: {participant.has_children}</p>
