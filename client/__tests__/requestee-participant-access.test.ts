@@ -4,8 +4,8 @@ import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest";
 // oldData in the database (supabase/migrations/20261002_requestee_no_participant_access.sql).
 // Everything a firm sees about a participant comes through
 // lib/participant/requesteeAccess, so these tests pin what it lets through:
-// only participants on the firm's own cases, and never contact, address, date
-// of birth, ID or payment details.
+// only participants on the firm's own cases, only to firm or admin logins, and
+// never contact, address, date of birth, ID or payment details.
 
 process.env.NEXT_PUBLIC_SUPABASE_URL ||= "http://supabase.test";
 process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||= "anon-test-key";
@@ -139,6 +139,7 @@ beforeEach(() => {
       { user_id: "req-1", role: "requestee" },
       { user_id: "req-2", role: "requestee" },
       { user_id: "admin-1", role: "admin" },
+      { user_id: "p-1", role: "participant" },
     ],
     cases: [
       { id: "case-1", user_id: "req-1", requestee_id: null },
@@ -240,6 +241,15 @@ describe("requestee participant access", () => {
       session.userId = null;
       await expect(getCaseParticipantNames(["case-1"], ["p-1"])).rejects.toThrow(/Unauthorized/);
     });
+
+    it("refuses a participant, even on a case row they created themselves", async () => {
+      session.userId = "p-1";
+      db.cases.push({ id: "case-mine", user_id: "p-1", requestee_id: null });
+      db.session_cases.push({ case_id: "case-mine", session_id: "s-1" });
+      await expect(getCaseParticipantNames(["case-mine"], ["old-7"])).rejects.toThrow(/Not permitted/);
+      expect(reads.admin).not.toContain("jury_participants");
+      expect(reads.admin).not.toContain("oldData");
+    });
   });
 
   describe("getParticipantProfile for a firm", () => {
@@ -301,6 +311,31 @@ describe("requestee participant access", () => {
 
     it("refuses a case the firm doesn't own", async () => {
       await expect(searchParticipantsForCase("case-other", "")).rejects.toThrow(/not owned/);
+    });
+
+    it("refuses a participant who has created a case row of their own", async () => {
+      // cases' INSERT policies only check auth.uid() = user_id, so any login can
+      // own a case, and this search reads the whole panel with the service role.
+      session.userId = "p-1";
+      db.cases.push({ id: "case-mine", user_id: "p-1", requestee_id: null });
+      await expect(searchParticipantsForCase("case-mine", "")).rejects.toThrow(/Not permitted/);
+      expect(reads.admin).not.toContain("jury_participants");
+      expect(reads.admin).not.toContain("oldData");
+    });
+  });
+
+  describe("requesteeAddParticipants", () => {
+    let requesteeAddParticipants: (typeof import("@/lib/actions/requesteeParticipant"))["requesteeAddParticipants"];
+    beforeAll(async () => {
+      ({ requesteeAddParticipants } = await import("@/lib/actions/requesteeParticipant"));
+    });
+
+    it("refuses a participant who has created a case row of their own", async () => {
+      session.userId = "p-1";
+      db.cases.push({ id: "case-mine", user_id: "p-1", requestee_id: null });
+      db.session_cases.push({ case_id: "case-mine", session_id: "s-1" });
+      await expect(requesteeAddParticipants("case-mine", ["p-elsewhere"])).rejects.toThrow(/Not permitted/);
+      expect(reads.user).not.toContain("session_participants");
     });
   });
 });
