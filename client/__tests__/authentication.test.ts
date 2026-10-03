@@ -22,21 +22,21 @@ type SupaResult<T = unknown> = { data: T | null; error: unknown };
 
 const supabaseAdminState: {
   createUser: SupaResult<{ user: { id: string } }>;
-  roleInsert: { error: unknown };
+  roleWrite: { error: unknown };
   generateLink: SupaResult<{ properties: { action_link: string } }>;
 } = {
   createUser: {
     data: { user: { id: "user-default-id" } },
     error: null,
   },
-  roleInsert: { error: null },
+  roleWrite: { error: null },
   generateLink: {
     data: { properties: { action_link: "http://test.local/verify?token=x" } },
     error: null,
   },
 };
 
-const fromInsertSpy = vi.fn();
+const roleWriteSpy = vi.fn();
 const createUserSpy = vi.fn();
 const generateLinkSpy = vi.fn();
 const fromSelectChain = () => {
@@ -64,9 +64,9 @@ vi.mock("@/lib/supabase/admin", () => ({
     },
     from: vi.fn((_table: string) => {
       const builder: Record<string, unknown> = {};
-      builder.insert = vi.fn(async (...args: unknown[]) => {
-        fromInsertSpy(_table, ...args);
-        return supabaseAdminState.roleInsert;
+      builder.upsert = vi.fn(async (...args: unknown[]) => {
+        roleWriteSpy(_table, ...args);
+        return supabaseAdminState.roleWrite;
       });
       // for confidentiality-gate query path
       builder.select = vi.fn(() => fromSelectChain());
@@ -121,14 +121,14 @@ describe("Authentication", () => {
       data: { user: { id: "user-default-id" } },
       error: null,
     };
-    supabaseAdminState.roleInsert = { error: null };
+    supabaseAdminState.roleWrite = { error: null };
     supabaseAdminState.generateLink = {
       data: { properties: { action_link: "http://test.local/verify?token=x" } },
       error: null,
     };
     middlewareState.claims = null;
     gateState.agreementRow = { data: null, error: null };
-    fromInsertSpy.mockClear();
+    roleWriteSpy.mockClear();
     createUserSpy.mockClear();
     generateLinkSpy.mockClear();
     sendEmailSpy.mockClear();
@@ -166,12 +166,15 @@ describe("Authentication", () => {
       );
 
       expect(result).toEqual({ success: true });
-      expect(fromInsertSpy).toHaveBeenCalledWith(
+      // Upserted on user_id: the assign_role_on_signup trigger on auth.users has
+      // usually written this row already, and a plain insert would fail on it.
+      expect(roleWriteSpy).toHaveBeenCalledWith(
         "roles",
         expect.objectContaining({
           role: "participant",
           email: "participant@example.com",
-        })
+        }),
+        { onConflict: "user_id" }
       );
       expect(sendEmailSpy).toHaveBeenCalledTimes(1);
       const emailArgs = sendEmailSpy.mock.calls[0][0];
@@ -190,9 +193,10 @@ describe("Authentication", () => {
       );
 
       expect(result).toEqual({ success: true });
-      expect(fromInsertSpy).toHaveBeenCalledWith(
+      expect(roleWriteSpy).toHaveBeenCalledWith(
         "roles",
-        expect.objectContaining({ role: "requestee" })
+        expect.objectContaining({ role: "requestee" }),
+        { onConflict: "user_id" }
       );
     });
 
@@ -213,7 +217,7 @@ describe("Authentication", () => {
 
       expect(result).toEqual({ error: "User already registered" });
       // Must NOT have inserted a role row or sent an email for a duplicate
-      expect(fromInsertSpy).not.toHaveBeenCalled();
+      expect(roleWriteSpy).not.toHaveBeenCalled();
       expect(sendEmailSpy).not.toHaveBeenCalled();
     });
 
@@ -228,7 +232,7 @@ describe("Authentication", () => {
 
       expect(result).toEqual({ error: "Invalid role" });
       expect(createUserSpy).not.toHaveBeenCalled();
-      expect(fromInsertSpy).not.toHaveBeenCalled();
+      expect(roleWriteSpy).not.toHaveBeenCalled();
       expect(sendEmailSpy).not.toHaveBeenCalled();
     });
 
@@ -245,7 +249,7 @@ describe("Authentication", () => {
       expect(result).toEqual({ error: "Invalid role" });
       // Rejected before an auth user exists, so no admin row can ever be written
       expect(createUserSpy).not.toHaveBeenCalled();
-      expect(fromInsertSpy).not.toHaveBeenCalled();
+      expect(roleWriteSpy).not.toHaveBeenCalled();
       expect(sendEmailSpy).not.toHaveBeenCalled();
     });
     it("Under-18 date of birth is rejected before any account is created", async () => {
@@ -261,7 +265,7 @@ describe("Authentication", () => {
       expect(result).toEqual({ error: UNDERAGE_MESSAGE });
       // Nothing about a minor may be stored — not even the email on an auth user
       expect(createUserSpy).not.toHaveBeenCalled();
-      expect(fromInsertSpy).not.toHaveBeenCalled();
+      expect(roleWriteSpy).not.toHaveBeenCalled();
       expect(sendEmailSpy).not.toHaveBeenCalled();
     });
 

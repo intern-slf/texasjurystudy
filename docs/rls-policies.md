@@ -185,6 +185,7 @@ No INSERT/UPDATE/DELETE policies → writes blocked for anon/authenticated (corr
 **Code access:**
 - Read (any user, their own row): `client/app/dashboard/router.tsx:20`, `client/components/login-form.tsx:47`, `client/app/dashboard/Admin/layout.tsx:27`, `client/lib/participant/getParticipantProfile.ts:23`, plus many admin pages joining roles for displays.
 - Write — **only via `supabaseAdmin`** (service_role): `client/app/auth/actions.ts:30` (signup), `client/lib/actions/autoBlacklist.ts:29,50,58`, `client/lib/actions/adminParticipant.ts:63,89`. Good — no anon-key writes anywhere.
+- Write — **trigger** (2026-10-03): `assign_role_on_signup`, AFTER INSERT on `auth.users` (`supabase/migrations/20261003_roles_row_for_every_login.sql`), gives every new login a row: `requestee` if `user_metadata.role` says so, otherwise `participant`, never `admin` or `blacklisted`. SECURITY DEFINER with no EXECUTE grants, so no API role can call it; it adds no policy. The signup action upserts on `user_id` because the trigger has usually written the row first.
 
 **Recommended policy:**
 - `SELECT`: any authenticated user, but only for `user_id = auth.uid()`. Admins may read all rows (used by admin dashboards joining roles).
