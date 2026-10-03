@@ -25,6 +25,7 @@ const FIELD_LABELS: Record<string, string> = {
     zip_code: "ZIP Code",
     availability_weekdays: "Weekday Availability",
     availability_weekends: "Weekend Availability",
+    interested_in_offline: "Interest in In-Person Focus Groups",
     served_on_jury: "Served on Jury",
     convicted_felon: "Convicted Felon Status",
     us_citizen: "U.S. Citizenship",

@@ -273,6 +273,7 @@ export default async function ParticipantProfilePage({
                   Availability: Weekdays {participant.availability_weekdays || "—"} · Weekends{" "}
                   {participant.availability_weekends || "—"}
                 </p>
+                <p>In-Person Focus Groups: {participant.interested_in_offline || "Not answered"}</p>
                 <p>Industry: {participant.industry || "—"}</p>
                 <p>Heard About Us: {participant.heard_about_us || "—"}</p>
                 <p>Registered: {fmtDate(participant.entry_date)}</p>

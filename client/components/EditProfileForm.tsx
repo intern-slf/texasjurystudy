@@ -21,6 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
+import OfflineInterestField from "@/components/OfflineInterestField";
 
 const US_STATES = [
   "Alabama","Alaska","Arizona","Arkansas","California","Colorado","Connecticut",
@@ -68,6 +69,7 @@ interface ParticipantData {
   profile_photo_url?: string | null;
   industry?: string | null;
   heard_about_us?: string | null;
+  interested_in_offline?: string | null;
   [key: string]: unknown;
 }
 
@@ -187,6 +189,8 @@ export default function EditProfileForm({ participant, adminMode, onUpdate, onUp
   // Availability
   const [availWeekdays, setAvailWeekdays] = useState(participant.availability_weekdays === "Yes");
   const [availWeekends, setAvailWeekends] = useState(participant.availability_weekends === "Yes");
+  // Empty for anyone who signed up before the question existed — they answer it here
+  const [offlineInterest, setOfflineInterest] = useState(participant.interested_in_offline || "");
 
   // Yes/No fields
   const [servedOnJury, setServedOnJury] = useState(participant.served_on_jury || "");
@@ -320,6 +324,14 @@ export default function EditProfileForm({ participant, adminMode, onUpdate, onUp
       return;
     }
 
+    // Required of the participant, not of an admin: an admin leaves it unanswered
+    // rather than answering for them.
+    if (!offlineInterest && !adminMode) {
+      setError("Please tell us whether you're interested in in-person focus groups.");
+      setLoading(false);
+      return;
+    }
+
     // Before any write, so an under-18 date never lands partway through a save. A
     // participant giving one has their account deleted; an admin is only refused, so a
     // typo on someone else's profile can't wipe it.
@@ -399,6 +411,7 @@ export default function EditProfileForm({ participant, adminMode, onUpdate, onUp
       country: "USA",
       availability_weekdays: availWeekdays ? "Yes" : "No",
       availability_weekends: availWeekends ? "Yes" : "No",
+      interested_in_offline: offlineInterest || null,
       served_on_jury: servedOnJury,
       convicted_felon: convictedFelon,
       us_citizen: usCitizen,
@@ -769,6 +782,15 @@ export default function EditProfileForm({ participant, adminMode, onUpdate, onUp
             <Label htmlFor="edit_avail_weekends">Weekends</Label>
           </div>
         </div>
+      </div>
+
+      {/* IN-PERSON FOCUS GROUPS */}
+      <div className="border-t pt-4">
+        <OfflineInterestField
+          value={offlineInterest}
+          onChange={setOfflineInterest}
+          required={!adminMode}
+        />
       </div>
 
       {/* YES/NO SECTION & EMPLOYMENT */}
