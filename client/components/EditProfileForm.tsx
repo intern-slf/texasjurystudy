@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { autoBlacklistIfIneligible } from "@/lib/actions/autoBlacklist";
 import { deleteAccountIfUnderage } from "@/lib/actions/underageAccount";
+import { removeReplacedIdPhotos } from "@/lib/actions/idPhotos";
 import { Pencil, Upload, X, CreditCard } from "lucide-react";
 import { TEXAS_COUNTIES } from "@/lib/constants/texas-counties";
 import { ageOn, dateOfBirthError, isUnderage, UNDERAGE_MESSAGE } from "@/lib/age-gate";
@@ -361,7 +362,7 @@ export default function EditProfileForm({ participant, adminMode, onUpdate, onUp
     }
 
     // Upload new ID image if provided
-    let idImagePath: string | null = participant.driver_license_image_url || null;
+    let newIdImagePath: string | null = null;
     if (idFile) {
       setUploadProgress(true);
       const fileExt = idFile.name.split(".").pop() || "jpg";
@@ -378,7 +379,7 @@ export default function EditProfileForm({ participant, adminMode, onUpdate, onUp
         return;
       }
 
-      idImagePath = filePath;
+      newIdImagePath = filePath;
       setUploadProgress(false);
     }
 
@@ -411,7 +412,10 @@ export default function EditProfileForm({ participant, adminMode, onUpdate, onUp
       family_income: familyIncome,
       heard_about_us: referralSource,
       driver_license_number: driverLicenseNumber || null,
-      driver_license_image_url: idImagePath,
+      // Only when this save uploaded a photo. participant is a snapshot from page load,
+      // so writing its link back could point the profile at a photo that has since been
+      // replaced, and deleted by removeReplacedIdPhotos.
+      ...(newIdImagePath ? { driver_license_image_url: newIdImagePath } : {}),
       paypal_username: paypalUsername || null,
       date_updated: new Date().toISOString(),
     };
@@ -462,6 +466,14 @@ export default function EditProfileForm({ participant, adminMode, onUpdate, onUp
 
     setSuccess(true);
     setLoading(false);
+
+    // Last, because it's the only optional step: it just deletes the photos this one
+    // replaced. The action never throws, but the request itself can fail.
+    if (newIdImagePath && participant.user_id) {
+      await removeReplacedIdPhotos(participant.user_id).catch(() => 0);
+      // So the preview, and the "photo required" check, see the new photo.
+      router.refresh();
+    }
   }
 
   return (
