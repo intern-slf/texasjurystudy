@@ -6,7 +6,6 @@ import { getBlockedParticipantIds } from "@/lib/case-lineage";
 import { ACTIVE_STATUS } from "@/lib/participant/activeStatus";
 import { getAllIdsWithoutLogin } from "@/lib/participant/loginAccount";
 import {
-  callerRole,
   ownsAllCases,
   participantNamesForCases,
   toRequesteeSearchResult,
@@ -14,27 +13,11 @@ import {
 } from "@/lib/participant/requesteeAccess";
 
 /**
- * Refuses anyone who isn't a law firm or an admin, and returns the role. Owning
- * a case is no proof on its own: the cases INSERT policies only check
- * auth.uid() = user_id, so any login, a participant included, can create a case
- * row of its own, and the actions below read participant data with the service
- * role. The role comes from the roles table, not user_metadata, which the user
- * can edit.
- */
-async function requireFirmOrAdmin(userId: string): Promise<string> {
-  const role = await callerRole(userId);
-  if (role !== "requestee" && role !== "reviewer" && role !== "admin") {
-    throw new Error("Not permitted");
-  }
-  return role;
-}
-
-/**
  * Names for the requestee's participant lists (CaseParticipantSummary and
  * RequesteeParticipantHistory). Requestee logins can't read participant tables
- * themselves, so these come from here: the caller must be a firm that owns
- * every case, or an admin (any case), and only names of people on those cases
- * come back.
+ * themselves, so these come from here: the caller must own every case, and only
+ * names of people on those cases' sessions come back. Only admins attach a case
+ * to a session, so a case row someone created for themselves has nobody on it.
  */
 export async function getCaseParticipantNames(
   caseIds: string[],
@@ -45,12 +28,11 @@ export async function getCaseParticipantNames(
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Unauthorized");
-  const role = await requireFirmOrAdmin(user.id);
 
   const cases = Array.from(new Set(caseIds)).slice(0, 100);
   if (cases.length === 0 || participantIds.length === 0) return {};
 
-  if (role !== "admin" && !(await ownsAllCases(user.id, cases))) {
+  if (!(await ownsAllCases(user.id, cases))) {
     throw new Error("Case not found or not owned by you");
   }
   return participantNamesForCases(cases, participantIds.slice(0, 2000));
@@ -67,12 +49,11 @@ export async function searchParticipantsForCase(
 ): Promise<RequesteeSearchResult[]> {
   const supabase = await createClient();
 
-  // 1. Verify the current user is a firm (or admin) and the case owner
+  // 1. Verify the current user is the case owner
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Unauthorized");
-  await requireFirmOrAdmin(user.id);
 
   const { data: caseRow } = await supabase
     .from("cases")
@@ -86,7 +67,13 @@ export async function searchParticipantsForCase(
   // 2. Get blocked participant IDs from the follow-up chain
   const blockedIds = await getBlockedParticipantIds(caseId);
 
-  // 3. Get session ID for this case (if any)
+  // 3. Get the case's session, and refuse a case without one. Owning a case is
+  //    no proof the caller is a firm: the cases INSERT policies only check
+  //    auth.uid() = user_id, so anyone can create a case row of their own, and
+  //    the search below reads the whole panel with the service role. Only admins
+  //    attach a case to a session (session_cases is admin-write), and the Add
+  //    participant button is disabled until there is one. Not a check on roles:
+  //    that table doesn't have a row for every user.
   const { data: sessionCaseRow } = await supabase
     .from("session_cases")
     .select("session_id")
@@ -95,16 +82,14 @@ export async function searchParticipantsForCase(
     .maybeSingle();
 
   const sessionId = sessionCaseRow?.session_id;
+  if (!sessionId) throw new Error("No session assigned to this case yet");
 
   // 4. Get already-invited participant IDs for this session
-  let alreadyInvitedIds: string[] = [];
-  if (sessionId) {
-    const { data: sessionParts } = await supabase
-      .from("session_participants")
-      .select("participant_id")
-      .eq("session_id", sessionId);
-    alreadyInvitedIds = (sessionParts ?? []).map((p) => p.participant_id);
-  }
+  const { data: sessionParts } = await supabase
+    .from("session_participants")
+    .select("participant_id")
+    .eq("session_id", sessionId);
+  const alreadyInvitedIds: string[] = (sessionParts ?? []).map((p) => p.participant_id);
 
   // 5. Get blacklisted user IDs. From here on the participant data is read with
   //    the service-role client: requestee logins can't read roles of other
@@ -174,12 +159,11 @@ export async function requesteeAddParticipants(
 ) {
   const supabase = await createClient();
 
-  // 1. Verify the caller is a firm (or admin) and owns the case
+  // 1. Verify ownership
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Unauthorized");
-  await requireFirmOrAdmin(user.id);
 
   const { data: caseRow } = await supabase
     .from("cases")

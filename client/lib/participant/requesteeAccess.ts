@@ -86,16 +86,6 @@ export function toRequesteeSearchResult(row: Row): RequesteeSearchResult {
   };
 }
 
-export async function callerRole(userId: string): Promise<string | null> {
-  const { data, error } = await supabaseAdmin
-    .from("roles")
-    .select("role")
-    .eq("user_id", userId)
-    .maybeSingle();
-  if (error) throw new Error(`roles lookup: ${error.message}`);
-  return (data?.role as string | undefined) ?? null;
-}
-
 /** True when the user created, or is the assigned requestee on, every one of the cases. */
 export async function ownsAllCases(userId: string, caseIds: string[]): Promise<boolean> {
   const wanted = Array.from(new Set(caseIds));
