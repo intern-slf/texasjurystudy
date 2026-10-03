@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
 import { autoBlacklistIfIneligible } from "@/lib/actions/autoBlacklist";
+import { removeReplacedIdPhotos } from "@/lib/actions/idPhotos";
 import { Upload, X, CreditCard } from "lucide-react";
 import { TEXAS_COUNTIES } from "@/lib/constants/texas-counties";
 
@@ -337,6 +338,10 @@ export default function ParticipantForm({ userId, email }: Props) {
 
     // Auto-blacklist if convicted felon or non-US citizen
     await autoBlacklistIfIneligible(userId, convictedFelon, usCitizen);
+
+    // Last, because it's the only optional step: it deletes photos uploaded by earlier
+    // attempts that failed to save. Awaited so the reload doesn't cancel it.
+    await removeReplacedIdPhotos(userId).catch(() => 0);
 
     window.location.reload();
   }
