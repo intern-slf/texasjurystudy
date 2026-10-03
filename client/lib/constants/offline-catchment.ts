@@ -27,6 +27,12 @@
    filter-utils, never with a bare equality.
 ========================= */
 
+/** Where in-person sessions are held. Shown to participants when they're asked whether they'd attend one. */
+export const OFFLINE_VENUE = {
+  name: "Heritage Plaza Office Suites",
+  address: "402 Simonton St, Conroe, TX 77301",
+} as const;
+
 export const OFFLINE_CATCHMENT_COUNTIES = [
   "Montgomery",
   "Walker",

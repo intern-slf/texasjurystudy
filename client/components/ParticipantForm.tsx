@@ -19,6 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
+import OfflineInterestField from "@/components/OfflineInterestField";
 
 const US_STATES = [
   "Alabama","Alaska","Arizona","Arkansas","California","Colorado","Connecticut",
@@ -69,6 +70,7 @@ export default function ParticipantForm({ userId, email }: Props) {
   const [usCitizen, setUsCitizen] = useState("");
   const [hasChildren, setHasChildren] = useState("");
   const [servedArmedForces, setServedArmedForces] = useState("");
+  const [offlineInterest, setOfflineInterest] = useState("");
 
   // Fields fetched from confidentiality agreement
   const [firstName, setFirstName] = useState<string | null>(null);
@@ -240,6 +242,12 @@ export default function ParticipantForm({ userId, email }: Props) {
       return;
     }
 
+    if (!offlineInterest) {
+      setError("Please tell us whether you're interested in in-person focus groups.");
+      setLoading(false);
+      return;
+    }
+
     const form = new FormData(e.currentTarget);
 
     const paypalValue = (form.get("paypal_username") as string)?.trim();
@@ -298,6 +306,7 @@ export default function ParticipantForm({ userId, email }: Props) {
       county,
       availability_weekdays: form.get("availability_weekdays") ? "Yes" : "No",
       availability_weekends: form.get("availability_weekends") ? "Yes" : "No",
+      interested_in_offline: offlineInterest,
       email: email,
       phone: form.get("phone"),
       street_address: form.get("street_address"),
@@ -610,6 +619,12 @@ export default function ParticipantForm({ userId, email }: Props) {
             <Label htmlFor="availability_weekends">Weekends</Label>
           </div>
         </div>
+      </div>
+
+      {/* IN-PERSON FOCUS GROUPS */}
+      <div className="border-t pt-4">
+        <OfflineInterestField value={offlineInterest} onChange={setOfflineInterest} />
+        <p className="mt-2 text-xs text-slate-400">You can change this later from Edit Profile.</p>
       </div>
 
       {/* YES/NO SECTION & EMPLOYMENT LOGIC */}
