@@ -5,6 +5,11 @@ import { revalidatePath } from "next/cache";
 import { sendProfileUpdatedEmail, sendReactivationEmail } from "@/lib/mail";
 import { generateReactivationToken } from "@/lib/reactivationToken";
 import { dateOfBirthError } from "@/lib/age-gate";
+import { requireAdmin } from "@/lib/requireAdmin";
+import { markBlacklisted } from "@/lib/participant/blacklist";
+
+// Every export here is an admin action, and starts with requireAdmin(): as server
+// actions they can be called by anyone signed in, with any participant's id.
 
 const FIELD_LABELS: Record<string, string> = {
     first_name: "First Name",
@@ -42,6 +47,8 @@ const FIELD_LABELS: Record<string, string> = {
 ========================= */
 
 export async function verifyParticipant(userId: string) {
+    await requireAdmin();
+
     // Use supabaseAdmin (service role): there is no admin UPDATE RLS policy on
     // jury_participants, so the RLS-bound client silently updates 0 rows.
     // Matches blacklistParticipant / unblacklistParticipant.
@@ -60,26 +67,8 @@ export async function verifyParticipant(userId: string) {
 ========================= */
 
 export async function blacklistParticipant(userId: string, reason: string) {
-    const blacklistedAt = new Date().toISOString();
-
-    // 1. Update roles table → 'blacklisted'
-    await supabaseAdmin
-        .from("roles")
-        .update({ role: "blacklisted" })
-        .eq("user_id", userId);
-
-    // 2. Record reason + timestamp on jury_participants
-    await supabaseAdmin
-        .from("jury_participants")
-        .update({
-            blacklist_reason: reason,
-            blacklisted_at: blacklistedAt,
-            approved_by_admin: false,
-        })
-        .eq("user_id", userId);
-
-    console.log(`[blacklistParticipant] Blacklisted user ${userId}. Reason: ${reason}`);
-
+    await requireAdmin();
+    await markBlacklisted(userId, reason);
     revalidatePath("/dashboard/Admin/participants");
 }
 
@@ -88,6 +77,8 @@ export async function blacklistParticipant(userId: string, reason: string) {
 ========================= */
 
 export async function unblacklistParticipant(userId: string) {
+    await requireAdmin();
+
     // 1. Restore role → 'participant'
     await supabaseAdmin
         .from("roles")
@@ -133,6 +124,8 @@ export async function unblacklistParticipant(userId: string) {
 ========================= */
 
 export async function adminUpdateParticipant(userId: string, payload: Record<string, unknown>) {
+    await requireAdmin();
+
     // Fetch current data before updating so we can diff
     const { data: current } = await supabaseAdmin
         .from("jury_participants")
@@ -167,6 +160,8 @@ export async function adminUpdateParticipant(userId: string, payload: Record<str
 }
 
 export async function adminUpdateParticipantDob(userId: string, dateOfBirth: string) {
+    await requireAdmin();
+
     const dobError = dateOfBirthError(dateOfBirth);
     if (dobError) throw new Error(dobError);
 
@@ -196,6 +191,8 @@ export type ReactivationResult = {
 const RESEND_COOLDOWN_MS = 10 * 60 * 1000;
 
 export async function sendReactivationEmails(userIds: string[]): Promise<ReactivationResult> {
+    await requireAdmin();
+
     const result: ReactivationResult = { sent: 0, failed: 0, skipped: 0, errors: [] };
 
     const secret = process.env.EMAIL_ACTION_SECRET;

@@ -25,6 +25,7 @@ process.env.EMAIL_ACTION_SECRET ||= "test-secret-for-sessions";
 type CapturedOp =
   | { op: "select"; cols?: unknown; options?: unknown }
   | { op: "update"; payload: Record<string, unknown> }
+  | { op: "upsert"; payload: Record<string, unknown> }
   | { op: "insert"; payload: unknown }
   | { op: "delete" };
 
@@ -80,6 +81,10 @@ function makeChainBuilder(table: string) {
   });
   builder.insert = vi.fn((payload: unknown) => {
     captured.ops.push({ op: "insert", payload });
+    return builder;
+  });
+  builder.upsert = vi.fn((payload: Record<string, unknown>) => {
+    captured.ops.push({ op: "upsert", payload });
     return builder;
   });
   builder.delete = vi.fn(() => {
@@ -181,10 +186,6 @@ vi.mock("@/lib/mail", () => ({
     sendWaitlistWaitedOutEmailSpy(...(args as [])),
   sendApprovalEmail: vi.fn(async () => undefined),
   sendRejectionEmail: vi.fn(async () => undefined),
-  // Referenced at import by adminParticipant.ts (pulled in via participantFlags);
-  // never called on the blacklist path, but must exist so the import resolves.
-  sendProfileUpdatedEmail: vi.fn(async () => undefined),
-  sendReactivationEmail: vi.fn(async () => undefined),
   emailWrapper: (content: string) => `<wrapped>${content}</wrapped>`,
 }));
 
@@ -1780,7 +1781,7 @@ describe("Sessions", () => {
 
       // No blacklist below the limit
       const rolesWrite = state.captured.find(
-        (c) => c.table === "roles" && c.ops.some((o) => o.op === "update")
+        (c) => c.table === "roles" && c.ops.some((o) => o.op === "update" || o.op === "upsert")
       );
       expect(rolesWrite).toBeUndefined();
     });
@@ -1803,15 +1804,15 @@ describe("Sessions", () => {
       ) as { op: "update"; payload: Record<string, unknown> };
       expect(flagUpdate.payload.flag_count).toBe(3);
 
-      // roles flipped to blacklisted
+      // roles set to blacklisted — upserted, so a participant with no roles row gets one
       const rolesWrite = state.captured.find(
-        (c) => c.table === "roles" && c.ops.some((o) => o.op === "update")
+        (c) => c.table === "roles" && c.ops.some((o) => o.op === "upsert")
       )!;
-      const rolesUpd = rolesWrite.ops.find((o) => o.op === "update") as {
-        op: "update";
+      const rolesUpd = rolesWrite.ops.find((o) => o.op === "upsert") as {
+        op: "upsert";
         payload: Record<string, unknown>;
       };
-      expect(rolesUpd.payload.role).toBe("blacklisted");
+      expect(rolesUpd.payload).toEqual({ user_id: "p-2", role: "blacklisted" });
 
       // jury_participants blacklist fields written, reason mentions the limit
       const blWrite = juryUpdatesWith("blacklisted_at")[0].ops.find(
@@ -1837,9 +1838,50 @@ describe("Sessions", () => {
       // ...but there is no counter to bump and no auto-blacklist.
       expect(juryUpdatesWith("flag_count")).toHaveLength(0);
       const rolesWrite = state.captured.find(
-        (c) => c.table === "roles" && c.ops.some((o) => o.op === "update")
+        (c) => c.table === "roles" && c.ops.some((o) => o.op === "update" || o.op === "upsert")
       );
       expect(rolesWrite).toBeUndefined();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // flagParticipant — the admin action in front of recordBackoutStrike
+  // -------------------------------------------------------------------------
+  describe("flagParticipant", () => {
+    let flagParticipant: (typeof import("@/lib/actions/session"))["flagParticipant"];
+    beforeAll(async () => {
+      ({ flagParticipant } = await import("@/lib/actions/session"));
+    });
+
+    it("refuses anyone but an admin before striking, since three strikes blacklist", async () => {
+      for (const role of ["participant", "requestee", "blacklisted"]) {
+        state.user = { id: "p-7" };
+        state.responses = [{ data: { role }, error: null }]; // the caller's roles row
+        await expect(flagParticipant("p-7", "s-1")).rejects.toThrow("Not authorized");
+      }
+      state.user = null;
+      await expect(flagParticipant("p-7", "s-1")).rejects.toThrow("Not authenticated");
+
+      expect(state.captured.filter((c) => c.table !== "roles")).toEqual([]);
+    });
+
+    it("records an admin's strike with them as the striker", async () => {
+      state.user = { id: "admin-9" };
+      state.responses = [
+        { data: { role: "admin" }, error: null }, // the caller's roles row
+        { data: { id: "sp-9", struck_at: null }, error: null }, // invite lookup
+        { error: null }, // struck_at stamp
+        { data: { flag_count: 0 }, error: null }, // read current count
+        { error: null }, // flag_count update
+      ];
+
+      await flagParticipant("p-9", "s-9");
+
+      const stamp = state.captured
+        .filter((c) => c.table === "session_participants")
+        .flatMap((c) => c.ops)
+        .find((o) => o.op === "update") as { op: "update"; payload: Record<string, unknown> };
+      expect(stamp.payload.struck_by).toBe("admin-9");
     });
   });
 

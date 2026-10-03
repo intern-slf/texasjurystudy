@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { blacklistParticipant } from "@/lib/actions/adminParticipant";
+import { markBlacklisted } from "@/lib/participant/blacklist";
 
 // A participant who accepts a session invite and then backs out earns a "flag".
 // Once they reach this many flags they're auto-blacklisted and can no longer be
@@ -14,8 +14,10 @@ export const BACKOUT_FLAG_LIMIT = 3;
  * "Confirmed" for anyone struck in a session that case ran in.
  * `jury_participants.flag_count` is then bumped as the running counter, and once
  * it reaches BACKOUT_FLAG_LIMIT the participant is auto-blacklisted via the
- * shared `blacklistParticipant` action (which sets both blacklist markers, so
- * every future-invite path excludes them automatically).
+ * shared `markBlacklisted` helper (which sets both blacklist markers, so every
+ * future-invite path excludes them automatically). Not through the
+ * `blacklistParticipant` action: that one checks for an admin itself, and the
+ * only caller, `flagParticipant`, already has.
  *
  * Idempotent per session: striking the same participant twice for the same
  * session is a no-op, so a double-click can no longer inflate the counter. That
@@ -133,7 +135,7 @@ export async function recordBackoutStrike(
   );
 
   if (newCount >= BACKOUT_FLAG_LIMIT) {
-    await blacklistParticipant(
+    await markBlacklisted(
       participantId,
       `Auto-blacklisted: reached ${BACKOUT_FLAG_LIMIT} flags`
     );

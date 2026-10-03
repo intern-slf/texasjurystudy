@@ -79,6 +79,24 @@ vi.mock("@/lib/mail", () => ({
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 
+// sendReactivationEmails is an admin action: requireAdmin reads the signed-in user, and
+// their roles row, through the server client.
+const caller: { id: string | null; role: string | null } = { id: "admin-1", role: "admin" };
+vi.mock("@/lib/supabase/server", () => ({
+  createClient: vi.fn(async () => ({
+    auth: {
+      getUser: vi.fn(async () => ({ data: { user: caller.id ? { id: caller.id } : null } })),
+    },
+    from: vi.fn(() => ({
+      select: vi.fn(() => ({
+        eq: vi.fn(() => ({
+          maybeSingle: vi.fn(async () => ({ data: caller.role ? { role: caller.role } : null, error: null })),
+        })),
+      })),
+    })),
+  })),
+}));
+
 function queries(table: string, verb?: string): Query[] {
   return db.queries.filter((q) => q.table === table && (!verb || q.verb === verb));
 }
@@ -96,6 +114,8 @@ beforeEach(() => {
   db.queries = [];
   db.resolve = defaultResolve;
   sendReactivationEmailMock.mockClear();
+  caller.id = "admin-1";
+  caller.role = "admin";
 });
 
 describe("reactivation email (CAN-SPAM)", () => {
@@ -175,6 +195,20 @@ describe("reactivation email (CAN-SPAM)", () => {
       db.resolve = (table, verb) =>
         table === "jury_participants" && verb === "select" ? { data: rows, error: null } : { error: null };
     }
+
+    it("refuses anyone but an admin, before reading or emailing anyone", async () => {
+      withRows([row("p-1", "p1@example.com")]);
+
+      for (const role of ["participant", "requestee", "blacklisted", null]) {
+        caller.role = role;
+        await expect(sendReactivationEmails(["p-1"])).rejects.toThrow("Not authorized");
+      }
+      caller.id = null;
+      await expect(sendReactivationEmails(["p-1"])).rejects.toThrow("Not authenticated");
+
+      expect(db.queries).toEqual([]);
+      expect(sendReactivationEmailMock).not.toHaveBeenCalled();
+    });
 
     it("still sends while no postal address is set", async () => {
       withRows([row("p-1", "p1@example.com")]);
