@@ -6,6 +6,7 @@ import { sendEmail, sendRescheduleEmail, sendSessionCreatedEmail, sendSessionCom
 import type { PresenterParticipantInfo, PresenterCaseInfo } from "@/lib/mail";
 import { checkAndNotifySessionFull, getSessionOccupancy } from "@/lib/participant/updateInviteStatus";
 import { recordBackoutStrike } from "@/lib/actions/participantFlags";
+import { requireAdmin } from "@/lib/requireAdmin";
 import { generateEmailActionToken } from "@/lib/emailActionToken";
 import {
   getLineageInvolvementForCases,
@@ -1393,12 +1394,11 @@ export async function markWaitlistWaitedOut(sessionId: string, participantId: st
    counter, and auto-blacklists the participant once they reach the flag limit.
 ========================= */
 export async function flagParticipant(participantId: string, sessionId: string) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Three strikes blacklist the participant, and as a server action this is
+  // reachable by anyone signed in, so check for an admin before striking anyone.
+  const adminId = await requireAdmin();
 
-  await recordBackoutStrike(participantId, sessionId, user?.id);
+  await recordBackoutStrike(participantId, sessionId, adminId);
 
   revalidatePath("/dashboard/Admin/sessions");
   revalidatePath("/dashboard/Admin/participants");

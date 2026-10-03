@@ -43,11 +43,8 @@ export default async function AdminEditParticipantPage({
   async function handleUpdate(payload: Record<string, unknown>) {
     "use server";
     await adminUpdateParticipant(participantId, payload);
-    const convicted = payload.convicted_felon as string | undefined;
-    const citizen = payload.us_citizen as string | undefined;
-    if (convicted !== undefined && citizen !== undefined) {
-      await autoBlacklistIfIneligible(participantId, convicted, citizen);
-    }
+    // Reads the answers adminUpdateParticipant just saved.
+    await autoBlacklistIfIneligible(participantId);
   }
 
   async function handleUpdateDob(dob: string) {

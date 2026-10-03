@@ -461,8 +461,8 @@ export default function EditProfileForm({ participant, adminMode, onUpdate, onUp
       }
     }
 
-    // Auto-blacklist (or restore) based on latest answers
-    await autoBlacklistIfIneligible(participant.user_id ?? "", convictedFelon, usCitizen);
+    // Auto-blacklist (or restore) based on the answers just saved
+    await autoBlacklistIfIneligible(participant.user_id ?? "");
 
     setSuccess(true);
     setLoading(false);

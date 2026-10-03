@@ -336,8 +336,8 @@ export default function ParticipantForm({ userId, email }: Props) {
       return;
     }
 
-    // Auto-blacklist if convicted felon or non-US citizen
-    await autoBlacklistIfIneligible(userId, convictedFelon, usCitizen);
+    // Auto-blacklist if the answers just saved say convicted felon or non-US citizen
+    await autoBlacklistIfIneligible(userId);
 
     // Last, because it's the only optional step: it deletes photos uploaded by earlier
     // attempts that failed to save. Awaited so the reload doesn't cancel it.
