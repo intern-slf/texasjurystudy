@@ -31,7 +31,7 @@ export const MAILING_ADDRESS: string | null = "402 Simonton St, Conroe, TX 77301
 export const EFFECTIVE_DATE = "2026-07-28";
 
 /** ISO yyyy-mm-dd. Last substantive edit to /privacy. */
-export const PRIVACY_LAST_UPDATED = "2026-09-30";
+export const PRIVACY_LAST_UPDATED = "2026-10-02";
 
 /** ISO yyyy-mm-dd. Last substantive edit to /terms. */
 export const TERMS_LAST_UPDATED = "2026-08-26";

@@ -85,7 +85,7 @@ export default function NotifyPresenterModal({ sessionId, alreadyNotified, canNo
             </div>
 
             <p className="text-sm text-slate-500">
-              Enter the presenter&apos;s email address. They will receive the Zoom link, Google Drive links, and accepted participants&apos; demographic information.
+              Enter the presenter&apos;s email address. They will receive the Zoom link, Google Drive links, and each accepted participant&apos;s name, email address and demographic profile.
             </p>
 
             <div className="space-y-2">

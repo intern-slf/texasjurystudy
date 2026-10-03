@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { getCaseParticipantNames } from "@/lib/actions/requesteeParticipant";
 import { sortRoster, rosterGroup, rosterStatusLabel, type RosterGroup } from "@/lib/participant/rosterOrder";
 import { isWaitlisted } from "@/lib/participant/waitlist";
 
@@ -71,27 +72,9 @@ export default function CaseParticipantSummary({ caseId }: Props) {
 
       const pIds = Array.from(uniqueMap.keys());
 
-      // Fetch details
-      const { data: juryData } = await supabase
-        .from("jury_participants")
-        .select("user_id, first_name, last_name")
-        .in("user_id", pIds);
-
-      const detailsMap: Record<string, { first_name: string; last_name: string }> = {};
-      for (const jd of juryData ?? []) {
-        detailsMap[jd.user_id] = jd;
-      }
-
-      const missing = pIds.filter((id) => !detailsMap[id]);
-      if (missing.length > 0) {
-        const { data: oldData } = await supabase
-          .from("oldData")
-          .select("id, first_name, last_name")
-          .in("id", missing);
-        for (const od of oldData ?? []) {
-          detailsMap[od.id] = { first_name: od.first_name, last_name: od.last_name };
-        }
-      }
+      // Names come from the server: requestee logins can't read participant
+      // tables (lib/participant/requesteeAccess).
+      const detailsMap = await getCaseParticipantNames([caseId], pIds);
 
       const result: Participant[] = pIds.map((id) => ({
         id,

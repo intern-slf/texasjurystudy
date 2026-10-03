@@ -108,9 +108,12 @@ function sessionParticipantsSelect(
 // jury_participants policy
 //   - participant: SELECT/UPDATE on own row (where user_id = auth.uid()).
 //   - admin: full row access on every row.
-//   - requestee: SELECT-only, restricted to a non-PII column projection so
-//     they can build filters/audience without seeing personally identifying
-//     information.
+//   - requestee / reviewer: no rows at all (migration
+//     20261002_requestee_no_participant_access.sql; the same holds for oldData).
+//     Postgres RLS can't hide columns, and an anon-key login can query the
+//     table directly, so firms get participant data only through server code
+//     (lib/participant/requesteeAccess), which returns a fixed set of non-private
+//     fields for participants on their own cases.
 // ---------------------------------------------------------------------------
 type JuryParticipantRow = {
   user_id: string;
@@ -121,7 +124,6 @@ type JuryParticipantRow = {
   street_address: string;
   paypal_username: string;
   driver_license_number: string;
-  // Non-PII demographic columns the requestee may see:
   gender: string;
   race: string;
   county: string;
@@ -130,37 +132,15 @@ type JuryParticipantRow = {
   political_affiliation: string;
 };
 
-const REQUESTEE_VISIBLE_COLUMNS = [
-  "gender",
-  "race",
-  "county",
-  "age_bracket",
-  "education_level",
-  "political_affiliation",
-] as const;
-type RequesteeProjection = Pick<
-  JuryParticipantRow,
-  (typeof REQUESTEE_VISIBLE_COLUMNS)[number]
->;
-
-function projectForRequestee(row: JuryParticipantRow): RequesteeProjection {
-  const out = {} as RequesteeProjection;
-  for (const col of REQUESTEE_VISIBLE_COLUMNS) {
-    out[col] = row[col];
-  }
-  return out;
-}
-
 function juryParticipantsSelect(
   caller: Caller,
   all: JuryParticipantRow[]
-): Result<JuryParticipantRow | RequesteeProjection> {
+): Result<JuryParticipantRow> {
   if (caller.role === "admin" || caller.role === "service_role")
     return allow(all);
   if (caller.role === "participant")
     return allow(all.filter((r) => r.user_id === caller.id));
-  if (caller.role === "requestee")
-    return allow(all.map(projectForRequestee));
+  if (caller.role === "requestee") return allow([]);
   return deny("unknown role");
 }
 
@@ -420,16 +400,6 @@ describe("RLS (Row Level Security)", () => {
   // rls-jury-participants.test.ts
   // -------------------------------------------------------------------------
   describe("rls-jury-participants.test.ts", () => {
-    const PII_COLUMNS = [
-      "first_name",
-      "last_name",
-      "email",
-      "phone",
-      "street_address",
-      "paypal_username",
-      "driver_license_number",
-    ];
-
     it("Participant sees own row", () => {
       const result = juryParticipantsSelect(
         { id: "p-1", role: "participant" },
@@ -455,25 +425,16 @@ describe("RLS (Row Level Security)", () => {
       expect(rows.every((r) => typeof r.email === "string")).toBe(true);
     });
 
-    it("Requestee gets filter-projected view only", () => {
+    it("Requestee reads no participant rows directly", () => {
       const result = juryParticipantsSelect(
         { id: "req-1", role: "requestee" },
         juryParticipants
       );
       expect(result.denied).toBe(false);
-      const rows = (result as Allowed<RequesteeProjection>).rows;
-      // Sees every row (audience-building) …
-      expect(rows).toHaveLength(juryParticipants.length);
-      // … but only the projected columns. No PII column may leak through.
-      for (const row of rows) {
-        for (const col of PII_COLUMNS) {
-          expect(row).not.toHaveProperty(col);
-        }
-        // And the demographic columns are still present:
-        expect(row).toHaveProperty("gender");
-        expect(row).toHaveProperty("county");
-        expect(row).toHaveProperty("age_bracket");
-      }
+      // RLS can't hide columns, so a firm's login gets no rows at all; what a
+      // firm may see comes from lib/participant/requesteeAccess instead
+      // (pinned in requestee-participant-access.test.ts).
+      expect((result as Allowed<JuryParticipantRow>).rows).toHaveLength(0);
     });
   });
 

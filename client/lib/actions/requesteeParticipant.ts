@@ -1,9 +1,42 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getBlockedParticipantIds } from "@/lib/case-lineage";
 import { ACTIVE_STATUS } from "@/lib/participant/activeStatus";
 import { getAllIdsWithoutLogin } from "@/lib/participant/loginAccount";
+import {
+  ownsAllCases,
+  participantNamesForCases,
+  toRequesteeSearchResult,
+  type RequesteeSearchResult,
+} from "@/lib/participant/requesteeAccess";
+
+/**
+ * Names for the requestee's participant lists (CaseParticipantSummary and
+ * RequesteeParticipantHistory). Requestee logins can't read participant tables
+ * themselves, so these come from here: the caller must own every case, and only
+ * names of people on those cases' sessions come back. Only admins attach a case
+ * to a session, so a case row someone created for themselves has nobody on it.
+ */
+export async function getCaseParticipantNames(
+  caseIds: string[],
+  participantIds: string[]
+): Promise<Record<string, { first_name: string | null; last_name: string | null }>> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Unauthorized");
+
+  const cases = Array.from(new Set(caseIds)).slice(0, 100);
+  if (cases.length === 0 || participantIds.length === 0) return {};
+
+  if (!(await ownsAllCases(user.id, cases))) {
+    throw new Error("Case not found or not owned by you");
+  }
+  return participantNamesForCases(cases, participantIds.slice(0, 2000));
+}
 
 /**
  * Search eligible participants for a case on the requestee side.
@@ -13,7 +46,7 @@ import { getAllIdsWithoutLogin } from "@/lib/participant/loginAccount";
 export async function searchParticipantsForCase(
   caseId: string,
   query: string
-) {
+): Promise<RequesteeSearchResult[]> {
   const supabase = await createClient();
 
   // 1. Verify the current user is the case owner
@@ -34,7 +67,13 @@ export async function searchParticipantsForCase(
   // 2. Get blocked participant IDs from the follow-up chain
   const blockedIds = await getBlockedParticipantIds(caseId);
 
-  // 3. Get session ID for this case (if any)
+  // 3. Get the case's session, and refuse a case without one. Owning a case is
+  //    no proof the caller is a firm: the cases INSERT policies only check
+  //    auth.uid() = user_id, so anyone can create a case row of their own, and
+  //    the search below reads the whole panel with the service role. Only admins
+  //    attach a case to a session (session_cases is admin-write), and the Add
+  //    participant button is disabled until there is one. Not a check on roles:
+  //    that table doesn't have a row for every user.
   const { data: sessionCaseRow } = await supabase
     .from("session_cases")
     .select("session_id")
@@ -43,19 +82,20 @@ export async function searchParticipantsForCase(
     .maybeSingle();
 
   const sessionId = sessionCaseRow?.session_id;
+  if (!sessionId) throw new Error("No session assigned to this case yet");
 
   // 4. Get already-invited participant IDs for this session
-  let alreadyInvitedIds: string[] = [];
-  if (sessionId) {
-    const { data: sessionParts } = await supabase
-      .from("session_participants")
-      .select("participant_id")
-      .eq("session_id", sessionId);
-    alreadyInvitedIds = (sessionParts ?? []).map((p) => p.participant_id);
-  }
+  const { data: sessionParts } = await supabase
+    .from("session_participants")
+    .select("participant_id")
+    .eq("session_id", sessionId);
+  const alreadyInvitedIds: string[] = (sessionParts ?? []).map((p) => p.participant_id);
 
-  // 5. Get blacklisted user IDs
-  const { data: blacklistedRoles } = await supabase
+  // 5. Get blacklisted user IDs. From here on the participant data is read with
+  //    the service-role client: requestee logins can't read roles of other
+  //    users or any participant table (see lib/participant/requesteeAccess), and
+  //    only the fields in toRequesteeSearchResult go back to the browser.
+  const { data: blacklistedRoles } = await supabaseAdmin
     .from("roles")
     .select("user_id")
     .eq("role", "blacklisted");
@@ -72,7 +112,7 @@ export async function searchParticipantsForCase(
   );
 
   // 7. Determine table
-  const { count } = await supabase
+  const { count } = await supabaseAdmin
     .from("jury_participants")
     .select("*", { count: "exact", head: true });
   const testTable = count === 0 || count === null ? "oldData" : "jury_participants";
@@ -80,7 +120,7 @@ export async function searchParticipantsForCase(
 
   const nowIso = new Date().toISOString();
 
-  let q = supabase.from(testTable).select("*");
+  let q = supabaseAdmin.from(testTable).select("*");
 
   if (!isOldData) {
     q = q
@@ -96,31 +136,17 @@ export async function searchParticipantsForCase(
     q = q.not(idField, "in", `(${excludeIds.map((id) => `"${id}"`).join(",")})`);
   }
 
-  if (query.trim()) {
-    const term = query.trim().toLowerCase();
+  // Letters, digits, spaces, hyphens, apostrophes and periods only: the term is
+  // spliced into a PostgREST filter, where a comma or bracket would add filters.
+  const term = query.trim().toLowerCase().replace(/[^\p{L}\p{N} .'-]/gu, "");
+  if (term) {
     q = q.or(`first_name.ilike.%${term}%,last_name.ilike.%${term}%`);
   }
 
   const { data, error } = await q.limit(50);
   if (error) throw error;
 
-  type SearchResultRow = {
-    user_id?: string | null;
-    id?: string | null;
-    first_name?: string | null;
-    last_name?: string | null;
-    city?: string | null;
-    date_of_birth?: string | null;
-    political_affiliation?: string | null;
-  };
-  return ((data ?? []) as SearchResultRow[]).map((p) => ({
-    id: p.user_id || p.id,
-    first_name: p.first_name,
-    last_name: p.last_name,
-    city: p.city,
-    date_of_birth: p.date_of_birth,
-    political_affiliation: p.political_affiliation,
-  }));
+  return ((data ?? []) as Record<string, unknown>[]).map(toRequesteeSearchResult);
 }
 
 /**
