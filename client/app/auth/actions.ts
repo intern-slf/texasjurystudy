@@ -48,10 +48,14 @@ export async function signupWithCustomEmail(formData: FormData) {
             return { error: createError.message };
         }
 
-        // MANUALLY INSERT ROLE INTO public.roles TABLE
+        // Write the public.roles row. The assign_role_on_signup trigger on
+        // auth.users (supabase/migrations/20261003_roles_row_for_every_login.sql)
+        // has usually written it already from the same user_metadata.role, so
+        // this upserts: a plain insert would collide with that row and fail
+        // every signup. Kept so signup doesn't depend on the trigger existing.
         const { error: roleError } = await supabaseAdmin
             .from('roles')
-            .insert({ user_id: userCreatedData.user.id, role, email });
+            .upsert({ user_id: userCreatedData.user.id, role, email }, { onConflict: 'user_id' });
 
         if (roleError) {
             console.error("Failed to insert role:", JSON.stringify(roleError));
