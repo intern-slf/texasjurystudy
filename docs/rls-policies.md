@@ -15,9 +15,9 @@ All four previously UNRESTRICTED tables now have RLS enabled and policies attach
 | `sessions` | 🟩 RLS enabled | F1 closed — admin FOR ALL + scoped requestee/participant SELECTs |
 | `session_cases` | 🟩 RLS enabled | F2 closed — admin FOR ALL + requestee SELECT scoped to own cases |
 | `session_participants` | 🟩 RLS enabled | F3 closed — admin FOR ALL + scoped participant/requestee access |
-| `oldData` | 🟩 RLS enabled | F4 closed — admin + requestee SELECT, no write policies (writes blocked) |
+| `oldData` | 🟩 RLS enabled | F4 closed — admin SELECT, no write policies (writes blocked); requestee SELECT dropped 2026-10-02 (see F14) |
 
-Remaining work is policy refinement (see Findings table at bottom): scope-tightening on `jury_participants` (F14), duplicate-policy cleanup (F17/F22), data-model confirmations (F16, F18, F20), and **F21 (HIGH) — `case_drive_links` exposes every case's Google Drive URLs to all authenticated users.**
+Remaining work is policy refinement (see Findings table at bottom): duplicate-policy cleanup (F17/F22), data-model confirmations (F16, F18, F20), and **F21 (HIGH) — `case_drive_links` exposes every case's Google Drive URLs to all authenticated users.**
 
 F19 and F24 are **closed** (2026-08-20): the un-column-scoped participant UPDATE on `session_participants` — which the waitlist's `payout_cents` column had turned into a self-serve payout hole — was dropped outright after an audit showed no code path used it.
 
@@ -174,7 +174,7 @@ Matches recommendation. No general-authenticated SELECT — narrower than the "a
 
 No INSERT/UPDATE/DELETE policies → writes blocked for anon/authenticated (correct; no code writes here).
 
-**Diff from recommendation:** Requestee SELECT is unscoped — *any* requestee can read all of `oldData`, not just rows tied to their own cases. Deferred per F4 (would require a join through `session_cases`/`cases` and may need a `security definer` view).
+**Diff from recommendation:** Requestee SELECT was unscoped — *any* requestee could read all of `oldData`, every column, not just rows tied to their own cases. **Dropped 2026-10-02** with the requestee policies on `jury_participants`; requestee screens read legacy participants through `client/lib/participant/requesteeAccess.ts` instead. See F14 and the `jury_participants` section.
 
 ---
 
@@ -352,7 +352,7 @@ Confirmed full name. Requestee-side version of `confidentiality_agreements`.
 - Write via `supabaseAdmin` in `client/lib/actions/autoBlacklist.ts:34` (blacklist updates).
 
 **Recommended policy:**
-- `SELECT`: admin (all), requestee (only participants assigned to their sessions — same join as `session_participants`), participant (own row only).
+- `SELECT`: admin (all), participant (own row only). Requestees: none — see "Change (2026-10-02)" below. RLS filters rows, not columns, so any requestee SELECT policy hands their login every column of the rows it allows.
 - `INSERT`: participant (own row only, `WITH CHECK (user_id = auth.uid())`).
 - `UPDATE`: admin (all), participant (own row, only profile fields — NOT `approved_by_admin`, `blacklisted_at`, `blacklist_reason`).
 - `DELETE`: admin only.
@@ -371,8 +371,13 @@ This is the table where column-level policies matter most. Recommend documenting
 | requestee can read jury participants | SELECT | public | `EXISTS (roles WHERE roles.user_id = auth.uid() AND roles.role IN ('requestee','reviewer'))` | — |
 | Users can update their own participant profile | UPDATE | public | `auth.uid() = user_id` | — |
 
+**Change (2026-10-02, F14):** `supabase/migrations/20261002_requestee_no_participant_access.sql` drops "requestee can read jury participants" and "Requestees can view participants in their sessions" here, and "requestee can read oldData" on `oldData`. Before it, a requestee's own login could query either table from the browser with the anon key and get every column (phone, street address, date of birth, licence number, PayPal username): every participant through the broad policy, every invitee through the scoped one. Participants keep reading their own row and admins every row. The migration aborts if those two policies are missing, and rolls back if any SELECT policy left on either table still mentions requestee or reviewer, is `USING (true)`, or targets `anon`.
+
+Requestee screens now get participant data from server code, `client/lib/participant/requesteeAccess.ts`, which checks the caller owns the case (creator or assigned requestee), checks the participant is on one of that case's sessions (waitlisters excluded), and returns a fixed field list with an age instead of the date of birth. Callers: `getCaseParticipantNames` (names for `CaseParticipantSummary` and `RequesteeParticipantHistory`), `getParticipantProfile` (the participant profile page with a `caseId`; it used to load any participant's full row once the case checked out), and `searchParticipantsForCase` (the requestee "Add participant" search; it returned full dates of birth). That field list is what privacy policy §6 describes; change them together. Owning a case is no proof the caller is a firm: the `cases` INSERT policies only check `auth.uid() = user_id`, so any login, a participant included, can create a case row of its own. What a firm reaches is therefore tied to sessions, which only admins attach to cases (`session_cases` is admin-write): names and profiles cover only people on the case's sessions, and the search and add actions in `client/lib/actions/requesteeParticipant.ts` refuse a case with no session. None of this checks `roles`, which doesn't have a row for every user. Pinned in `client/__tests__/requestee-participant-access.test.ts`.
+
+Run the migration after the app change is deployed: the old screens read these tables with the requestee's login.
+
 **Diffs from recommendation:**
-- 🟥 "requestee can read jury participants" allows ANY requestee/reviewer to read ALL participants — confirms F14. The correctly-scoped policy already exists ("Requestees can view participants in their sessions"), so the broad one is pure shadowing. **Drop the broad one.**
 - 2 duplicate INSERT policies — F17.
 - UPDATE allows participant to write any column of their own row — no column-level grant. Recommendation called for blocking `approved_by_admin`, `blacklisted_at`, `blacklist_reason`. Open follow-up.
 - No DELETE policy → admin deletes via `supabaseAdmin` only.
@@ -466,7 +471,7 @@ The other 13 sites were verified unaffected: participant self-service (`Particip
 | F11 | ✅ CLOSED | `cases` "Allow admins to update case status" (`USING true, WITH CHECK true`) had NO admin check — allowed any auth user to UPDATE any case (reassign requestees, flip admin_status). Dropped + replaced with real admin-role-check policy. (2026-05-16) | | Closed |
 | F12 | ✅ CLOSED | `cases` "Allow authenticated inserts" (`WITH CHECK true`) — allowed any auth user to insert cases as someone else. Dropped (four other INSERT policies on `cases` correctly enforce `auth.uid() = user_id`). (2026-05-16) | | Closed |
 | F13 | ✅ CLOSED | `case_documents` "Allow authenticated inserts" (`WITH CHECK true`) — allowed any auth user to upload documents attributed to anyone. Dropped + replaced with `WITH CHECK (uploaded_by = auth.uid())`. (2026-05-16) | | Closed |
-| F14 | 🟨 MED | `jury_participants` "requestee can read jury participants" allows ALL requestees/reviewers to read ALL participants (not just their own sessions). Shadows the correct, scoped "Requestees can view participants in their sessions" policy. Drop the broad one. | | Open |
+| F14 | 🟥 HIGH | `jury_participants` "requestee can read jury participants" allowed ALL requestees/reviewers to read ALL participants, every column; the "scoped" policy still returned every column of each invitee, and `oldData`'s requestee policy every legacy row. All three dropped by `20261002_requestee_no_participant_access.sql`; requestee screens read through `client/lib/participant/requesteeAccess.ts` (non-private fields, own cases only). See the `jury_participants` section. | 2026-10-02 | Closed once the migration is run |
 | F15 | ✅ CLOSED | Resolved as part of F3. Dropped the broken `profiles.role` policy and replaced with `is_admin()`-based admin FOR ALL policy on `session_participants`. (2026-05-17) | | Closed |
 | F16 | 🟨 MED | `cases` has both `user_id` and `requestee_id` columns; all existing policies key on `user_id`. If an admin ever assigns a case to a requestee who didn't create it, that requestee is locked out. Confirm data-model intent. | | Open |
 | F17 | 🟨 MED | Duplicate-policy cleanup needed: `cases` (16 policies, ~10 redundant), `confidentiality_agreements` (2 dup INSERT + 2 dup SELECT), `jury_participants` (dup INSERT, dup UPDATE), `session_participants` (dup UPDATE), `sessions` (3 dup INSERT), `roles` (1 dup SELECT). | | Open |

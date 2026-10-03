@@ -272,23 +272,43 @@ const SECTIONS: Section[] = [
           What attorneys can and cannot see
         </h3>
         <p>
-          This is the most important thing on this page for participants.
-          Attorneys who request a focus group see participants only as a{" "}
-          <strong className="font-semibold text-foreground">
-            demographic profile
-          </strong>{" "}
-          &mdash; gender, race, county, age bracket, education level and
-          political affiliation.
+          This is the most important thing on this page for participants. The
+          attorney or firm that requests a focus group sees the{" "}
+          <strong className="font-semibold text-foreground">names</strong> of
+          the participants invited to its sessions. Before each session we
+          also email the person presenting the case for that firm these
+          details about every participant who has accepted a seat:
+        </p>
+        <ul className="ml-5 list-disc space-y-1.5">
+          <li>your name and email address;</li>
+          <li>your age, gender, race, city and county;</li>
+          <li>
+            your political affiliation, education level, marital status,
+            whether you are employed, and your family income range;
+          </li>
+          <li>
+            whether you have served on a jury before, and whether you have
+            children.
+          </li>
+        </ul>
+        <p>
+          In the app, the firm can also open the profile of anyone invited to
+          its sessions. The profile shows the details above except your email
+          address, plus your state and your answers on U.S. citizenship,
+          felony convictions and military service. When a firm adds people to
+          its own session, it can search active panel members by name and sees
+          each match&rsquo;s name, age, city and political affiliation.
         </p>
         <p>
-          They do{" "}
+          Attorneys do{" "}
           <strong className="font-semibold text-foreground">not</strong> receive
-          your name, email address, phone number, home address, date of birth,
-          driver&rsquo;s license number, license image or PayPal username. This
-          separation is enforced in the database itself through row-level
-          security rules, not just in the interface. Note that attorneys and
-          their observer do see and hear you during the session itself and in
-          the recording.
+          your phone number, street address, date of birth, driver&rsquo;s
+          license number, license image or PayPal username. Attorneys&rsquo;
+          accounts cannot read participant records from our database directly:
+          everything they see comes through our server, which checks that the
+          request is about that firm&rsquo;s own case and returns only the
+          details listed here. Attorneys and their observer
+          also see and hear you during the session itself and in the recording.
         </p>
 
         <h3 className="pt-2 text-base font-semibold text-foreground">
