@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { isUnderage, UNDERAGE_MESSAGE } from "@/lib/age-gate";
+import { SUPPORT_EMAIL } from "@/lib/legal-constants";
 
 const ID_DOCUMENTS_BUCKET = "id-documents";
 
@@ -28,6 +29,14 @@ export type UnderageAccountResult =
  * Admins and requestees are refused: neither enters a date of birth after signup (where an
  * under-18 date is rejected before any account exists), and a requestee's cases are tied
  * to sessions other people are in, so there is no "just their data" to remove.
+ *
+ * Blacklisted participants are refused too, and asked to email us (F27 in
+ * docs/rls-policies.md). Deleting them would erase the blacklist, their strikes and the
+ * login, so they could sign up again with the same email as someone new; Privacy §10
+ * promises we keep a minimal note of accounts removed for conduct reasons. An admin closes
+ * the account by hand and keeps that note. Either marker is enough, roles or blacklisted_at
+ * (the only one a legacy participant with no roles row has): a wrong refusal costs them an
+ * email, but a wrong delete can't be undone.
  */
 export async function deleteAccountIfUnderage(
   dateOfBirth: string
@@ -53,6 +62,23 @@ export async function deleteAccountIfUnderage(
       return { deleted: false, error: UNDERAGE_MESSAGE };
     }
 
+    // A failed read throws rather than counting as "not blacklisted".
+    const { data: profile, error: profileError } = await supabaseAdmin
+      .from("jury_participants")
+      .select("blacklisted_at")
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (profileError) throw new Error(`jury_participants lookup: ${profileError.message}`);
+
+    if (roleRow?.role === "blacklisted" || profile?.blacklisted_at) {
+      // The id (never the DOB), so an admin can match it to the email that should follow.
+      console.warn(`[deleteAccountIfUnderage] Refused: ${user.id} is blacklisted.`);
+      return {
+        deleted: false,
+        error: `${UNDERAGE_MESSAGE} To close your account, please email ${SUPPORT_EMAIL}.`,
+      };
+    }
+
     await deleteParticipantData(user.id);
     return { deleted: true };
   } catch (err) {
@@ -73,8 +99,11 @@ export async function deleteAccountIfUnderage(
  * still exists, so the person can't carry on but a retry can finish the job.
  */
 async function deleteParticipantData(userId: string) {
-  // ID images. Uploads go under "<userId>/", but also take whatever path the profile
-  // points at, in case an older upload was stored elsewhere.
+  // ID images. Uploads go under "<userId>/"; the folder listing finds them all. The path
+  // the profile points at is removed only when it is inside that folder too: the
+  // participant can write that column from the browser, and the service role ignores
+  // storage RLS, so a link into someone else's folder must not delete their photo. A link
+  // outside the folder (an older upload) is logged for an admin to remove by hand.
   const { data: profile, error: profileError } = await supabaseAdmin
     .from("jury_participants")
     .select("driver_license_image_url")
@@ -87,7 +116,12 @@ async function deleteParticipantData(userId: string) {
   if (listError) throw new Error(`${ID_DOCUMENTS_BUCKET} list: ${listError.message}`);
 
   const paths = new Set((files ?? []).map((f) => `${userId}/${f.name}`));
-  if (profile?.driver_license_image_url) paths.add(profile.driver_license_image_url);
+  const linked = profile?.driver_license_image_url;
+  if (linked?.startsWith(`${userId}/`) && !linked.includes("..")) {
+    paths.add(linked);
+  } else if (linked) {
+    console.warn(`[deleteAccountIfUnderage] ${userId}: ID photo outside their folder left for an admin.`);
+  }
   if (paths.size > 0) {
     const { error } = await bucket.remove([...paths]);
     if (error) throw new Error(`${ID_DOCUMENTS_BUCKET} remove: ${error.message}`);
