@@ -1,6 +1,6 @@
 # Test inventory
 
-Generated 2026-10-03 from `vitest run`: **376 tests** — 366 passed, 0 failed, 10 todo.
+Generated 2026-10-03 from `vitest run`: **377 tests** — 367 passed, 0 failed, 10 todo.
 
 Every test in [client/__tests__/](../client/__tests__/), grouped by file and `describe` block, with the production function each group exercises (`→`). For *why* each test exists and how the mocks work, see [tests.md](./tests.md).
 
@@ -672,7 +672,7 @@ Also: the invalid-URL test in `add-drive-link.test.ts` checks validation done by
 349. returns the DST-adjusted time in July ✅
 350. returns 04:30:00 for 10:00 Asia/Kolkata ✅
 
-### client/__tests__/underage-account.test.ts (10)
+### client/__tests__/underage-account.test.ts (11)
 
 
 **deleteAccountIfUnderage** → `deleteAccountIfUnderage — lib/actions/underageAccount.ts`
@@ -680,42 +680,43 @@ Also: the invalid-URL test in `add-drive-link.test.ts` checks validation done by
 351. deletes nothing for an adult ✅
 352. deletes nothing for a missing, malformed or future date (a form error, not an age) ✅
 353. removes the ID images, every row and then the login — all for the caller only ✅
-354. also removes an ID image stored outside the user's folder ✅
+354. never removes a linked ID image outside the user's own folder ✅
 355. deletes a legacy participant with no roles row, and skips storage when there's nothing in it ✅
-356. deletes a blacklisted participant ✅
+356. refuses a blacklisted participant without deleting anything, whether roles or blacklisted_at says so ✅
 357. refuses admins and requestees without deleting anything ✅
 358. deletes nothing when signed out ✅
-359. stops before removing the login when a row can't be deleted, so a retry can finish ✅
-360. reports a failed login delete instead of claiming success ✅
+359. deletes nothing when it can't check the blacklist ✅
+360. stops before removing the login when a row can't be deleted, so a retry can finish ✅
+361. reports a failed login delete instead of claiming success ✅
 
 ### client/__tests__/waitlist.test.ts (16)
 
 
 **assignSlot** → `assignSlot — lib/participant/waitlist.ts`
 
-361. gives a seat while seats remain ✅
-362. starts the waitlist exactly at the cap ✅
-363. refuses only once both the seats and the waitlist are gone ✅
-364. still offers a seat when a called-in waitlister pushed the count past the cap ✅
-365. honours a per-session waitlist cap of zero ✅
+362. gives a seat while seats remain ✅
+363. starts the waitlist exactly at the cap ✅
+364. refuses only once both the seats and the waitlist are gone ✅
+365. still offers a seat when a called-in waitlister pushed the count past the cap ✅
+366. honours a per-session waitlist cap of zero ✅
 
 **sessionLengthHours** → `sessionLengthHours — lib/participant/waitlist.ts`
 
-366. spans the earliest start to the latest end across every case ✅
-367. measures a single case ✅
-368. handles a half-hour session ✅
-369. treats an end before the start as running past midnight ✅
-370. returns 0 when times are missing or unparseable ✅
+367. spans the earliest start to the latest end across every case ✅
+368. measures a single case ✅
+369. handles a half-hour session ✅
+370. treats an end before the start as running past midnight ✅
+371. returns 0 when times are missing or unparseable ✅
 
 **payouts** → `seatPayoutCents, waitlistPayoutCents, formatCents — lib/participant/waitlist.ts`
 
-371. pays a seat the hourly rate for the session length ✅
-372. rounds a fractional session to whole cents ✅
-373. pays a called-in waitlister the FULL session, not the remainder ✅
-374. pays a waited-out waitlister the flat fee regardless of session length ✅
-375. renders a missing amount as a dash rather than $0.00 ✅
+372. pays a seat the hourly rate for the session length ✅
+373. rounds a fractional session to whole cents ✅
+374. pays a called-in waitlister the FULL session, not the remainder ✅
+375. pays a waited-out waitlister the flat fee regardless of session length ✅
+376. renders a missing amount as a dash rather than $0.00 ✅
 
 **isWaitlisted** → `isWaitlisted — lib/participant/waitlist.ts`
 
-376. matches only the waitlisted status ✅
+377. matches only the waitlisted status ✅
 

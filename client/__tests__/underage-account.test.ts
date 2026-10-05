@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest";
 import { UNDERAGE_MESSAGE } from "@/lib/age-gate";
+import { SUPPORT_EMAIL } from "@/lib/legal-constants";
 
 // ---------------------------------------------------------------------------
 // State + an ordered log of every mutating call, so tests can assert both what
@@ -10,7 +11,12 @@ type Err = { message: string } | null;
 const state: {
   user: { id: string } | null;
   role: { data: { role: string } | null; error: Err };
-  profile: { data: { driver_license_image_url: string | null } | null; error: Err };
+  profile: {
+    // blacklisted_at is required: the real select always returns the key, null when unset.
+    data: { driver_license_image_url: string | null; blacklisted_at: string | null } | null;
+    error: Err;
+  };
+  blacklistLookupError: Err;
   files: { name: string }[];
   deleteErrors: Record<string, Err>;
   deleteUserError: Err;
@@ -18,6 +24,7 @@ const state: {
   user: null,
   role: { data: null, error: null },
   profile: { data: null, error: null },
+  blacklistLookupError: null,
   files: [],
   deleteErrors: {},
   deleteUserError: null,
@@ -36,11 +43,20 @@ vi.mock("@/lib/supabase/server", () => ({
 vi.mock("@/lib/supabase/admin", () => ({
   supabaseAdmin: {
     from: vi.fn((table: string) => ({
-      select: vi.fn(() => ({
-        eq: vi.fn(() => ({
-          maybeSingle: vi.fn(async () =>
-            table === "roles" ? state.role : table === "jury_participants" ? state.profile : { data: null, error: null }
-          ),
+      select: vi.fn((columns: string) => ({
+        // Honours its filter: a read keyed on anything but the caller's user_id finds no row,
+        // so a wrong-key lookup can't pass for a correct one.
+        eq: vi.fn((column: string, value: string) => ({
+          maybeSingle: vi.fn(async () => {
+            if (column !== "user_id" || value !== state.user?.id) return { data: null, error: null };
+            if (table === "roles") return state.role;
+            if (table !== "jury_participants") return { data: null, error: null };
+            // Fails the blacklist check alone; the ID-photo lookup after it still succeeds.
+            if (columns.includes("blacklisted_at") && state.blacklistLookupError) {
+              return { data: null, error: state.blacklistLookupError };
+            }
+            return state.profile;
+          }),
         })),
       })),
       delete: vi.fn(() => ({
@@ -92,6 +108,7 @@ describe("deleteAccountIfUnderage", () => {
     state.user = { id: "kid-1" };
     state.role = { data: { role: "participant" }, error: null };
     state.profile = { data: null, error: null };
+    state.blacklistLookupError = null;
     state.files = [];
     state.deleteErrors = {};
     state.deleteUserError = null;
@@ -111,7 +128,7 @@ describe("deleteAccountIfUnderage", () => {
   });
 
   it("removes the ID images, every row and then the login — all for the caller only", async () => {
-    state.profile = { data: { driver_license_image_url: "kid-1/111-id.jpg" }, error: null };
+    state.profile = { data: { driver_license_image_url: "kid-1/111-id.jpg", blacklisted_at: null }, error: null };
     state.files = [{ name: "111-id.jpg" }, { name: "222-id.png" }];
 
     expect(await deleteAccountIfUnderage(CHILD_DOB)).toEqual({ deleted: true });
@@ -121,11 +138,21 @@ describe("deleteAccountIfUnderage", () => {
     ]);
   });
 
-  it("also removes an ID image stored outside the user's folder", async () => {
-    state.profile = { data: { driver_license_image_url: "legacy/kid-1.jpg" }, error: null };
+  it("never removes a linked ID image outside the user's own folder", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    state.files = [{ name: "111-id.jpg" }];
+    // The participant can write this column, so it may point into someone else's folder.
+    for (const linked of ["other-user/1-id.jpg", "legacy/kid-1.jpg", "kid-1/../other-user/1-id.jpg"]) {
+      state.profile = { data: { driver_license_image_url: linked, blacklisted_at: null }, error: null };
+      log.length = 0;
+      warnSpy.mockClear();
 
-    await deleteAccountIfUnderage(CHILD_DOB);
-    expect(log[0]).toBe("remove id-documents legacy/kid-1.jpg");
+      expect(await deleteAccountIfUnderage(CHILD_DOB), linked).toEqual({ deleted: true });
+      // Their own folder is still cleared; the outside link is left and logged by id.
+      expect(log[0], linked).toBe("remove id-documents kid-1/111-id.jpg");
+      expect(warnSpy.mock.calls.flat().join(" "), linked).toContain("kid-1");
+    }
+    warnSpy.mockRestore();
   });
 
   it("deletes a legacy participant with no roles row, and skips storage when there's nothing in it", async () => {
@@ -135,11 +162,35 @@ describe("deleteAccountIfUnderage", () => {
     expect(log).toEqual(ROWS_THEN_LOGIN("kid-1"));
   });
 
-  it("deletes a blacklisted participant", async () => {
-    state.role = { data: { role: "blacklisted" }, error: null };
+  it("refuses a blacklisted participant without deleting anything, whether roles or blacklisted_at says so", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    // A photo on file, so anything that slipped through would show up in the log.
+    state.files = [{ name: "111-id.jpg" }];
+    const cases: Array<[label: string, role: { role: string } | null, blacklistedAt: string | null]> = [
+      ["roles says blacklisted", { role: "blacklisted" }, null],
+      ["participant role, blacklisted_at set", { role: "participant" }, "2026-09-01T12:00:00Z"],
+      ["no roles row, blacklisted_at set", null, "2026-09-01T12:00:00Z"],
+    ];
 
-    expect(await deleteAccountIfUnderage(CHILD_DOB)).toEqual({ deleted: true });
-    expect(log).toContain("deleteUser kid-1");
+    for (const [label, role, blacklistedAt] of cases) {
+      state.role = { data: role, error: null };
+      state.profile = {
+        data: { driver_license_image_url: "kid-1/111-id.jpg", blacklisted_at: blacklistedAt },
+        error: null,
+      };
+      warnSpy.mockClear();
+
+      expect(await deleteAccountIfUnderage(CHILD_DOB), label).toEqual({
+        deleted: false,
+        error: `${UNDERAGE_MESSAGE} To close your account, please email ${SUPPORT_EMAIL}.`,
+      });
+      expect(log, label).toEqual([]);
+      // Logged by id so an admin can match it to their email — never with the date of birth.
+      const warned = warnSpy.mock.calls.flat().join(" ");
+      expect(warned, label).toContain("kid-1");
+      expect(warned, label).not.toContain(CHILD_DOB);
+    }
+    warnSpy.mockRestore();
   });
 
   it("refuses admins and requestees without deleting anything", async () => {
@@ -158,6 +209,21 @@ describe("deleteAccountIfUnderage", () => {
 
     expect(await deleteAccountIfUnderage(CHILD_DOB)).toMatchObject({ deleted: false, error: expect.any(String) });
     expect(log).toEqual([]);
+  });
+
+  it("deletes nothing when it can't check the blacklist", async () => {
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    // Only the blacklist read fails, and there's a photo to remove, so deleting anyway would show.
+    state.profile = { data: { driver_license_image_url: "kid-1/111-id.jpg", blacklisted_at: null }, error: null };
+    state.files = [{ name: "111-id.jpg" }];
+    state.blacklistLookupError = { message: "timeout" };
+
+    expect(await deleteAccountIfUnderage(CHILD_DOB)).toMatchObject({
+      deleted: false,
+      error: expect.stringContaining("contact us"),
+    });
+    expect(log).toEqual([]);
+    consoleSpy.mockRestore();
   });
 
   it("stops before removing the login when a row can't be deleted, so a retry can finish", async () => {
