@@ -2,8 +2,8 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { listIdPhotos, removeIdPhotos } from "@/lib/gcs/idDocuments";
 
-const ID_DOCUMENTS_BUCKET = "id-documents";
 // Both forms upload first and link the photo afterwards, so a fresh upload can belong to
 // a save that hasn't landed yet (an admin and the participant, or two tabs, saving at
 // once). Anything this young is left for a later save or scripts/cleanup-id-photos.mjs.
@@ -15,8 +15,7 @@ const RECENT_UPLOAD_MS = 10 * 60 * 1000;
  * failed to save. Every upload gets a new timestamped name, so without this each
  * replacement leaves the old copy of someone's ID behind. Call it after a save succeeds.
  *
- * Runs with the service role: an admin replacing someone's ID can't delete the
- * participant's own files under RLS, and a storage delete RLS refuses fails silently. So
+ * Runs with the app's GCS service account, which can delete anything in the bucket, so
  * the caller is checked here instead — the participant themselves, or an admin.
  *
  * Only files under "<userId>/" are touched: never the one the profile points at, nothing
@@ -52,21 +51,17 @@ export async function removeReplacedIdPhotos(userId: string): Promise<number> {
     const current = profile?.driver_license_image_url;
     if (!current) return 0;
 
-    const bucket = supabaseAdmin.storage.from(ID_DOCUMENTS_BUCKET);
-    const { data: files, error: listError } = await bucket.list(userId, { limit: 1000 });
-    if (listError) throw new Error(`${ID_DOCUMENTS_BUCKET} list: ${listError.message}`);
+    const files = await listIdPhotos(userId);
 
-    // A null id is a folder, not a file. No upload time counts as recent.
+    // No upload time counts as recent.
     const now = Date.now();
-    const stale = (files ?? [])
-      .filter((file) => file.id !== null)
-      .filter((file) => file.created_at && now - new Date(file.created_at).getTime() >= RECENT_UPLOAD_MS)
-      .map((file) => `${userId}/${file.name}`)
+    const stale = files
+      .filter((file) => file.createdAt && now - new Date(file.createdAt).getTime() >= RECENT_UPLOAD_MS)
+      .map((file) => file.path)
       .filter((path) => path !== current);
     if (stale.length === 0) return 0;
 
-    const { error: removeError } = await bucket.remove(stale);
-    if (removeError) throw new Error(`${ID_DOCUMENTS_BUCKET} remove: ${removeError.message}`);
+    await removeIdPhotos(stale);
     return stale.length;
   } catch (err) {
     console.error(

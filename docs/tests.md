@@ -2,7 +2,7 @@
 
 **Project:** Texas Jury Study
 **Scope:** [client/__tests__/](../client/__tests__/) (Vitest) + [.github/workflows/ci.yml](../.github/workflows/ci.yml) (GitHub Actions)
-**Last reviewed:** 2026-08-26
+**Last reviewed:** 2026-10-07
 
 This document is the canonical reference for every automated check that runs against this repository. It tells new contributors **what each test guards, why it exists, how to run it locally, and what to do when it fails**. Pair it with [schema.md](./schema.md) and [rls-policies.md](./rls-policies.md) when changing data-layer code. For a flat list of every test name mapped to the function it exercises, see [test-inventory.md](./test-inventory.md).
 
@@ -16,9 +16,9 @@ This document is the canonical reference for every automated check that runs aga
 | Static analysis | **ESLint 9** + **`tsc --noEmit`** | `npm run lint`, `npx tsc --noEmit` |
 | Build verification | **Next.js 15 production build** | `npm run build` |
 | Secret scanning | **Gitleaks** | CI only |
-| CI runner | **GitHub Actions** (Ubuntu, Node 20) | [.github/workflows/ci.yml](../.github/workflows/ci.yml) |
+| CI runner | **GitHub Actions** (Ubuntu, Node 22 — `@google-cloud/storage@8` requires ≥22) | [.github/workflows/ci.yml](../.github/workflows/ci.yml) |
 
-All tests live under [client/__tests__/](../client/__tests__/). The convention is one `<topic>.test.ts` per **product area**, with each file containing a top-level `describe` and nested `describe` blocks for each sub-feature. There is **no React / DOM rendering** in this suite — every test exercises pure functions, server actions, or API route handlers with mocked Supabase / mail / Next.js boundaries.
+All tests live under [client/__tests__/](../client/__tests__/). The convention is one `<topic>.test.ts` per **product area**, with each file containing a top-level `describe` and nested `describe` blocks for each sub-feature. There is **no React / DOM rendering** in this suite — every test exercises pure functions, server actions, or API route handlers with mocked Supabase / GCS / mail / Next.js boundaries.
 
 ### Running tests locally
 
@@ -37,14 +37,14 @@ The suite has **one required environment variable** for the tokenized-email test
 
 ## 2. CI workflow — [.github/workflows/ci.yml](../.github/workflows/ci.yml)
 
-CI runs on every **pull request targeting `main`** and on every **push to `main`**. There are **16 parallel jobs**; a PR cannot merge unless they all succeed.
+CI runs on every **pull request targeting `main`** and on every **push to `main`**. There are **20 parallel jobs**; a PR cannot merge unless they all succeed.
 
 | Job | Purpose | Command |
 |---|---|---|
 | `lint` | ESLint over the entire `client/` package. Catches dead imports, unused vars, React-rules violations, accessibility lint. | `npm run lint` |
 | `typecheck` | TypeScript strict-mode check with no emit. Catches every type error at the contract boundary (server actions, Supabase row types, props). | `npx tsc --noEmit` |
 | `build` | Full Next.js production build with placeholder env vars. Catches build-time regressions — missing exports, server/client boundary mistakes, route collisions. | `npm run build` |
-| `test-helpers` | Runs the whole Vitest suite. The 11 sibling `test-*` jobs below are deliberate duplicates that report a **per-area pass/fail signal** in the PR check list, so a reviewer can see at a glance which area broke. | `npm test` |
+| `test-helpers` | Runs the whole Vitest suite. The 15 sibling `test-*` jobs below are deliberate duplicates that report a **per-area pass/fail signal** in the PR check list, so a reviewer can see at a glance which area broke. | `npm test` |
 | `test-education-hierarchy` | Per-area shard: education hierarchy logic. | `npx vitest run __tests__/education-hierarchy.test.ts` |
 | `test-email-action-token` | Per-area shard: signed-token round-trip + expiration. | `npx vitest run __tests__/emailActionToken.test.ts` |
 | `test-filter-utils` | Per-area shard: case filter translation, combination, relaxation. | `npx vitest run __tests__/filter-utils.test.ts` |
@@ -57,6 +57,9 @@ CI runs on every **pull request targeting `main`** and on every **push to `main`
 | `test-rls` | Per-area shard: RLS policy intent (TypeScript simulator). | `npx vitest run __tests__/rls.test.ts` |
 | `test-documents-drive-links` | Per-area shard: case document upload/delete + drive links. | `npx vitest run __tests__/documents-drive-links.test.ts` |
 | `test-participants` | Per-area shard: participant profile actions (currently scaffolded). | `npx vitest run __tests__/participants.test.ts` |
+| `test-id-photos` | Per-area shard: replaced-ID-photo cleanup against the GCS `id-documents` seam. | `npx vitest run __tests__/id-photos.test.ts` |
+| `test-underage-account` | Per-area shard: under-18 account deletion — storage first, rows, then the login. | `npx vitest run __tests__/underage-account.test.ts` |
+| `test-id-photo-urls` | Per-area shard: the signed-URL server actions guarding GCS `id-documents`. | `npx vitest run __tests__/id-photo-urls.test.ts` |
 | `secrets` | Gitleaks scan of the **full git history** (`fetch-depth: 0`) for leaked credentials. Failure means a secret pattern matched — rotate the secret first, then sanitize history. | `gitleaks/gitleaks-action@v2` |
 
 **Important:** the per-area shards exist for **reporting clarity** in PR checks; they re-run code that `test-helpers` already covers. When you add a new test file, add a matching shard job so its failure surfaces by name on the PR — see the existing entries as templates.
@@ -217,7 +220,7 @@ The write-side counterparts live in [sessions.test.ts](../client/__tests__/sessi
 | `rls-case-documents.test.ts` | Visibility flows through case ownership — same partitioning as `cases`. A document attached to a foreign case is never visible. |
 | `rls-session-participants.test.ts` | A `participant` sees only invites where `participant_id = auth.uid()`. |
 | `rls-jury-participants.test.ts` | `participant` sees their own full row (PII included). `admin` sees every row including PII. `requestee` gets **no rows** (migration `20261002_requestee_no_participant_access.sql`; `oldData` likewise). RLS can't hide columns, so this used to be modelled as a column projection the database never had; what a firm may see is now enforced in server code and pinned in [§3.20](#320-requestee-participant-accesstestts--what-a-law-firm-can-see). |
-| `rls-storage-objects.test.ts` | **Storage-bucket RLS (F23, 2026-06-09).** Simulates the `storage.objects` policy set: owner-scoped self-service (a participant reads/overwrites/deletes only their own `id-documents` license; a requestee only their own `case-documents`), with cross-user reads/deletes denied (`42501`) — the closed leak. `admin` reads all in both buckets and may overwrite an existing `id-documents` object (the admin license-replace path, policy #4) but is **not** granted UPDATE on `case-documents`. INSERT is owner-scoped (caller becomes owner). `service_role` bypasses RLS (the video upload script). |
+| `rls-storage-objects.test.ts` | **Storage-bucket RLS (F23, 2026-06-09).** Simulates the `storage.objects` policy set: owner-scoped self-service (a participant reads/overwrites/deletes only their own `id-documents` license; a requestee only their own `case-documents`), with cross-user reads/deletes denied (`42501`) — the closed leak. `admin` reads all in both buckets and may overwrite an existing `id-documents` object (the admin license-replace path, policy #4) but is **not** granted UPDATE on `case-documents`. INSERT is owner-scoped (caller becomes owner). `service_role` bypasses RLS (the video upload script). **2026-10-07:** ID photos moved to GCS — the `id-documents` half of these policies is retained only until the old Supabase bucket is deleted; live ID-photo authorization is [lib/actions/idPhotoUrls.ts](../client/lib/actions/idPhotoUrls.ts), pinned in [§3.18e](#318e-id-photo-urlstestts--signed-urls-for-id-photos-the-gcs-security-boundary). |
 
 ### 3.10 [documents-drive-links.test.ts](../client/__tests__/documents-drive-links.test.ts) — case attachments
 
@@ -319,7 +322,7 @@ Uses a **table-keyed** fake client rather than the FIFO response queue of 4.1: t
 
 ### 3.18 [underage-account.test.ts](../client/__tests__/underage-account.test.ts) — deleting an under-18 account
 
-**Subject:** the real `deleteAccountIfUnderage` server action from [lib/actions/underageAccount](../client/lib/actions/underageAccount.ts), with `@/lib/supabase/server` (the caller's session) and `@/lib/supabase/admin` (rows, the `id-documents` bucket, `auth.admin.deleteUser`) mocked. Every mutating call is appended to one ordered log, so the tests assert both *what* was deleted and *in what order*.
+**Subject:** the real `deleteAccountIfUnderage` server action from [lib/actions/underageAccount](../client/lib/actions/underageAccount.ts), with `@/lib/supabase/server` (the caller's session), `@/lib/supabase/admin` (rows, `auth.admin.deleteUser`) and `@/lib/gcs/idDocuments` (the GCS `id-documents` bucket — see [§4.5](#45-gcs-id-documents-module-mock)) mocked. Every mutating call is appended to one ordered log, so the tests assert both *what* was deleted and *in what order*.
 
 **Why this exists:** when a participant enters an under-18 date of birth on the confidentiality agreement or their profile, we now have actual knowledge they're a minor, so the account and everything stored about them is permanently deleted rather than the date just being refused. This is irreversible, so the guards matter as much as the deletion. A blacklisted participant is refused instead (F27 in [rls-policies.md](./rls-policies.md)): deleting them would erase the blacklist and let them sign up again with the same email.
 
@@ -327,23 +330,23 @@ Uses a **table-keyed** fake client rather than the FIFO response queue of 4.1: t
 |---|---|
 | Nothing deleted | An adult date; a missing, malformed or future date; a signed-out caller. |
 | Refused | An admin or requestee, with `UNDERAGE_MESSAGE` (neither enters a DOB after signup, and a requestee's cases are shared with other people). A blacklisted participant, by either marker: `roles` says `blacklisted`; `roles` says `participant` but `blacklisted_at` is set; or there's no `roles` row and `blacklisted_at` is set. They get exactly `UNDERAGE_MESSAGE` plus "To close your account, please email `SUPPORT_EMAIL`.", nothing is deleted although an ID photo is on file, and the server warning names the user id, never the date of birth. |
-| What is deleted | Every ID image under `id-documents/<userId>/`, then `session_participants` → `jury_participants` → `confidentiality_agreements` → `roles`, then the auth user. The path `driver_license_image_url` points at is removed only when it is inside that folder: the participant can write that column, and the service role ignores storage RLS, so a link into another user's folder (or one containing `..`) is left alone and logged by user id for an admin. Every call is keyed on the **session's** user id — the action takes no id argument, and the mock answers only reads keyed on that id, so a wrong-key lookup can't pass. Legacy participants with no `roles` row are deleted too; an empty bucket skips the storage call. |
+| What is deleted | Every ID image under `<userId>/` in the GCS `id-documents` bucket, then `session_participants` → `jury_participants` → `confidentiality_agreements` → `roles`, then the auth user. The path `driver_license_image_url` points at is removed only when it is inside that folder: the participant can write that column, and the storage module deletes as the app's service account (GCS has no per-user ACLs), so a link into another user's folder (or one containing `..`) is left alone and logged by user id for an admin. Every call is keyed on the **session's** user id — the action takes no id argument, and the mock answers only reads keyed on that id, so a wrong-key lookup can't pass. Legacy participants with no `roles` row are deleted too; an empty bucket skips the storage call. |
 | Failure | A failed blacklist lookup deletes nothing and returns the "please contact us" result. The mock fails only that read, so a version that treated the failure as "not blacklisted" would go on to delete and show in the log. A failed row delete stops **before** the auth user goes, so the login survives and a retry can finish (every step is idempotent). The server log names the user id, never the date of birth. A failed auth delete is reported, not claimed as success. |
 
 Not covered: the two callers (`app/dashboard/page.tsx`, `components/EditProfileForm.tsx`), which sign the user out locally and route to `/auth/account-removed` — this suite runs in a node environment with no component rendering.
 
 ### 3.18b [id-photos.test.ts](../client/__tests__/id-photos.test.ts) — deleting replaced ID photos
 
-**Subject:** the real `removeReplacedIdPhotos` server action from [lib/actions/idPhotos](../client/lib/actions/idPhotos.ts), with `@/lib/supabase/server` (the caller) and `@/lib/supabase/admin` (the profile row, and `list` / `remove` on the `id-documents` bucket) mocked. Every storage call is logged, so the tests assert which folder was listed and exactly which files were removed.
+**Subject:** the real `removeReplacedIdPhotos` server action from [lib/actions/idPhotos](../client/lib/actions/idPhotos.ts), with `@/lib/supabase/server` (the caller), `@/lib/supabase/admin` (the roles and profile rows) and `@/lib/gcs/idDocuments` (`listIdPhotos` / `removeIdPhotos` on the GCS `id-documents` bucket — see [§4.5](#45-gcs-id-documents-module-mock)) mocked. Every storage call is logged, so the tests assert which folder was listed and exactly which files were removed.
 
-**Why this exists:** every ID upload gets a new timestamped name, so replacing a licence photo, or retrying a signup whose save failed, used to leave the old copy of someone's ID in the bucket; 71 had built up by 2026-10-03. The action runs with the service role, because admins have no DELETE policy on `id-documents` and a delete that RLS refuses fails silently, so it checks the caller itself.
+**Why this exists:** every ID upload gets a new timestamped name, so replacing a licence photo, or retrying a signup whose save failed, used to leave the old copy of someone's ID in the bucket; 71 had built up by 2026-10-03. The storage module acts as the app's GCS service account — GCS has no per-user authorization — so the action checks the caller itself.
 
 | Case | Coverage |
 |---|---|
 | Removed | Every file in `<userId>/` except the one `driver_license_image_url` points at, for the participant themselves or for an admin. |
-| Kept | The linked photo; anything uploaded in the last 10 minutes, since another save may be about to link it (two tabs, or an admin and the participant at once), even when it's older than the linked one; a file with no upload time; folders. Nothing at all while the profile has no photo. |
+| Kept | The linked photo; anything uploaded in the last 10 minutes, since another save may be about to link it (two tabs, or an admin and the participant at once), even when it's older than the linked one; a file with no upload time. Nothing at all while the profile has no photo. |
 | Refused | Anyone else (participant, requestee, blacklisted, no `roles` row) before the folder is listed; a signed-out caller; an empty id. |
-| Failure | A failed list, remove or profile read is logged with the user id and returns 0 instead of throwing, so a save that already succeeded isn't failed. |
+| Failure | A failed list or remove (the GCS module **throws**; it does not return `{ error }`) or a failed profile read is logged with the user id and returns 0 instead of throwing, so a save that already succeeded isn't failed. |
 
 Not covered: the two callers, which run it as the last step of a successful save (`components/EditProfileForm.tsx`, `components/ParticipantForm.tsx`). `EditProfileForm` only sends `driver_license_image_url` when that save uploaded a photo, so a page loaded before a replacement can't point the profile back at a deleted file. Also not covered: `client/scripts/cleanup-id-photos.mjs`, which finds photos no participant links to (list-only unless run with `--delete --expect=N`).
 
@@ -375,6 +378,23 @@ Not covered: the callers, which each call it after the answers are saved (`EditP
 | Admin | Each action writes the tables it should. |
 
 `sendReactivationEmails` is pinned in §3.19 and `flagParticipant` in §3.8.
+
+### 3.18e [id-photo-urls.test.ts](../client/__tests__/id-photo-urls.test.ts) — signed URLs for ID photos (the GCS security boundary)
+
+**Subject:** the real `getIdPhotoReadUrl` / `getIdPhotoUploadUrl` server actions from [lib/actions/idPhotoUrls](../client/lib/actions/idPhotoUrls.ts), with `@/lib/gcs/idDocuments` mocked (the fakes return `https://signed.example/...` URLs and log every signing call — see [§4.5](#45-gcs-id-documents-module-mock)) and the Supabase server/admin clients supplying the session, the `roles` row and the `jury_participants` row, answered only for lookups keyed on the caller's own user id.
+
+**Why this exists:** ID photos moved from Supabase Storage to GCS, and GCS has no RLS — these two actions are the only way a browser gets a URL into the `id-documents` bucket, replacing the storage policies (owner ALL / admin SELECT / admin UPDATE) described in [rls-policies.md](./rls-policies.md). A hole here is a stranger reading driver's licences, so the full caller matrix is pinned, including that a refused caller never reaches the signing module.
+
+| Case | Coverage |
+|---|---|
+| Read allowed | Any file in the caller's own folder (`<callerId>/...`), with or without a `roles` row; an admin for any path; the exact path the caller's **own** `jury_participants.driver_license_image_url` points at (legacy rows hold out-of-folder paths). |
+| Read refused | A signed-out caller; a participant, requestee or blacklisted login (or no `roles` row) asking for another user's path — with no signing call made. A near-miss legacy path (the caller's profile points elsewhere in the same folder) is refused too. |
+| Unsafe paths | `..`, a leading `/` and a `gs://` prefix are rejected before any storage call, even for an admin, and even when the path still starts with the caller's own folder. |
+| Upload allowed | The caller for themselves; an admin for any participant's folder (the admin edit flow). The returned path is built **on the server** — `<targetUserId>/<Date.now()>-id.<ext>` — the signing call carries exactly that path and the request's content type, and all four whitelisted extensions (`jpg`, `jpeg`, `png`, `webp`) work. |
+| Upload refused | A signed-out caller; a non-admin targeting anyone else; a file extension outside the whitelist (`exe`, `jpg.exe`, empty); a content type that doesn't start with `image/` — all before any signing call. |
+| No caller paths | A smuggled `path` property in the upload options is ignored: the returned path is the server-built one, never the caller's. |
+
+Not covered: the GCS module itself ([lib/gcs/idDocuments](../client/lib/gcs/idDocuments.ts)) — signing is faked here, so V4 signature mechanics, expiry seconds and bucket wiring are not asserted by this suite — and the components that call these actions.
 
 ### 3.19 [reactivation-email.test.ts](../client/__tests__/reactivation-email.test.ts) — the campaign's Unsubscribe link
 
@@ -445,6 +465,21 @@ vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 ### 4.4 `next/navigation` redirect interceptor
 
 Route-handler tests need to assert the redirect target. The `redirect()` function from `next/navigation` throws internally in production; the tests mock it to throw a `RedirectError` whose `url` is the redirect target, then assert with `.rejects.toMatchObject({ url: "..." })`.
+
+### 4.5 GCS id-documents module mock
+
+The `id-documents` storage seam is **no longer the Supabase admin client**: [id-photos.test.ts](../client/__tests__/id-photos.test.ts), [underage-account.test.ts](../client/__tests__/underage-account.test.ts) and [id-photo-urls.test.ts](../client/__tests__/id-photo-urls.test.ts) mock the whole GCS module instead (the `case-documents` bucket is still Supabase Storage, so [documents-drive-links.test.ts](../client/__tests__/documents-drive-links.test.ts) keeps its §4.1-style `storage.from(bucket)` facade):
+
+```ts
+vi.mock("@/lib/gcs/idDocuments", () => ({
+  listIdPhotos: vi.fn(async (userId) => { log.push(`list ${userId}`); return state.files; }),
+  removeIdPhotos: vi.fn(async (paths) => { if (paths.length > 0) log.push(`remove ${paths.join(",")}`); }),
+  createReadUrl: vi.fn(async (path) => { log.push(`readUrl ${path}`); return `https://signed.example/read/${path}`; }),
+  createUploadUrl: vi.fn(async (path, contentType) => { log.push(`uploadUrl ${path} ${contentType}`); return `https://signed.example/upload/${path}`; }),
+}));
+```
+
+Three rules keep these mocks honest. The factory exports **all four** functions, whichever subset the action under test imports, so a new import never fails at module load. The fakes **throw** to simulate a storage failure (`state.listError` / `state.removeError`) — the real module throws rather than returning `{ error }` the way the Supabase client did, and the actions are expected to swallow. And because the module is replaced wholesale, no test ever constructs a GCS client, so the suite needs none of the `GCS_*` env vars and the module's lazy construction is never exercised here. Listing entries are `{ path, size, createdAt }` objects carrying full bucket-relative paths (`p-1/100-id.jpg`) — there is no Supabase-style folder entry or `id: null` quirk — and an empty `removeIdPhotos([])` is a no-op by contract, so the mocks log only non-empty removes.
 
 ---
 

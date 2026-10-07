@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { getIdPhotoReadUrl } from "@/lib/actions/idPhotoUrls";
 import BackButton from "@/components/BackButton";
 import NewParticipantsList from "@/components/NewParticipantsList";
 import ParticipantsTable from "@/components/ParticipantsTable";
@@ -91,17 +92,15 @@ export default async function ParticipantsPage({
 
   // Signed ID-document URLs are only consumed by the "new" tab (the card view /
   // VerifyParticipantModal). The approved/blacklisted table never renders
-  // idSignedUrl, so we skip the per-participant storage round-trips there.
+  // idSignedUrl, so we skip the per-participant signing round-trips there.
   if (tab === "new") {
     enrichedParticipants = await Promise.all(
       participants.map(async (p) => {
         let idSignedUrl: string | null = null;
 
         if (p.driver_license_image_url) {
-          const { data } = await supabase.storage
-            .from("id-documents")
-            .createSignedUrl(p.driver_license_image_url, 3600);
-          idSignedUrl = data?.signedUrl || null;
+          const res = await getIdPhotoReadUrl(p.driver_license_image_url);
+          idSignedUrl = "url" in res ? res.url : null;
         }
 
         return { ...p, idSignedUrl };

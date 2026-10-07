@@ -1,28 +1,32 @@
 /**
- * Finds ID photos in the "id-documents" bucket that no participant profile points at,
- * and deletes them once you've checked the list. These are copies of people's IDs:
- * photos replaced by a newer upload, uploads from signups that never finished, and
- * photos of accounts that were deleted by hand (deleting a user in the Supabase
- * dashboard leaves their files behind).
+ * Finds ID photos in the GCS id-documents bucket (gs://texasjurystudy-id-documents — see
+ * docs/gcs-id-documents.md) that no participant profile points at, and deletes them once
+ * you've checked the list. These are copies of people's IDs: photos replaced by a newer
+ * upload, uploads from signups that never finished, and photos of accounts that were
+ * deleted by hand (deleting a user never removes their files from storage).
  *
- * Kept, never deleted: anything uploaded in the last 24 hours (a signup may be mid-save),
- * anything not inside a "<user id>/" folder, and anything in the folder of a legacy
- * participant from "oldData".
+ * Kept, never deleted: anything uploaded in the last 24 hours (a signup may be mid-save;
+ * in GCS "uploaded" means written to this bucket, so files a sync just copied over also
+ * count as recent), anything not inside a "<user id>/" folder, and anything in the folder
+ * of a legacy participant from "oldData".
  *
  * Run from client/:
  *   node scripts/cleanup-id-photos.mjs                        list only, deletes nothing
  *   node scripts/cleanup-id-photos.mjs --delete --expect=71   delete, if the count still matches
  *
- * Needs NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY from .env.local
- * (or the file named by ENV_FILE).
+ * Needs NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY from .env.local (or the
+ * file named by ENV_FILE) for the jury_participants and oldData lookups, and Google
+ * Application Default Credentials for the bucket (gcloud auth application-default login).
+ * The bucket name comes from GCS_ID_DOCUMENTS_BUCKET, defaulting to
+ * texasjurystudy-id-documents.
  */
 
 import { createClient } from "@supabase/supabase-js";
+import { Storage } from "@google-cloud/storage";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const BUCKET = "id-documents";
 const PAGE = 1000;
 const MIN_AGE_MS = 24 * 60 * 60 * 1000;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -59,43 +63,33 @@ if (!SUPABASE_URL || !SERVICE_KEY) {
 }
 const supabase = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
 
+const BUCKET = process.env.GCS_ID_DOCUMENTS_BUCKET || "texasjurystudy-id-documents";
+const bucket = new Storage().bucket(BUCKET);
+
 const args = process.argv.slice(2);
 const shouldDelete = args.includes("--delete");
 const expected = Number(args.find((arg) => arg.startsWith("--expect="))?.split("=")[1]);
 
-// Pages stop only when one comes back empty, so a server-side cap below PAGE can't end
-// a listing early and make a linked photo look unlinked.
-async function listFolder(prefix) {
-  const entries = [];
-  for (;;) {
-    const { data, error } = await supabase.storage
-      .from(BUCKET)
-      .list(prefix, { limit: PAGE, offset: entries.length, sortBy: { column: "name", order: "asc" } });
-    if (error) throw new Error(`list "${prefix}": ${error.message}`);
-    if (data.length === 0) return entries;
-    entries.push(...data);
-  }
-}
-
+// GCS lists objects flat (no folder recursion), so the "folder" is just the path's first
+// segment. The loop follows page tokens until none comes back, so a server-side cap below
+// PAGE can't end the listing early and make a linked photo look unlinked.
 async function listAllFiles() {
   const files = [];
-  for (const entry of await listFolder("")) {
-    // A null id is a folder; this bucket only nests one level deep.
-    if (entry.id !== null) {
-      files.push({ path: entry.name, folder: "", size: entry.metadata?.size ?? 0, createdAt: entry.created_at });
-      continue;
-    }
-    for (const file of await listFolder(entry.name)) {
-      if (file.id === null) continue;
+  let query = { maxResults: PAGE, autoPaginate: false };
+  for (;;) {
+    const [page, nextQuery] = await bucket.getFiles(query);
+    for (const file of page) {
+      const slash = file.name.indexOf("/");
       files.push({
-        path: `${entry.name}/${file.name}`,
-        folder: entry.name,
-        size: file.metadata?.size ?? 0,
-        createdAt: file.created_at,
+        path: file.name,
+        folder: slash === -1 ? "" : file.name.slice(0, slash),
+        size: Number(file.metadata?.size ?? 0),
+        createdAt: file.metadata?.timeCreated,
       });
     }
+    if (!nextQuery) return files;
+    query = nextQuery;
   }
-  return files;
 }
 
 // Ordered by a unique column, so a row updated mid-read can't move between pages and be
@@ -173,7 +167,7 @@ async function main() {
   }
 
   console.log(
-    `${files.length} files in ${BUCKET}. ${participants.length} participants, ${links.length} with a photo link` +
+    `${files.length} files in gs://${BUCKET}. ${participants.length} participants, ${links.length} with a photo link` +
       ` (${context.linked.size} distinct, ${context.oddLinks.length} not matching a file).\n`
   );
   const deletable = [];
@@ -201,13 +195,19 @@ async function main() {
     return;
   }
 
+  // GCS has no bulk delete, so delete per file in batches. A 404 counts as removed — the
+  // file is already gone, which is the outcome being asked for.
   let removed = 0;
+  const failures = [];
   for (let i = 0; i < deletable.length; i += 100) {
-    const batch = deletable.slice(i, i + 100).map((file) => file.path);
-    const { data, error } = await supabase.storage.from(BUCKET).remove(batch);
-    if (error) throw new Error(`remove: ${error.message}`);
-    removed += data.length;
+    const batch = deletable.slice(i, i + 100);
+    const results = await Promise.allSettled(batch.map((file) => bucket.file(file.path).delete()));
+    results.forEach((result, idx) => {
+      if (result.status === "fulfilled" || result.reason?.code === 404) removed += 1;
+      else failures.push(`${batch[idx].path}: ${result.reason?.message ?? result.reason}`);
+    });
   }
+  for (const failure of failures) console.error(`Delete failed — ${failure}`);
   console.log(`\nDeleted ${removed} of ${deletable.length} files.`);
   if (removed !== deletable.length) process.exitCode = 1;
 }

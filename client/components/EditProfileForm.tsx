@@ -6,6 +6,8 @@ import { createClient } from "@/lib/supabase/client";
 import { autoBlacklistIfIneligible } from "@/lib/actions/autoBlacklist";
 import { deleteAccountIfUnderage } from "@/lib/actions/underageAccount";
 import { removeReplacedIdPhotos } from "@/lib/actions/idPhotos";
+import { getIdPhotoReadUrl, getIdPhotoUploadUrl } from "@/lib/actions/idPhotoUrls";
+import { ID_PHOTO_CONTENT_LENGTH_RANGE, MAX_ID_PHOTO_BYTES } from "@/lib/idPhotoLimits";
 import { Pencil, Upload, X, CreditCard } from "lucide-react";
 import { TEXAS_COUNTIES } from "@/lib/constants/texas-counties";
 import { ageOn, dateOfBirthError, isUnderage, UNDERAGE_MESSAGE } from "@/lib/age-gate";
@@ -178,13 +180,13 @@ export default function EditProfileForm({ participant, adminMode, onUpdate, onUp
 
   useEffect(() => {
     if (!participant.driver_license_image_url) return;
-    supabase.storage
-      .from("id-documents")
-      .createSignedUrl(participant.driver_license_image_url, 3600)
-      .then(({ data }) => {
-        if (data?.signedUrl) setExistingIdUrl(data.signedUrl);
-      });
-  }, [participant.driver_license_image_url, supabase]);
+    getIdPhotoReadUrl(participant.driver_license_image_url)
+      .then((res) => {
+        // On { error } the preview just stays empty.
+        if ("url" in res) setExistingIdUrl(res.url);
+      })
+      .catch(() => {});
+  }, [participant.driver_license_image_url]);
 
   // Availability
   const [availWeekdays, setAvailWeekdays] = useState(participant.availability_weekdays === "Yes");
@@ -293,7 +295,7 @@ export default function EditProfileForm({ participant, adminMode, onUpdate, onUp
       setError("Please upload an image file (JPG, PNG, etc.).");
       return;
     }
-    if (processedFile.size > 10 * 1024 * 1024) {
+    if (processedFile.size > MAX_ID_PHOTO_BYTES) {
       setError("Image must be under 10 MB.");
       return;
     }
@@ -377,21 +379,37 @@ export default function EditProfileForm({ participant, adminMode, onUpdate, onUp
     let newIdImagePath: string | null = null;
     if (idFile) {
       setUploadProgress(true);
-      const fileExt = idFile.name.split(".").pop() || "jpg";
-      const filePath = `${participant.user_id}/${Date.now()}-id.${fileExt}`;
+      // The server only signs whitelisted extensions; anything else (e.g. a
+      // converted HEIC with an odd name) is stored as .jpg.
+      const nameExt = (idFile.name.split(".").pop() || "").toLowerCase();
+      const fileExt = ["jpg", "jpeg", "png", "webp"].includes(nameExt) ? nameExt : "jpg";
 
-      const { error: uploadError } = await supabase.storage
-        .from("id-documents")
-        .upload(filePath, idFile, { upsert: true });
-
-      if (uploadError) {
-        setError(`Failed to upload ID image: ${uploadError.message}`);
+      try {
+        const res = await getIdPhotoUploadUrl({
+          targetUserId: participant.user_id ?? "",
+          fileExt,
+          contentType: idFile.type,
+        });
+        if ("error" in res) throw new Error(res.error);
+        const putRes = await fetch(res.url, {
+          method: "PUT",
+          headers: {
+            "Content-Type": idFile.type,
+            // Signed into the URL; GCS refuses the PUT without it.
+            "x-goog-content-length-range": ID_PHOTO_CONTENT_LENGTH_RANGE,
+          },
+          body: idFile,
+        });
+        if (!putRes.ok) throw new Error(`HTTP ${putRes.status}`);
+        newIdImagePath = res.path;
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        setError(`Failed to upload ID image: ${msg}`);
         setLoading(false);
         setUploadProgress(false);
         return;
       }
 
-      newIdImagePath = filePath;
       setUploadProgress(false);
     }
 

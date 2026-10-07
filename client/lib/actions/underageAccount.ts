@@ -2,10 +2,9 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { listIdPhotos, removeIdPhotos } from "@/lib/gcs/idDocuments";
 import { isUnderage, UNDERAGE_MESSAGE } from "@/lib/age-gate";
 import { SUPPORT_EMAIL } from "@/lib/legal-constants";
-
-const ID_DOCUMENTS_BUCKET = "id-documents";
 
 export type UnderageAccountResult =
   | { deleted: true }
@@ -99,11 +98,11 @@ export async function deleteAccountIfUnderage(
  * still exists, so the person can't carry on but a retry can finish the job.
  */
 async function deleteParticipantData(userId: string) {
-  // ID images. Uploads go under "<userId>/"; the folder listing finds them all. The path
+  // ID images. Uploads go under "<userId>/"; the prefix listing finds them all. The path
   // the profile points at is removed only when it is inside that folder too: the
-  // participant can write that column from the browser, and the service role ignores
-  // storage RLS, so a link into someone else's folder must not delete their photo. A link
-  // outside the folder (an older upload) is logged for an admin to remove by hand.
+  // participant can write that column from the browser, and the GCS service account can
+  // delete anything, so a link into someone else's folder must not delete their photo. A
+  // link outside the folder (an older upload) is logged for an admin to remove by hand.
   const { data: profile, error: profileError } = await supabaseAdmin
     .from("jury_participants")
     .select("driver_license_image_url")
@@ -111,11 +110,9 @@ async function deleteParticipantData(userId: string) {
     .maybeSingle();
   if (profileError) throw new Error(`jury_participants lookup: ${profileError.message}`);
 
-  const bucket = supabaseAdmin.storage.from(ID_DOCUMENTS_BUCKET);
-  const { data: files, error: listError } = await bucket.list(userId, { limit: 1000 });
-  if (listError) throw new Error(`${ID_DOCUMENTS_BUCKET} list: ${listError.message}`);
+  const files = await listIdPhotos(userId);
 
-  const paths = new Set((files ?? []).map((f) => `${userId}/${f.name}`));
+  const paths = new Set(files.map((f) => f.path));
   const linked = profile?.driver_license_image_url;
   if (linked?.startsWith(`${userId}/`) && !linked.includes("..")) {
     paths.add(linked);
@@ -123,8 +120,7 @@ async function deleteParticipantData(userId: string) {
     console.warn(`[deleteAccountIfUnderage] ${userId}: ID photo outside their folder left for an admin.`);
   }
   if (paths.size > 0) {
-    const { error } = await bucket.remove([...paths]);
-    if (error) throw new Error(`${ID_DOCUMENTS_BUCKET} remove: ${error.message}`);
+    await removeIdPhotos([...paths]);
   }
 
   // Children first: session_participants FKs onto jury_participants(user_id), and these
