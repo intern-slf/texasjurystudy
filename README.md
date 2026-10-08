@@ -183,10 +183,12 @@ Important clarification:
 Documents & Storage
 
 -> Case-specific documents are supported
--> Stored under case-documents/{case_id}/{uuid}.{ext}
+-> Stored under case-documents/{case_id}/{uuid}.{ext} in Supabase Storage
 -> Requestees can upload, delete, and replace documents freely
 -> Download-only access
 -> Participant access is future-scoped
+-> Participant ID photos live in Google Cloud Storage (bucket texasjurystudy-id-documents) as of 2026-10, under {user_id}/{timestamp}-id.{ext}
+-> ID photo uploads and views go through V4 signed URLs minted by server actions (client/lib/actions/idPhotoUrls.ts), which enforce owner-or-admin access — GCS has no RLS
 
 Future behavior (not implemented):
 
@@ -310,6 +312,12 @@ The Next.js application is located in the `client` directory.
    MAILER_URL=https://your-mailer-service.a.run.app
    MAILER_SHARED_SECRET=your_mailer_shared_secret
    NEXT_PUBLIC_APP_URL=http://localhost:3000
+   GCS_ID_DOCUMENTS_BUCKET=texasjurystudy-id-documents
+   GCS_ID_DOCUMENTS_SERVICE_ACCOUNT=id-documents-app@sound-observer-505819-t5.iam.gserviceaccount.com
+
+   ID photos need Google credentials: on Vercel via GCP_WORKLOAD_IDENTITY_AUDIENCE
+   (no service-account keys — org policy), locally via gcloud Application Default
+   Credentials. See client/.env.example for the full list and comments.
 
 3. Run development server:
 

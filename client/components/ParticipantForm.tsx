@@ -5,6 +5,8 @@ import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
 import { autoBlacklistIfIneligible } from "@/lib/actions/autoBlacklist";
 import { removeReplacedIdPhotos } from "@/lib/actions/idPhotos";
+import { getIdPhotoUploadUrl } from "@/lib/actions/idPhotoUrls";
+import { ID_PHOTO_CONTENT_LENGTH_RANGE, MAX_ID_PHOTO_BYTES } from "@/lib/idPhotoLimits";
 import { Upload, X, CreditCard } from "lucide-react";
 import { TEXAS_COUNTIES } from "@/lib/constants/texas-counties";
 
@@ -203,7 +205,7 @@ export default function ParticipantForm({ userId, email }: Props) {
       setError("Please upload an image file (JPG, PNG, etc.).");
       return;
     }
-    if (processedFile.size > 10 * 1024 * 1024) {
+    if (processedFile.size > MAX_ID_PHOTO_BYTES) {
       setError("Image must be under 10 MB.");
       return;
     }
@@ -272,25 +274,41 @@ export default function ParticipantForm({ userId, email }: Props) {
 
     const isEmployed = currentlyEmployed === "Yes" || currentlyEmployed === "Self-employed";
 
-    // Upload ID image to Supabase Storage if provided
+    // Upload ID image to Google Cloud Storage if provided
     let idImagePath: string | null = null;
     if (idFile) {
       setUploadProgress(true);
-      const fileExt = idFile.name.split(".").pop() || "jpg";
-      const filePath = `${userId}/${Date.now()}-id.${fileExt}`;
+      // The server only signs whitelisted extensions; anything else (e.g. a
+      // converted HEIC with an odd name) is stored as .jpg.
+      const nameExt = (idFile.name.split(".").pop() || "").toLowerCase();
+      const fileExt = ["jpg", "jpeg", "png", "webp"].includes(nameExt) ? nameExt : "jpg";
 
-      const { error: uploadError } = await supabase.storage
-        .from("id-documents")
-        .upload(filePath, idFile, { upsert: true });
-
-      if (uploadError) {
-        setError(`Failed to upload ID image: ${uploadError.message}`);
+      try {
+        const res = await getIdPhotoUploadUrl({
+          targetUserId: userId,
+          fileExt,
+          contentType: idFile.type,
+        });
+        if ("error" in res) throw new Error(res.error);
+        const putRes = await fetch(res.url, {
+          method: "PUT",
+          headers: {
+            "Content-Type": idFile.type,
+            // Signed into the URL; GCS refuses the PUT without it.
+            "x-goog-content-length-range": ID_PHOTO_CONTENT_LENGTH_RANGE,
+          },
+          body: idFile,
+        });
+        if (!putRes.ok) throw new Error(`HTTP ${putRes.status}`);
+        idImagePath = res.path;
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        setError(`Failed to upload ID image: ${msg}`);
         setLoading(false);
         setUploadProgress(false);
         return;
       }
 
-      idImagePath = filePath;
       setUploadProgress(false);
     }
 

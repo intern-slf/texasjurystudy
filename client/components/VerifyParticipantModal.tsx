@@ -42,6 +42,9 @@ export default function VerifyParticipantModal({
   // Zoom state
   const [isZooming, setIsZooming] = useState(false);
   const [origin, setOrigin] = useState("50% 50%");
+  // GCS signs URLs without checking the object exists, so a dangling
+  // driver_license_image_url renders as a broken image unless caught here.
+  const [imgFailed, setImgFailed] = useState(false);
 
   const p = participant;
 
@@ -86,7 +89,7 @@ export default function VerifyParticipantModal({
         <div className="flex flex-col md:flex-row">
           {/* ====== LEFT: ID IMAGE with cursor zoom ====== */}
           <div className="md:w-1/2 bg-slate-50 border-b md:border-b-0 md:border-r flex flex-col items-center justify-center p-6 min-h-[300px]">
-            {p.idSignedUrl ? (
+            {p.idSignedUrl && !imgFailed ? (
               <>
                 <div
                   className="overflow-hidden rounded-lg shadow-sm cursor-crosshair"
@@ -103,6 +106,7 @@ export default function VerifyParticipantModal({
                       transform: isZooming ? "scale(5)" : "scale(1)",
                       transformOrigin: origin,
                     }}
+                    onError={() => setImgFailed(true)}
                   />
                 </div>
                 <span className="mt-2 text-[10px] text-slate-400 font-medium">
@@ -112,7 +116,9 @@ export default function VerifyParticipantModal({
             ) : (
               <div className="text-center text-slate-400">
                 <div className="text-5xl mb-3">🪪</div>
-                <p className="text-sm font-medium">No ID uploaded</p>
+                <p className="text-sm font-medium">
+                  {imgFailed ? "ID image unavailable" : "No ID uploaded"}
+                </p>
               </div>
             )}
           </div>

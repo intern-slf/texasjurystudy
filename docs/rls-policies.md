@@ -454,6 +454,8 @@ The other 13 sites were verified unaffected: participant self-service (`Particip
 
 **Replaced ID photos (2026-10-03):** every upload gets a new name (`<userId>/<ms>-id.<ext>`), so replacing a licence, or retrying a signup whose save failed, left the old copy behind. 71 such photos (120 MB) were found and deleted on 2026-10-03 with `client/scripts/cleanup-id-photos.mjs` (list-only unless run with `--delete --expect=N`; keeps anything under 24 hours old). Since then `removeReplacedIdPhotos` (`client/lib/actions/idPhotos.ts`) runs after a successful save and deletes the other files in that participant's folder, keeping the linked one and anything uploaded in the last 10 minutes. It uses the service role, because admins have no DELETE policy on `id-documents` and a delete that RLS refuses fails silently, and it checks the caller is the participant or an admin. Deleting a user by hand in the Supabase dashboard does **not** delete their files: remove their `<userId>/` folder too, since privacy policy §10 promises deletion on request.
 
+**ID photos moved to GCS (2026-10):** the app now stores and serves `id-documents` files from Google Cloud Storage (bucket `texasjurystudy-id-documents`, same `<userId>/<ms>-id.<ext>` paths). GCS has no RLS, so the owner-ALL / admin-SELECT / admin-UPDATE rules above are now enforced in `client/lib/actions/idPhotoUrls.ts`, the only place browsers get signed read/upload URLs; `client/lib/gcs/idDocuments.ts` holds the bucket client (keyless, via Workload Identity Federation / ADC impersonation). The Supabase `id-documents` policies in this section remain only until the old bucket is deleted.
+
 ---
 
 ## Findings & action items

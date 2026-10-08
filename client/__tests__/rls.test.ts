@@ -144,6 +144,13 @@ function juryParticipantsSelect(
   return deny("unknown role");
 }
 
+// 2026-10-07 — ID photos moved to GCS (feat/id-documents-gcs): the
+// id-documents policies simulated below are retained in Supabase only until
+// the old id-documents bucket is deleted. Live authorization for ID photos is
+// now the server actions in lib/actions/idPhotoUrls.ts (signed GCS URLs — GCS
+// has no RLS), tested in __tests__/id-photo-urls.test.ts. case-documents,
+// transcripts and videos still live in Supabase Storage, and these policies
+// stay authoritative for them.
 // ---------------------------------------------------------------------------
 // storage.objects policy (buckets: id-documents, case-documents, transcripts,
 // videos) — hardened 2026-06-09 (F23). RLS is enabled on storage.objects and

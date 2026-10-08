@@ -6,6 +6,8 @@ const required = [
   "MAILER_SHARED_SECRET",
   "EMAIL_ACTION_SECRET",
   "NEXT_PUBLIC_APP_URL",
+  "GCS_ID_DOCUMENTS_BUCKET",
+  "GCS_ID_DOCUMENTS_SERVICE_ACCOUNT",
 ] as const;
 
 const missing = required.filter((k) => !process.env[k]);
