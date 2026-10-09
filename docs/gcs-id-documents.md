@@ -112,8 +112,8 @@ Then authenticate once: `gcloud auth application-default login` as
 
 | Variable | Where | Value |
 |---|---|---|
-| `GCS_ID_DOCUMENTS_BUCKET` | Vercel + `client/.env.local` | `texasjurystudy-id-documents`. **The app requires it** (`client/lib/gcs/idDocuments.ts` throws when it's unset); the two scripts fall back to this value on their own. |
-| `GCS_ID_DOCUMENTS_SERVICE_ACCOUNT` | Vercel + `client/.env.local` | `id-documents-app@sound-observer-505819-t5.iam.gserviceaccount.com` — the SA the app impersonates. Required on Vercel; required locally for URL signing (without it the app falls back to raw user credentials, which cannot sign). |
+| `GCS_ID_DOCUMENTS_BUCKET` | Vercel **Production** + `client/.env.local` | `texasjurystudy-id-documents`. **The app requires it** (`client/lib/gcs/idDocuments.ts` throws when it's unset); the two scripts fall back to this value on their own. |
+| `GCS_ID_DOCUMENTS_SERVICE_ACCOUNT` | Vercel **Production** + `client/.env.local` | `id-documents-app@sound-observer-505819-t5.iam.gserviceaccount.com` — the SA the app impersonates. Required in production; required locally for URL signing (without it the app falls back to raw user credentials, which cannot sign). |
 | `GCP_WORKLOAD_IDENTITY_AUDIENCE` | Vercel only | `//iam.googleapis.com/projects/35582239679/locations/global/workloadIdentityPools/vercel-pool/providers/vercel-oidc` — **already set for the mailer**; the same value serves both, so there is nothing to add unless it was removed. Not used locally (ADC instead). |
 
 The Supabase variables (`NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`) stay:
@@ -125,17 +125,19 @@ them from `.env.local` for their `jury_participants` / `oldData` queries.
 In order; each step assumes the previous one finished.
 
 1. **IAM:** run the section 2 grants (once).
-2. **Env vars:** set the two `GCS_*` section 3 variables in Vercel for **all three
-   environments — Production, Preview, and Development** — and in `client/.env.local`.
-   `client/lib/env.ts` requires them at build time (via `next.config.ts`), so a scope left
-   unset breaks that environment's builds. The values are not secrets, and setting them in
-   Preview grants no bucket access: the section 2 binding pins the production subject, so
-   preview runtime access stays refused by design.
-3. **Deploy** the app change (branch `feat/id-documents-gcs`) to production. First confirm
-   the Vercel project's Node.js version is **22.x** (Settings → General) —
-   `@google-cloud/storage@8` requires Node ≥ 22 and `client/package.json` pins
-   `engines.node` to `22.x`, but an old project-level override would win. From this
-   moment every new upload goes to GCS and nothing writes to the Supabase bucket again.
+2. **Env vars:** set the two `GCS_*` section 3 variables in Vercel's **Production**
+   environment, and in `client/.env.local`. `client/lib/env.ts` requires them at build
+   time (via `next.config.ts`) everywhere **except Preview**: a production build without
+   them fails fast — and Vercel keeps serving the previous deployment — while preview
+   builds skip the check, because previews cannot reach the bucket anyway (the section 2
+   binding pins the production subject). Setting them in Preview or Development too is
+   harmless but unnecessary; either variable type (Secret or Config) works.
+3. **Deploy** the app change (branch `feat/id-documents-gcs`) to production.
+   `@google-cloud/storage@8` requires Node ≥ 22; `client/package.json` pins
+   `engines.node` to `22.x`, which takes precedence over the project's Node.js setting
+   (confirmed in the 2026-10-08 build logs: "the Node.js Version defined in your Project
+   Settings ("24.x") will not apply"). From this moment every new upload goes to GCS and
+   nothing writes to the Supabase bucket again.
 4. **Catch up the gap.** Uploads that landed in Supabase between the 2026-10-07 bulk copy
    and the deploy are not in GCS yet. From `client/`:
 

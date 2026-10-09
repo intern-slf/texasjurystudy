@@ -6,11 +6,21 @@ const required = [
   "MAILER_SHARED_SECRET",
   "EMAIL_ACTION_SECRET",
   "NEXT_PUBLIC_APP_URL",
+] as const;
+
+// Preview deployments cannot reach the ID-photo bucket by design — its IAM
+// binding admits only the production OIDC subject (docs/gcs-id-documents.md) —
+// so requiring these there would fail every preview build for a feature that
+// cannot work in it. Production and local dev still fail fast without them.
+const requiredOutsidePreview = [
   "GCS_ID_DOCUMENTS_BUCKET",
   "GCS_ID_DOCUMENTS_SERVICE_ACCOUNT",
 ] as const;
 
-const missing = required.filter((k) => !process.env[k]);
+const missing = [
+  ...required,
+  ...(process.env.VERCEL_ENV === "preview" ? [] : requiredOutsidePreview),
+].filter((k) => !process.env[k]);
 
 if (missing.length > 0) {
   throw new Error(
