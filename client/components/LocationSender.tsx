@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { sendSessionLocation } from "@/lib/actions/session";
+import { OFFLINE_VENUE_TEXT } from "@/lib/constants/offline-catchment";
 
 interface Props {
   sessionId: string;
@@ -14,11 +15,16 @@ interface Props {
  * controls would invite an admin to send people a link to a room they are
  * supposed to drive to.
  *
+ * Unlike a Zoom link, the address is not something sent only to people who have
+ * accepted: every invitation carries it, and an in-person session cannot invite
+ * anyone until it has one. This box is where it is changed after the session is
+ * created, or added to one created before that rule existed.
+ *
  * A textarea rather than an input: venue addresses run to several lines, and the
  * email renders them with `white-space: pre-line` so the line breaks survive.
  */
 export default function LocationSender({ sessionId, existingLocation }: Props) {
-  const [location, setLocation] = useState(existingLocation ?? "");
+  const [location, setLocation] = useState(existingLocation ?? OFFLINE_VENUE_TEXT);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState("");
   const [isPending, startTransition] = useTransition();
@@ -27,7 +33,7 @@ export default function LocationSender({ sessionId, existingLocation }: Props) {
     e.preventDefault();
     setError("");
     if (!location.trim()) {
-      setError("Please enter the venue address before sending.");
+      setError("Please enter the venue address before saving.");
       return;
     }
     const fd = new FormData();
@@ -56,7 +62,7 @@ export default function LocationSender({ sessionId, existingLocation }: Props) {
           <circle cx="12" cy="10" r="2.6" fill="white" />
         </svg>
         <span className="text-sm font-semibold text-slate-800">
-          Send Location to Accepted Participants
+          Venue Address
         </span>
         <span className="text-[10px] font-semibold uppercase tracking-wide text-green-700 bg-green-100 border border-green-200 rounded px-1.5 py-0.5">
           In-Person
@@ -84,7 +90,7 @@ export default function LocationSender({ sessionId, existingLocation }: Props) {
                 : "bg-green-600 hover:bg-green-700"
             }`}
           >
-            {sent ? "Sent ✓" : isPending ? "Sending…" : "Send to All"}
+            {sent ? "Saved ✓" : isPending ? "Saving…" : "Save Address"}
           </button>
         </div>
       </form>
@@ -92,13 +98,19 @@ export default function LocationSender({ sessionId, existingLocation }: Props) {
       {error && <p className="text-xs text-red-600">{error}</p>}
       {sent && (
         <p className="text-xs text-green-700 font-medium">
-          Location sent to all accepted participants.
+          Address saved, and emailed to everyone who has accepted or is on the waitlist.
         </p>
       )}
       {!sent && existingLocation && (
         <p className="text-xs text-slate-500">
-          A location is already saved for this session. Sending again re-mails it to everyone
-          who has accepted.
+          Sent in every invitation for this session. Saving emails it again to everyone who has
+          accepted or is on the waitlist; people who have not replied yet keep the address from
+          their invitation.
+        </p>
+      )}
+      {!sent && !existingLocation && (
+        <p className="text-xs text-amber-700">
+          No address saved yet, so nobody can be invited to this session. Save it here first.
         </p>
       )}
     </div>

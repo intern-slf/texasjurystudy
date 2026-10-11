@@ -33,6 +33,9 @@ export const OFFLINE_VENUE = {
   address: "402 Simonton St, Conroe, TX 77301",
 } as const;
 
+/** The venue as the session address boxes start out: building, then street address. */
+export const OFFLINE_VENUE_TEXT = `${OFFLINE_VENUE.name}\n${OFFLINE_VENUE.address}`;
+
 export const OFFLINE_CATCHMENT_COUNTIES = [
   "Montgomery",
   "Walker",

@@ -399,6 +399,7 @@ export async function updateInviteStatus(
               session.session_date as string,
               timeStr,
               offline,
+              offline ? (session.location as string | null) : null,
             );
 
             // Whichever joining detail is already on the session goes out now, so
