@@ -286,7 +286,8 @@ export async function sendSessionCreatedEmail(
   caseTitles: string[],
   sessionDate: string,
   timeStr: string,
-  participantCount: number,
+  /** When each of `caseTitles` runs, in the same order. */
+  caseTimes: string[],
   /** Set for an in-person session so the requestee knows to travel. */
   offline = false,
   /** The venue of an in-person session, when one is saved. */
@@ -295,6 +296,12 @@ export async function sendSessionCreatedEmail(
   const caseListHtml = caseTitles
     .map((t) => `<li style="margin:4px 0;font-size:15px;font-weight:600;color:#1e3a8a;">${t}</li>`)
     .join("");
+
+  // One case: just its time. Several: each time beside its case's title.
+  const caseTimesHtml =
+    caseTimes.length === 1
+      ? caseTimes[0]
+      : caseTitles.map((t, i) => `${escHtml(t)}: ${caseTimes[i] ?? "TBD"}`).join("<br>");
 
   const html = emailWrapper(`
     <h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#1e3a8a;">Session Scheduled</h2>
@@ -326,8 +333,8 @@ export async function sendSessionCreatedEmail(
       </tr>
       <tr>
         <td style="padding:12px 20px;border-bottom:1px solid #e2e8f0;">
-          <p style="margin:0 0 2px;font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.08em;">Participants Invited</p>
-          <p style="margin:0;font-size:15px;font-weight:600;color:#1e293b;">${participantCount}</p>
+          <p style="margin:0 0 2px;font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.08em;">Your Case Time${caseTimes.length > 1 ? "s" : ""}</p>
+          <p style="margin:0;font-size:15px;font-weight:600;color:#1e293b;">${caseTimesHtml}</p>
         </td>
       </tr>
       <tr>

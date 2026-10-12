@@ -702,7 +702,6 @@ export async function notifyRequesteesSessionCreated(
   sessionId: string,
   caseIds: string[],
   sessionDate: string,
-  participantCount: number
 ) {
   if (!caseIds.length) return;
 
@@ -735,7 +734,7 @@ export async function notifyRequesteesSessionCreated(
   // Fetch session times
   const { data: sessionCaseRows } = await supabase
     .from("session_cases")
-    .select("start_time, end_time")
+    .select("case_id, start_time, end_time")
     .eq("session_id", sessionId);
 
   const formatCentralTime = (t: string) => {
@@ -758,20 +757,31 @@ export async function notifyRequesteesSessionCreated(
     weekday: "long", year: "numeric", month: "long", day: "numeric",
   });
 
-  // Group case titles by requestee (one email per requestee)
-  const requesteeMap = new Map<string, string[]>();
-  for (const c of caseRows) {
-    if (!c.user_id) continue;
-    if (!requesteeMap.has(c.user_id)) requesteeMap.set(c.user_id, []);
-    requesteeMap.get(c.user_id)!.push(c.title);
+  // Several firms' cases can share one session, so each firm is also told when
+  // its own case runs, not just the span of the whole session.
+  const caseTimeById = new Map<string, string>();
+  for (const r of sessionCaseRows ?? []) {
+    if (r.case_id && r.start_time && r.end_time) {
+      caseTimeById.set(r.case_id, `${formatCentralTime(r.start_time)} – ${formatCentralTime(r.end_time)} CT`);
+    }
   }
 
-  for (const [requesteeId, titles] of requesteeMap) {
+  // Group cases by requestee (one email per requestee)
+  const requesteeMap = new Map<string, { titles: string[]; times: string[] }>();
+  for (const c of caseRows) {
+    if (!c.user_id) continue;
+    if (!requesteeMap.has(c.user_id)) requesteeMap.set(c.user_id, { titles: [], times: [] });
+    const entry = requesteeMap.get(c.user_id)!;
+    entry.titles.push(c.title);
+    entry.times.push(caseTimeById.get(c.id) ?? "TBD");
+  }
+
+  for (const [requesteeId, { titles, times }] of requesteeMap) {
     try {
       const { data: userData } = await supabaseAdmin.auth.admin.getUserById(requesteeId);
       const email = userData?.user?.email;
       if (email) {
-        await sendSessionCreatedEmail(email, titles, dateStr, timeStr, participantCount, offline, location);
+        await sendSessionCreatedEmail(email, titles, dateStr, timeStr, times, offline, location);
         console.log(`[notifyRequestees] Session created email sent to ${email}`);
       }
     } catch (e) {
