@@ -1384,8 +1384,9 @@ export async function sendWaitlistWaitedOutEmail(
   });
 }
 
-// Escape user-supplied text before interpolating into the email HTML.
-function escHtml(value: string | null | undefined): string {
+// Escape user-supplied text before interpolating into the email HTML (and the
+// pages the email links land on).
+export function escHtml(value: string | null | undefined): string {
   return (value ?? "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")

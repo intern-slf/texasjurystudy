@@ -10,6 +10,7 @@ import {
 } from "@/lib/participant/waitlist";
 import { isOffline } from "@/lib/case/deliveryMode";
 import { getSessionDeliveryModeOrDefault } from "@/lib/case/getSessionDeliveryMode";
+import { escHtml } from "@/lib/mail";
 
 export const runtime = "nodejs";
 
@@ -100,7 +101,19 @@ export async function GET(req: NextRequest) {
     const offline =
       action === "accepted" &&
       isOffline(await getSessionDeliveryModeOrDefault(row.session_id));
-    return html(successPage(action, magicLink, offline));
+    // The venue itself, so the page can show it rather than point at an email.
+    // An invitation sent before the address went out with the invite
+    // (2026-10-12) can belong to a session that still has none.
+    let venue: string | null = null;
+    if (offline) {
+      const { data: sessionRow } = await supabaseAdmin
+        .from("sessions")
+        .select("location")
+        .eq("id", row.session_id)
+        .maybeSingle();
+      venue = (sessionRow?.location as string | null | undefined)?.trim() || null;
+    }
+    return html(successPage(action, magicLink, offline, venue));
   } catch (err) {
     console.error("[email-action] Error updating invite status:", err);
     return html(errorPage("Something Went Wrong", "We could not update your response. Please try again or contact support."), 500);
@@ -189,6 +202,8 @@ function successPage(
   dashboardUrl: string,
   /** In-person sessions send an address, not a link — and require travel. */
   offline = false,
+  /** The venue of an in-person session, when one is saved. */
+  venue: string | null = null,
 ): string {
   const isAccepted = action === "accepted";
   const color = isAccepted ? "#2D6A3E" : "#C32130";
@@ -196,14 +211,24 @@ function successPage(
   const headline = isAccepted ? "You're In!" : "Invitation Declined";
   const message = isAccepted
     ? offline
-      ? "Thank you for accepting. This session is held in person — the venue address is in your invitation email and on your dashboard, so please plan your travel and bring your Texas State ID."
+      ? venue
+        ? "Thank you for accepting. This session is held in person at the venue below — we have emailed you the address as well, so please plan your travel and bring your Texas State ID."
+        : "Thank you for accepting. This session is held in person — we will email you the full address before the session date, so please plan your travel and bring your Texas State ID."
       : "Thank you for accepting. We look forward to seeing you at the session. You will receive a Zoom link closer to the date."
     : "We have recorded your response. Thank you for letting us know — we hope to see you at a future session.";
+
+  // Admin-typed and often several lines, so escaped and kept on its own lines.
+  const venueBlock = isAccepted && offline && venue ? `
+    <div style="margin:0 auto 28px;max-width:420px;padding:14px 18px;text-align:left;background-color:${bgColor};border-left:4px solid ${color};border-radius:6px;">
+      <p style="margin:0 0 4px;font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:${color};">Where</p>
+      <p style="margin:0;font-size:15px;font-weight:700;color:#3F3E38;white-space:pre-line;">${escHtml(venue)}</p>
+    </div>` : "";
 
   return page(headline, `
     <div style="width:64px;height:64px;border-radius:50%;background-color:${bgColor};border:2px solid ${color};margin:0 auto 20px;font-size:28px;line-height:64px;">${isAccepted ? "✓" : "✕"}</div>
     <h1 style="margin:0 0 12px;font-size:26px;font-weight:700;color:${color};">${headline}</h1>
     <p style="margin:0 0 28px;font-size:16px;color:#3F3E38;line-height:1.6;">${message}</p>
+    ${venueBlock}
     <a href="${dashboardUrl}" style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;background-color:#012A68;text-decoration:none;border-radius:6px;">View My Dashboard</a>
   `);
 }

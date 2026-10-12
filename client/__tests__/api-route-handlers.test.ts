@@ -24,24 +24,43 @@ const supabaseState: {
   }>;
   authUser: SupabaseResult<{ user: { email?: string } | null }>;
   generateLink: SupabaseResult<{ properties?: { action_link?: string } }>;
+  /** The delivery_mode of each case in the session — empty reads as online. */
+  caseModes: string[];
+  /** sessions.location of the session being answered. */
+  sessionLocation: string | null;
 } = {
   sessionParticipantRow: { data: null, error: null },
   authUser: { data: null, error: null },
   generateLink: { data: null, error: null },
+  caseModes: [],
+  sessionLocation: null,
 };
 
-const fromMock = vi.fn(() => {
+const fromMock = vi.fn((table: string) => {
   const builder: Record<string, unknown> = {};
   builder.select = vi.fn(() => builder);
   builder.update = vi.fn(() => builder);
   builder.eq = vi.fn(() => builder);
   builder.single = vi.fn(async () => supabaseState.sessionParticipantRow);
+  builder.maybeSingle = vi.fn(async () =>
+    table === "sessions"
+      ? { data: { location: supabaseState.sessionLocation }, error: null }
+      : { data: null, error: null }
+  );
+  // getSessionDeliveryModeOrDefault awaits the session_cases query itself.
+  if (table === "session_cases") {
+    builder.then = (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) =>
+      Promise.resolve({
+        data: supabaseState.caseModes.map((m) => ({ cases: { delivery_mode: m } })),
+        error: null,
+      }).then(resolve, reject);
+  }
   return builder;
 });
 
 vi.mock("@/lib/supabase/admin", () => ({
   supabaseAdmin: {
-    from: (...args: unknown[]) => fromMock(...(args as [])),
+    from: (...args: unknown[]) => fromMock(...(args as [string])),
     auth: {
       admin: {
         getUserById: vi.fn(async () => supabaseState.authUser),
@@ -93,6 +112,8 @@ describe("API Route Handlers", () => {
     supabaseState.sessionParticipantRow = { data: null, error: null };
     supabaseState.authUser = { data: null, error: null };
     supabaseState.generateLink = { data: null, error: null };
+    supabaseState.caseModes = [];
+    supabaseState.sessionLocation = null;
     fromMock.mockClear();
     updateInviteStatusMock.mockReset();
     verifyOtpMock.mockReset();
@@ -288,6 +309,54 @@ describe("API Route Handlers", () => {
         "accepted",
         { confirmWaitlist: false }
       );
+    });
+
+    /** Accepts a pending in-person (or online) invitation and returns the page. */
+    async function acceptPage(caseModes: string[], location: string | null) {
+      supabaseState.sessionParticipantRow = {
+        data: { invite_status: "pending", participant_id: "p-1" },
+        error: null,
+      };
+      supabaseState.caseModes = caseModes;
+      supabaseState.sessionLocation = location;
+      updateInviteStatusMock.mockResolvedValue(undefined);
+      const token = generateEmailActionToken("invite-accept-venue", "accepted", TEST_SECRET);
+      const res = await GET(reqWithToken(token));
+      expect(res.status).toBe(200);
+      return res.text();
+    }
+
+    it("An in-person accept shows the saved venue on the page", async () => {
+      const html = await acceptPage(
+        ["offline"],
+        "Heritage Plaza Office Suites\n402 Simonton St, Conroe, TX 77301",
+      );
+      expect(html).toContain("Heritage Plaza Office Suites");
+      expect(html).toContain("402 Simonton St, Conroe, TX 77301");
+      expect(html).toMatch(/emailed you the address as well/i);
+      expect(html).not.toMatch(/will email you the full address/i);
+    });
+
+    it("An in-person accept with no saved venue says the address will follow", async () => {
+      // Only an invitation sent before addresses went out with the invite can
+      // land here. Saying the address is already in their email would be false.
+      const html = await acceptPage(["offline"], null);
+      expect(html).toMatch(/will email you the full address before the session date/i);
+      expect(html).not.toMatch(/in your invitation email|emailed you the address/i);
+      expect(html).not.toContain(">Where<");
+    });
+
+    it("Escapes the venue on the accept page", async () => {
+      const html = await acceptPage(["offline"], "Room <img src=x onerror=alert(1)> & Co");
+      expect(html).not.toContain("<img src=x");
+      expect(html).toContain("Room &lt;img src=x onerror=alert(1)&gt; &amp; Co");
+    });
+
+    it("An online accept promises the Zoom link and never reads a venue", async () => {
+      const html = await acceptPage(["online"], "Should not be read");
+      expect(html).toMatch(/Zoom link/);
+      expect(html).not.toContain("Should not be read");
+      expect(fromMock).not.toHaveBeenCalledWith("sessions");
     });
 
     it("Decline action success", async () => {

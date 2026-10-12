@@ -276,11 +276,33 @@ export default async function ParticipantSessionsPage({
                         <p className="mt-1 text-xs text-amber-800">
                           <span className="font-semibold">{deliveryModeLabel(mode)}</span>
                           {isOffline(mode)
-                            ? ` — you attend at a venue, paid ${formatCents(hourlyRateCents(mode))}/hr. Address sent after you accept.`
+                            ? ` — you attend at a venue, paid ${formatCents(hourlyRateCents(mode))}/hr.${
+                                session?.location ? "" : " Address sent after you accept."
+                              }`
                             : ` — you join over Zoom, paid ${formatCents(hourlyRateCents(mode))}/hr.`}
                         </p>
                       );
                     })()}
+                    {/* Where they would be travelling to, before they accept —
+                        the invitation email carries the same address. Only a
+                        session from before addresses went out with the invite
+                        can lack one, and that keeps the line above. */}
+                    {isOffline(offerMode) && session?.location && (
+                      <div className="mt-2">
+                        <p className="text-xs font-bold uppercase tracking-wide text-amber-800">Where</p>
+                        <p className="text-sm font-semibold text-amber-900 whitespace-pre-line">
+                          {session.location}
+                        </p>
+                        <a
+                          href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(session.location)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-1 inline-block text-xs font-semibold text-amber-800 underline"
+                        >
+                          Get directions
+                        </a>
+                      </div>
+                    )}
                   </div>
                   <span className="shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-600 text-white">
                     Pending
