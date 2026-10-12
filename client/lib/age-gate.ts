@@ -9,6 +9,9 @@ export const MINIMUM_AGE = 18;
 
 export const UNDERAGE_MESSAGE = `Texas Jury Study is only open to people ${MINIMUM_AGE} and older.`;
 
+/** Shown when the signup page's "18 or older, and I agree to the Terms" box isn't ticked. */
+export const SIGNUP_CONFIRMATION_MESSAGE = `Please confirm you are ${MINIMUM_AGE} or older and agree to the Terms of Service and Privacy Policy.`;
+
 const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 /**

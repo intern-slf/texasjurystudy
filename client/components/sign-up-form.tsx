@@ -12,16 +12,17 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, Suspense } from "react";
 import { Loader2 } from "lucide-react";
-import { dateOfBirthError, todayIso } from "@/lib/age-gate";
+import { SIGNUP_CONFIRMATION_MESSAGE, MINIMUM_AGE } from "@/lib/age-gate";
 
 // 1. Move the logic into a internal component
 function SignUpFormFields({ className, ...props }: React.ComponentPropsWithoutRef<"div">) {
   const [email, setEmail] = useState("");
-  const [dateOfBirth, setDateOfBirth] = useState("");
+  const [confirmedAgeAndTerms, setConfirmedAgeAndTerms] = useState(false);
   const [password, setPassword] = useState("");
   const [repeatPassword, setRepeatPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -38,9 +39,8 @@ function SignUpFormFields({ className, ...props }: React.ComponentPropsWithoutRe
     setIsLoading(true);
     setError(null);
 
-    const dobError = dateOfBirthError(dateOfBirth);
-    if (dobError) {
-      setError(dobError);
+    if (!confirmedAgeAndTerms) {
+      setError(SIGNUP_CONFIRMATION_MESSAGE);
       setIsLoading(false);
       return;
     }
@@ -56,7 +56,7 @@ function SignUpFormFields({ className, ...props }: React.ComponentPropsWithoutRe
       const formData = new FormData();
       formData.append('email', email);
       formData.append('password', password);
-      formData.append('dateOfBirth', dateOfBirth);
+      formData.append('confirmedAgeAndTerms', String(confirmedAgeAndTerms));
       formData.append('role', role);
 
       const result = await signupWithCustomEmail(formData);
@@ -98,18 +98,6 @@ function SignUpFormFields({ className, ...props }: React.ComponentPropsWithoutRe
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="date-of-birth">Date of birth</Label>
-                <Input
-                  id="date-of-birth"
-                  type="date"
-                  required
-                  max={todayIso()}
-                  value={dateOfBirth}
-                  onChange={(e) => setDateOfBirth(e.target.value)}
-                  className="bg-background/50 focus:ring-primary focus:border-primary transition-all"
-                />
-              </div>
-              <div className="grid gap-2">
                 <Label htmlFor="password">Password</Label>
                 <Input
                   id="password"
@@ -130,6 +118,26 @@ function SignUpFormFields({ className, ...props }: React.ComponentPropsWithoutRe
                   onChange={(e) => setRepeatPassword(e.target.value)}
                   className="bg-background/50 focus:ring-primary focus:border-primary transition-all"
                 />
+              </div>
+              <div className="flex items-start gap-2">
+                <Checkbox
+                  id="confirmed-age-and-terms"
+                  checked={confirmedAgeAndTerms}
+                  onCheckedChange={(checked) => setConfirmedAgeAndTerms(checked === true)}
+                  className="mt-0.5"
+                />
+                {/* The links open in a new tab so reading them doesn't lose what's typed. */}
+                <Label htmlFor="confirmed-age-and-terms" className="font-normal leading-snug">
+                  I confirm I am {MINIMUM_AGE} or older and agree to the{" "}
+                  <Link href="/terms" target="_blank" rel="noopener noreferrer" className="underline underline-offset-4 hover:text-primary">
+                    Terms of Service
+                  </Link>{" "}
+                  and{" "}
+                  <Link href="/privacy" target="_blank" rel="noopener noreferrer" className="underline underline-offset-4 hover:text-primary">
+                    Privacy Policy
+                  </Link>
+                  .
+                </Label>
               </div>
               {error && (
                 <div className="p-3 text-sm font-medium text-red-500 bg-red-50 dark:bg-red-900/10 rounded-md border border-red-200 dark:border-red-900/20">

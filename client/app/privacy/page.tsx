@@ -120,8 +120,9 @@ const SECTIONS: Section[] = [
             Whether you are available on weekdays, weekends, or both.
           </DataGroup>
           <DataGroup label="Account and history">
-            Your login credentials, session invitations and your responses to
-            them, attendance record, and how you heard about us.
+            Your login credentials, your confirmation at sign-up that you are 18
+            or older, session invitations and your responses to them,
+            attendance record, and how you heard about us.
           </DataGroup>
         </div>
 
@@ -130,7 +131,8 @@ const SECTIONS: Section[] = [
         </h3>
         <div className="grid gap-3 sm:grid-cols-2">
           <DataGroup label="Account">
-            Your name, email address and login credentials.
+            Your name, email address, login credentials, and your confirmation
+            at sign-up that you are 18 or older.
           </DataGroup>
           <DataGroup label="Case information">
             Case titles, descriptions, the panel criteria you select, and
