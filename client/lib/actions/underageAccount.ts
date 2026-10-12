@@ -25,8 +25,8 @@ export type UnderageAccountResult =
  * account, and re-checks it here so a client bug can't delete an adult. The date itself is
  * never stored.
  *
- * Admins and requestees are refused: neither enters a date of birth after signup (where an
- * under-18 date is rejected before any account exists), and a requestee's cases are tied
+ * Admins and requestees are refused: neither enters a date of birth (signup asks only for an
+ * "I am 18 or older" tick, which also accepts the Terms), and a requestee's cases are tied
  * to sessions other people are in, so there is no "just their data" to remove.
  *
  * Blacklisted participants are refused too, and asked to email us (F27 in

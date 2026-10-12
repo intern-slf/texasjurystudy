@@ -3,7 +3,8 @@
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { sendEmail, emailWrapper } from '@/lib/mail';
 import { readRole } from '@/lib/auth-role';
-import { dateOfBirthError } from '@/lib/age-gate';
+import { SIGNUP_CONFIRMATION_MESSAGE } from '@/lib/age-gate';
+import { PRIVACY_LAST_UPDATED, TERMS_LAST_UPDATED } from '@/lib/legal-constants';
 
 // Where the emailed confirm/reset link lands. Built on the server like every
 // other email link, never from a value the browser posts: these actions are
@@ -26,19 +27,32 @@ export async function signupWithCustomEmail(formData: FormData) {
             return { error: "Invalid role" };
         }
 
-        // Checked before createUser so nothing (not even the email) is stored for a minor.
-        // Validated here, not just in the form, because the action can be called directly.
-        // The DOB itself is not kept — participants give it again on the signed agreement.
-        const dobError = dateOfBirthError(formData.get('dateOfBirth') as string | null);
-        if (dobError) {
-            return { error: dobError };
+        // Signup asks for one tick, "I am 18 or older and agree to the Terms of Service and
+        // Privacy Policy", not a date of birth. The Terms carry the 18+ rule, so the tick is
+        // also what makes them binding. Checked before createUser so nothing (not even the
+        // email) is stored without it, and here, not just in the form, because the action
+        // can be called directly. Participants still give a date of birth on the signed
+        // agreement, which is checked again there and deletes the account if it is under 18
+        // (lib/actions/underageAccount.ts).
+        if (formData.get('confirmedAgeAndTerms') !== 'true') {
+            return { error: SIGNUP_CONFIRMATION_MESSAGE };
         }
 
+        const confirmedAt = new Date().toISOString();
         const { data: userCreatedData, error: createError } = await supabaseAdmin.auth.admin.createUser({
             email,
             password,
             email_confirm: false, // User is not confirmed yet
             user_metadata: { role },
+            // The record of that tick, including which version of each page they agreed to.
+            // In app_metadata, which only the service role can write, so it can't be changed
+            // from the browser afterwards.
+            app_metadata: {
+                age_confirmed_at: confirmedAt,
+                terms_accepted_at: confirmedAt,
+                terms_version: TERMS_LAST_UPDATED,
+                privacy_version: PRIVACY_LAST_UPDATED,
+            },
         });
 
         if (createError) {
