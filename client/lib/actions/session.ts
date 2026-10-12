@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { sendEmail, sendRescheduleEmail, sendSessionCreatedEmail, sendSessionCompletedEmail, sendPresenceConfirmedEmail, sendPresenceDeclinedEmail, sendZoomLinkEmail, sendSessionLocationEmail, sendWaitlistLocationEmail, sendPresenterInfoEmail, sendWaitlistZoomLinkEmail, sendWaitlistCalledInEmail, sendWaitlistWaitedOutEmail, sendWaitlistConfirmationEmail, emailWrapper } from "@/lib/mail";
+import { sendEmail, sendRescheduleEmail, sendSessionCreatedEmail, sendSessionCompletedEmail, sendPresenceConfirmedEmail, sendPresenceDeclinedEmail, sendZoomLinkEmail, sendSessionLocationEmail, sendWaitlistLocationEmail, sendPresenterInfoEmail, sendWaitlistZoomLinkEmail, sendWaitlistCalledInEmail, sendWaitlistWaitedOutEmail, sendWaitlistConfirmationEmail, emailWrapper, venueAddressBlock } from "@/lib/mail";
 import type { PresenterParticipantInfo, PresenterCaseInfo } from "@/lib/mail";
 import { checkAndNotifySessionFull, getSessionOccupancy } from "@/lib/participant/updateInviteStatus";
 import { recordBackoutStrike } from "@/lib/actions/participantFlags";
@@ -36,7 +36,11 @@ import { localToUTC, localToUTCTime } from "@/lib/timezone";
 /* =========================
    CREATE SESSION
 ========================= */
-export async function createSession(sessionDate: string) {
+export async function createSession(
+  sessionDate: string,
+  /** The venue of an in-person session. Saved now so the invitations can carry it. */
+  location?: string | null,
+) {
   const supabase = await createClient();
   // who is creating
   const {
@@ -53,6 +57,7 @@ export async function createSession(sessionDate: string) {
     .insert({
       session_date: sessionDate,
       created_by: user.id,   // ✅ THE FIX
+      ...(location?.trim() ? { location: location.trim() } : {}),
     })
     .select()
     .single();
@@ -235,6 +240,43 @@ async function inviteParticipantsInner(
   sessionDate?: string
 ): Promise<InviteResult> {
   const supabase = await createClient();
+
+  // An in-person invitation is a different ask: it costs the invitee a journey,
+  // it pays a different rate, and its waitlist has its own hold window and fee.
+  // All of that has to be in the email, or people accept the wrong thing.
+  const deliveryMode = await getSessionDeliveryModeOrDefault(sessionId);
+  const offline = isOffline(deliveryMode);
+
+  // ── Hard guard: an in-person invitation must say where. Whether someone can
+  //    attend depends on where the venue is, so the address goes out with the
+  //    invite rather than after they accept, and an in-person session without
+  //    one cannot invite anybody yet. Read with the service role: a requestee
+  //    reaches here too, and an RLS-hidden row must not read as "no address".
+  let venue: string | null = null;
+  if (offline) {
+    const { data: venueRow } = await supabaseAdmin
+      .from("sessions")
+      .select("location")
+      .eq("id", sessionId)
+      .maybeSingle();
+    venue = (venueRow?.location as string | null | undefined)?.trim() || null;
+
+    if (!venue) {
+      console.warn(
+        `[inviteParticipants] Refused ${participantIds.length} invite(s) to in-person session ` +
+        `${sessionId}: no venue address saved`
+      );
+      return {
+        ok: false,
+        invited: 0,
+        skipped: { blacklisted: 0, inactive: 0, noAccount: 0 },
+        error:
+          "Nobody was invited — this in-person session has no venue address yet, and the " +
+          "invitations have to say where it is. An admin can add it in the Venue Address box " +
+          "on the sessions page.",
+      };
+    }
+  }
 
   // ── Hard guard: blacklisted and non-active participants must NEVER be
   //    invited/added, no matter which caller reaches here (admin new-session,
@@ -438,11 +480,6 @@ async function inviteParticipantsInner(
     }
   }
 
-  // An in-person invitation is a different ask: it costs the invitee a journey,
-  // it pays a different rate, and its waitlist has its own hold window and fee.
-  // All of that has to be in the email, or people accept the wrong thing.
-  const deliveryMode = await getSessionDeliveryModeOrDefault(sessionId);
-  const offline = isOffline(deliveryMode);
   const hourlyRate = formatCents(hourlyRateCents(deliveryMode));
   const inviteWaitFee = formatCents(waitlistWaitFeeCents(deliveryMode));
   const inviteHoldMinutes = waitlistHoldMinutes(deliveryMode);
@@ -510,8 +547,8 @@ async function inviteParticipantsInner(
             "@type": "Event",
             "name": "Texas Jury Study Session",
             "startDate": "${sessionDate || new Date().toISOString()}",
-            "location": ${offline
-              ? `{ "@type": "Place", "name": "In-Person (address to follow)", "address": "To be confirmed" }`
+            "location": ${offline && venue
+              ? `{ "@type": "Place", "name": "In-Person", "address": ${JSON.stringify(venue).replace(/</g, "\\u003c")} }`
               : `{ "@type": "Place", "name": "Remote (Secure Zoom)", "address": "Online" }`},
             "potentialAction": [
               { "@type": "RsvpAction", "handler": { "@type": "HttpActionHandler", "url": "${acceptLink}" }, "attendance": "http://schema.org/RsvpResponseYes" },
@@ -548,15 +585,16 @@ async function inviteParticipantsInner(
             </tr>
           </table>
 
-          ${offline ? `
+          ${offline && venue ? `
+          ${venueAddressBlock(venue)}
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f0fdf4;border-left:4px solid #16a34a;border-radius:6px;margin:0 0 24px;">
             <tr>
               <td style="padding:14px 20px;">
                 <p style="margin:0 0 8px;font-size:14px;color:#166534;">
-                  <strong>This session is held in person.</strong> You will need to travel to the venue, so please only accept if you can be there for the full session.
+                  <strong>This session is held in person</strong> at the address above. You will need to travel to the venue, so please only accept if you can be there for the full session.
                 </p>
                 <p style="margin:0 0 8px;font-size:13px;color:#166534;">
-                  We will email you the full address once you accept. Bring your <strong>Texas State ID</strong> and plan to arrive <strong>${OFFLINE_ARRIVE_EARLY_MINUTES} minutes early</strong> for check-in.
+                  Bring your <strong>Texas State ID</strong> and plan to arrive <strong>${OFFLINE_ARRIVE_EARLY_MINUTES} minutes early</strong> for check-in.
                 </p>
                 <p style="margin:0;font-size:13px;color:#166534;">
                   <strong>Please note:</strong> an in-person session can be cancelled at any time before its scheduled start time. If it is cancelled, the session does not go ahead and <strong>you will not be paid</strong> for it. We will let you know as soon as we can, so please check your email before you set out.
@@ -683,6 +721,17 @@ export async function notifyRequesteesSessionCreated(
   // means travelling rather than clicking a link.
   const offline = caseRows.some((c) => isOffline(c.delivery_mode));
 
+  // The requestee travels to an in-person session too, so they get the venue.
+  let location: string | null = null;
+  if (offline) {
+    const { data: sessionRow } = await supabase
+      .from("sessions")
+      .select("location")
+      .eq("id", sessionId)
+      .maybeSingle();
+    location = (sessionRow?.location as string | null | undefined) ?? null;
+  }
+
   // Fetch session times
   const { data: sessionCaseRows } = await supabase
     .from("session_cases")
@@ -722,7 +771,7 @@ export async function notifyRequesteesSessionCreated(
       const { data: userData } = await supabaseAdmin.auth.admin.getUserById(requesteeId);
       const email = userData?.user?.email;
       if (email) {
-        await sendSessionCreatedEmail(email, titles, dateStr, timeStr, participantCount, offline);
+        await sendSessionCreatedEmail(email, titles, dateStr, timeStr, participantCount, offline, location);
         console.log(`[notifyRequestees] Session created email sent to ${email}`);
       }
     } catch (e) {
@@ -1127,7 +1176,9 @@ export async function adminRespondOnBehalf(
           offline,
         );
       } else {
-        await sendPresenceConfirmedEmail(email, firstName, session.session_date, timeStr, offline);
+        await sendPresenceConfirmedEmail(
+          email, firstName, session.session_date, timeStr, offline, offline ? session.location : null,
+        );
       }
 
       // Whichever joining detail the session already carries goes out now. An
@@ -1602,10 +1653,13 @@ export async function sendZoomLink(formData: FormData) {
 /* =========================
    SEND SESSION LOCATION (in-person)
 
-   The offline counterpart to sendZoomLink: the same shape, an address instead of
-   a URL. Waitlisters are included and get their own template, exactly as the
-   Zoom path does — an in-person reserve slot is held at the venue, so the
-   address matters to them as much as to a seated participant.
+   Saves the venue address and emails it to everyone already holding a seat.
+   The address is normally entered when the session is created, and every
+   invitation carries it (see inviteParticipants), so this is how it is changed
+   afterwards, or added to a session that was created without one. Waitlisters
+   are included and get their own template, exactly as the Zoom path does — an
+   in-person reserve slot is held at the venue, so the address matters to them
+   as much as to a seated participant.
 ========================= */
 export async function sendSessionLocation(formData: FormData) {
   const supabase = await createClient();

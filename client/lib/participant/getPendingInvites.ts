@@ -8,8 +8,9 @@ export async function getPendingInvites(userId: string) {
 
   // `cases.delivery_mode` says whether accepting means joining a Zoom call or
   // travelling to a venue. Every case in a session shares one value, so the
-  // dashboards read it off the first. (PostgREST select strings take no
-  // comments — keep notes out here.)
+  // dashboards read it off the first. `sessions.location` is that venue, shown
+  // before they accept. (PostgREST select strings take no comments — keep notes
+  // out here.)
   const { data, error } = await supabase
     .from("session_participants")
     .select(`
@@ -18,6 +19,7 @@ export async function getPendingInvites(userId: string) {
       session_id,
       sessions (
         session_date,
+        location,
         session_cases (
           start_time,
           end_time,

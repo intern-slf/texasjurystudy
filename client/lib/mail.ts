@@ -289,6 +289,8 @@ export async function sendSessionCreatedEmail(
   participantCount: number,
   /** Set for an in-person session so the requestee knows to travel. */
   offline = false,
+  /** The venue of an in-person session, when one is saved. */
+  location?: string | null,
 ) {
   const caseListHtml = caseTitles
     .map((t) => `<li style="margin:4px 0;font-size:15px;font-weight:600;color:#1e3a8a;">${t}</li>`)
@@ -336,7 +338,11 @@ export async function sendSessionCreatedEmail(
       </tr>
     </table>
 
-    ${offline ? `
+    ${offline && location ? `
+    <p style="margin:0 0 12px;font-size:14px;color:#166534;">
+      This is an <strong>in-person</strong> focus group, held at:
+    </p>
+    ${venueAddressBlock(location)}` : offline ? `
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f0fdf4;border-left:4px solid #16a34a;border-radius:6px;margin:0 0 24px;">
       <tr>
         <td style="padding:14px 20px;">
@@ -473,6 +479,8 @@ export async function sendPresenceConfirmedEmail(
   timeStr: string,
   /** In-person sessions require travel, so say so rather than implying Zoom. */
   offline = false,
+  /** The venue of an in-person session, when one is saved. */
+  location?: string | null,
 ) {
   const html = emailWrapper(`
     <h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#15803d;">Presence Confirmed</h2>
@@ -498,7 +506,11 @@ export async function sendPresenceConfirmedEmail(
       </tr>
     </table>
 
-    ${offline ? `
+    ${offline && location ? `
+    <p style="margin:0 0 12px;font-size:14px;color:#166534;">
+      This session is held <strong>in person</strong> at the venue below &mdash; please plan your travel and bring your <strong>Texas State ID</strong>.
+    </p>
+    ${venueAddressBlock(location)}` : offline ? `
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f0fdf4;border-left:4px solid #16a34a;border-radius:6px;margin:0 0 24px;">
       <tr>
         <td style="padding:14px 20px;">
@@ -626,6 +638,8 @@ export async function sendInviteAcceptedConfirmationEmail(
   timeStr: string,
   /** In-person sessions promise an address, not a meeting link. */
   offline = false,
+  /** The venue of an in-person session, when one is saved. */
+  location?: string | null,
 ) {
   const html = emailWrapper(`
     <h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#15803d;">Thank You for Accepting!</h2>
@@ -651,7 +665,11 @@ export async function sendInviteAcceptedConfirmationEmail(
       </tr>
     </table>
 
-    ${offline ? `
+    ${offline && location ? `
+    <p style="margin:0 0 12px;font-size:14px;color:#166534;">
+      This is an <strong>in-person session</strong> &mdash; you will be attending at the venue below, not over Zoom. Please plan your travel.
+    </p>
+    ${venueAddressBlock(location)}` : offline ? `
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f0fdf4;border-left:4px solid #16a34a;border-radius:6px;margin:0 0 28px;">
       <tr>
         <td style="padding:14px 20px;">
@@ -940,6 +958,25 @@ function locationCard(location: string, sessionDate: string, timeStr?: string): 
           <p style="margin:0;font-size:16px;font-weight:700;color:#15803d;">${timeStr}</p>
         </td>
       </tr>` : ''}
+    </table>`;
+}
+
+/**
+ * The venue on its own, for the emails where the date and time are already laid
+ * out elsewhere — above all the invitation, which has to say where before anyone
+ * is asked to accept. The address is admin-typed free text, so it is escaped,
+ * and it is often several lines, so the line breaks are kept.
+ */
+export function venueAddressBlock(location: string): string {
+  return `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f0fdf4;border-left:4px solid #16a34a;border-radius:6px;margin:0 0 24px;">
+      <tr>
+        <td style="padding:16px 20px;">
+          <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#166534;text-transform:uppercase;letter-spacing:0.08em;">Where</p>
+          <p style="margin:0 0 10px;font-size:16px;font-weight:700;color:#15803d;white-space:pre-line;">${escHtml(location)}</p>
+          <a href="${mapsUrl(location)}" style="font-size:13px;font-weight:600;color:#15803d;text-decoration:underline;">Get directions</a>
+        </td>
+      </tr>
     </table>`;
 }
 

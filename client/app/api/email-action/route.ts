@@ -196,7 +196,7 @@ function successPage(
   const headline = isAccepted ? "You're In!" : "Invitation Declined";
   const message = isAccepted
     ? offline
-      ? "Thank you for accepting. This session is held in person — we will email you the full address before the session date, so please plan your travel and bring your Texas State ID."
+      ? "Thank you for accepting. This session is held in person — the venue address is in your invitation email and on your dashboard, so please plan your travel and bring your Texas State ID."
       : "Thank you for accepting. We look forward to seeing you at the session. You will receive a Zoom link closer to the date."
     : "We have recorded your response. Thank you for letting us know — we hope to see you at a future session.";
 

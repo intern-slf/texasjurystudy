@@ -32,7 +32,7 @@ import {
   type LineageInvolvement,
 } from "@/lib/case-lineage";
 import BackButton from "@/components/BackButton";
-import { catchmentSentence } from "@/lib/constants/offline-catchment";
+import { catchmentSentence, OFFLINE_VENUE_TEXT } from "@/lib/constants/offline-catchment";
 import Link from "next/link";
 import {
   assertCasesShareDeliveryMode,
@@ -344,7 +344,17 @@ export default async function NewSessionPage({
     // session that still shows up on the sessions page.
     assertCasesShareDeliveryMode(selectedCases.map((c) => c.deliveryMode));
 
-    const sessionId = await createSession(date);
+    // Also before createSession: inviteParticipants refuses an in-person session
+    // with no address, and by then the session would already exist, uninvited.
+    const offlineSession = isOffline(
+      sessionDeliveryModeOrDefault(selectedCases.map((c) => c.deliveryMode)),
+    );
+    const location = ((formData.get("location") as string | null) ?? "").trim();
+    if (offlineSession && !location) {
+      throw new Error("Venue address required for an in-person session");
+    }
+
+    const sessionId = await createSession(date, offlineSession ? location : null);
 
     if (selectedCases.length) {
       await addCasesToSession(
@@ -479,8 +489,9 @@ export default async function NewSessionPage({
               {waitlistHoldMinutes("offline")} minutes and are paid{" "}
               {formatCents(waitlistWaitFeeCents("offline"))} if no seat opens. Candidates are
               drawn only from the venue catchment &mdash; {catchmentSentence()} &mdash; and that
-              restriction is never relaxed, so the list may be short. You will send the address
-              from the sessions page once the venue is booked.
+              restriction is never relaxed, so the list may be short. Enter the venue address
+              below &mdash; it goes out in every invitation, so people know where they would be
+              travelling before they accept.
             </>
           ) : (
             <>
@@ -531,6 +542,28 @@ export default async function NewSessionPage({
         <label className="block text-sm font-medium mb-2">Session Date</label>
         <input type="date" name="session_date" required className="border rounded px-3 py-2" />
       </div>
+
+      {/* VENUE — in person only. Required here because the invitations below go
+          out the moment the session is created, and they must say where. */}
+      {sessionIsOffline && (
+        <div>
+          <label htmlFor="location" className="block text-sm font-medium mb-2">
+            Venue Address
+          </label>
+          <textarea
+            id="location"
+            name="location"
+            required
+            rows={3}
+            defaultValue={OFFLINE_VENUE_TEXT}
+            className="w-full max-w-md border rounded px-3 py-2 text-sm resize-y"
+          />
+          <p className="mt-1 text-xs text-slate-500">
+            Included in every invitation for this session. Change it if this session is
+            somewhere else.
+          </p>
+        </div>
+      )}
 
       {/* SPLIT */}
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">

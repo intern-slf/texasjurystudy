@@ -158,7 +158,10 @@ const sendWaitlistZoomLinkEmailSpy = vi.fn(async () => undefined);
 const sendWaitlistCalledInEmailSpy = vi.fn(async () => undefined);
 const sendWaitlistWaitedOutEmailSpy = vi.fn(async () => undefined);
 
-vi.mock("@/lib/mail", () => ({
+vi.mock("@/lib/mail", async (importOriginal) => ({
+  // The real block, not a stand-in: the invitation tests below check that the
+  // admin-typed address is escaped, and only the real one can show that.
+  venueAddressBlock: (await importOriginal<typeof import("@/lib/mail")>()).venueAddressBlock,
   sendEmail: (args: SendEmailArgs) => sendEmailSpy(args),
   sendRescheduleEmail: vi.fn(async () => undefined),
   sendSessionCreatedEmail: vi.fn(async () => undefined),
@@ -244,6 +247,26 @@ describe("Sessions", () => {
       };
       expect(insert.payload.created_by).toBe("admin-1");
       expect(insert.payload.session_date).toBe("2026-07-04");
+      // An online session has no venue, so the column is left alone.
+      expect(insert.payload).not.toHaveProperty("location");
+    });
+
+    it("Saves the venue of an in-person session with the row", async () => {
+      // The invitations go out straight after this insert and must carry the
+      // address, so it is written here rather than added later.
+      state.user = { id: "admin-1", user_metadata: { role: "admin" } };
+      state.responses = [{ data: { id: "session-43" }, error: null }];
+
+      await createSession("2026-07-04", "  Heritage Plaza Office Suites\n402 Simonton St, Conroe, TX 77301 ");
+
+      const c = state.captured.find((x) => x.table === "sessions")!;
+      const insert = c.ops.find((o) => o.op === "insert") as {
+        op: "insert";
+        payload: Record<string, unknown>;
+      };
+      expect(insert.payload.location).toBe(
+        "Heritage Plaza Office Suites\n402 Simonton St, Conroe, TX 77301",
+      );
     });
 
     it("Non-admin blocked", async () => {
@@ -572,14 +595,32 @@ describe("Sessions", () => {
       ({ inviteParticipants } = await import("@/lib/actions/session"));
     });
 
+    const VENUE = "Heritage Plaza Office Suites\n402 Simonton St, Conroe, TX 77301";
+
+    /**
+     * The first read of every invite: .from("session_cases").select("cases(delivery_mode)")
+     * — the session's format, which decides the rate quoted in the invite, the
+     * JSON-LD location, whether a waitlist is mentioned at all, and whether a
+     * venue address is required before anyone can be invited.
+     */
+    function sessionMode(deliveryMode: "online" | "offline" = "online") {
+      return { data: [{ cases: { delivery_mode: deliveryMode } }], error: null };
+    }
+
     function queueInviteResponses(
       insertedIds: string[],
       deliveryMode: "online" | "offline" = "online",
+      venue: string | null = VENUE,
     ) {
       state.responses = [
-        // 1. blacklist guard — roles.select().eq("role","blacklisted").in(ids) → none
+        // 1. the session's format
+        sessionMode(deliveryMode),
+        // 2. in person only — sessions.select("location"): the venue the
+        //    invitation has to carry
+        ...(deliveryMode === "offline" ? [{ data: { location: venue }, error: null }] : []),
+        // 3. blacklist guard — roles.select().eq("role","blacklisted").in(ids) → none
         { data: [], error: null },
-        // 2. blacklist + active-status guard —
+        // 4. blacklist + active-status guard —
         //    jury_participants.select("user_id, blacklisted_at, reactivation_status").in(ids)
         //    → nobody blacklisted, everybody an active panel member
         {
@@ -590,7 +631,7 @@ describe("Sessions", () => {
           })),
           error: null,
         },
-        // 3. .from("session_participants").insert(rows).select() — returns inserted rows
+        // 5. .from("session_participants").insert(rows).select() — returns inserted rows
         {
           data: insertedIds.map((pid, i) => ({
             id: `invite-${i + 1}`,
@@ -599,16 +640,9 @@ describe("Sessions", () => {
           })),
           error: null,
         },
-        // 4. .from("session_cases").select(...).eq() — used to format email time
+        // 6. .from("session_cases").select(...).eq() — used to format email time
         {
           data: [{ start_time: "14:00:00", end_time: "15:00:00" }],
-          error: null,
-        },
-        // 5. .from("session_cases").select("cases(delivery_mode)").eq() — the
-        //    session's format, which decides the rate quoted in the invite, the
-        //    JSON-LD location, and whether a waitlist is mentioned at all.
-        {
-          data: [{ cases: { delivery_mode: deliveryMode } }],
           error: null,
         },
       ];
@@ -729,10 +763,85 @@ describe("Sessions", () => {
       expect(html).toMatch(/will not be paid/i);
     });
 
+    it("An in-person invite says where the venue is before anyone accepts", async () => {
+      // Whether someone can attend depends on where the room is, so the address
+      // goes out with the invitation — not "once you accept".
+      queueInviteResponses(["p-1"], "offline");
+      state.participantEmails.set("p-1", "p-1@example.com");
+
+      const result = await inviteParticipants("session-1", ["p-1"], "2026-06-15");
+
+      expect(result.ok).toBe(true);
+      const { html } = sendEmailSpy.mock.calls[0][0];
+      expect(html).toContain("Heritage Plaza Office Suites");
+      expect(html).toContain("402 Simonton St, Conroe, TX 77301");
+      expect(html).toContain(
+        `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(VENUE)}`,
+      );
+      // The calendar entry carries the address too.
+      expect(html).toContain('"address": "Heritage Plaza Office Suites\\n402 Simonton St, Conroe, TX 77301"');
+      expect(html).not.toMatch(/once you accept/i);
+      expect(html).not.toMatch(/address to follow|to be confirmed/i);
+    });
+
+    it("Escapes the venue address in the invitation", async () => {
+      // The address is typed by an admin, and lands in both the HTML body and
+      // the JSON-LD script block.
+      queueInviteResponses(["p-1"], "offline", 'Room 4 <script>alert("x")</script> & Co');
+      state.participantEmails.set("p-1", "p-1@example.com");
+
+      await inviteParticipants("session-1", ["p-1"], "2026-06-15");
+
+      const { html } = sendEmailSpy.mock.calls[0][0];
+      expect(html).not.toContain("<script>alert");
+      expect(html).toContain("Room 4 &lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt; &amp; Co");
+    });
+
+    it("An in-person session with no venue address invites nobody", async () => {
+      queueInviteResponses(["p-1"], "offline", null);
+      state.participantEmails.set("p-1", "p-1@example.com");
+
+      const result = await inviteParticipants("session-1", ["p-1"], "2026-06-15");
+
+      expect(result.ok).toBe(false);
+      expect(result.invited).toBe(0);
+      expect(result.error).toMatch(/no venue address/i);
+      const insertCall = state.captured.find(
+        (c) => c.table === "session_participants" && c.ops.some((o) => o.op === "insert")
+      );
+      expect(insertCall).toBeUndefined();
+      expect(sendEmailSpy).not.toHaveBeenCalled();
+    });
+
+    it("A blank venue address counts as no address", async () => {
+      queueInviteResponses(["p-1"], "offline", "   \n  ");
+      state.participantEmails.set("p-1", "p-1@example.com");
+
+      const result = await inviteParticipants("session-1", ["p-1"], "2026-06-15");
+
+      expect(result.ok).toBe(false);
+      expect(result.error).toMatch(/no venue address/i);
+      expect(sendEmailSpy).not.toHaveBeenCalled();
+    });
+
+    it("An online invite needs no venue address", async () => {
+      // No sessions.location read is queued: an online session must not even
+      // look for one, let alone refuse without it.
+      queueInviteResponses(["p-1"], "online");
+      state.participantEmails.set("p-1", "p-1@example.com");
+
+      const result = await inviteParticipants("session-1", ["p-1"], "2026-06-15");
+
+      expect(result.ok).toBe(true);
+      expect(state.captured.some((c) => c.table === "sessions")).toBe(false);
+      expect(sendEmailSpy).toHaveBeenCalledTimes(1);
+    });
+
     it("Drops blacklisted invitees (roles + blacklisted_at) and only invites the rest", async () => {
       // bl-role is blacklisted via the roles table, bl-flag via jury_participants.blacklisted_at.
       const invitees = ["p-1", "bl-role", "p-3", "bl-flag"];
       state.responses = [
+        sessionMode(), // the session's format: online, so no venue is read
         // 1. roles guard → bl-role is blacklisted
         { data: [{ user_id: "bl-role" }], error: null },
         // 2. jury_participants guard → bl-flag has a blacklisted_at timestamp.
@@ -780,6 +889,7 @@ describe("Sessions", () => {
 
     it("Inserts nothing when every invitee is blacklisted", async () => {
       state.responses = [
+        sessionMode(), // the session's format: online, so no venue is read
         { data: [{ user_id: "bl-1" }], error: null }, // roles guard
         { data: [], error: null }, // jury_participants guard
       ];
@@ -800,6 +910,7 @@ describe("Sessions", () => {
       // whose user never signed up fails with 23503, and that used to take the
       // whole batch down: ten selected, zero invited, opaque 500.
       state.responses = [
+        sessionMode(), // the session's format: online, so no venue is read
         { data: [], error: null }, // roles guard
         {
           data: [
@@ -840,6 +951,7 @@ describe("Sessions", () => {
       // the rest of the selection goes out untouched.
       state.noLoginIds = ["p-nologin"];
       state.responses = [
+        sessionMode(), // the session's format: online, so no venue is read
         { data: [], error: null }, // roles guard
         {
           data: [
@@ -881,6 +993,7 @@ describe("Sessions", () => {
     it("Inserts nothing when no selected participant has a login account", async () => {
       state.noLoginIds = ["p-nologin"];
       state.responses = [
+        sessionMode(), // the session's format: online, so no venue is read
         { data: [], error: null }, // roles guard
         {
           data: [
@@ -909,6 +1022,7 @@ describe("Sessions", () => {
       // skip that person's invite email: row created, no mail, only a log line.
       // participantEmails is left empty, so a getUserById fallback would find none.
       state.responses = [
+        sessionMode(), // the session's format: online, so no venue is read
         { data: [], error: null },
         {
           data: [
@@ -930,6 +1044,7 @@ describe("Sessions", () => {
 
     it("Reports the all-skipped case as a failure, not a silent success", async () => {
       state.responses = [
+        sessionMode(), // the session's format: online, so no venue is read
         { data: [], error: null },
         {
           data: [
@@ -953,6 +1068,7 @@ describe("Sessions", () => {
       // "we have no current confirmation they still participate".
       const invitees = ["active-1", "pending-1", "no-1", "active-2"];
       state.responses = [
+        sessionMode(), // the session's format: online, so no venue is read
         // 1. roles guard → nobody blacklisted
         { data: [], error: null },
         // 2. blacklist + active-status guard
@@ -998,6 +1114,7 @@ describe("Sessions", () => {
 
     it("Inserts nothing when no invitee is an active panel member", async () => {
       state.responses = [
+        sessionMode(), // the session's format: online, so no venue is read
         { data: [], error: null }, // roles guard
         {
           data: [

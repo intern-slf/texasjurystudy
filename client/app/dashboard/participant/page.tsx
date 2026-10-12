@@ -27,6 +27,8 @@ import { unstable_noStore as noStore } from "next/cache";
 /** Shape of the nested session on a pending invite (see getPendingInvites). */
 type InviteSession = {
   session_date?: string | null;
+  /** The venue of an in-person session. */
+  location?: string | null;
   session_cases?: {
     start_time?: string | null;
     end_time?: string | null;
@@ -326,6 +328,11 @@ export default async function ParticipantDashboard({
                         </p>
                       );
                     })()}
+                    {isOffline(offerMode) && session?.location && (
+                      <p className="mt-1 text-sm text-slate-500 whitespace-pre-line">
+                        Where: <span className="font-medium text-slate-700">{session.location}</span>
+                      </p>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-2">
