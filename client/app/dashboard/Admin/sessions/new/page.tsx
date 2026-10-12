@@ -376,7 +376,6 @@ export default async function NewSessionPage({
         sessionId,
         selectedCases.map((c) => c.caseId),
         date,
-        selectedParticipants.length
       );
     }
 

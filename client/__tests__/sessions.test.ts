@@ -157,6 +157,9 @@ const sendWaitlistConfirmationEmailSpy = vi.fn(async () => undefined);
 const sendWaitlistZoomLinkEmailSpy = vi.fn(async () => undefined);
 const sendWaitlistCalledInEmailSpy = vi.fn(async () => undefined);
 const sendWaitlistWaitedOutEmailSpy = vi.fn(async () => undefined);
+const sendSessionCreatedEmailSpy = vi.fn<
+  (...args: Parameters<(typeof import("@/lib/mail"))["sendSessionCreatedEmail"]>) => Promise<void>
+>(async () => undefined);
 
 vi.mock("@/lib/mail", async (importOriginal) => ({
   // The real block, not a stand-in: the invitation tests below check that the
@@ -164,7 +167,9 @@ vi.mock("@/lib/mail", async (importOriginal) => ({
   venueAddressBlock: (await importOriginal<typeof import("@/lib/mail")>()).venueAddressBlock,
   sendEmail: (args: SendEmailArgs) => sendEmailSpy(args),
   sendRescheduleEmail: vi.fn(async () => undefined),
-  sendSessionCreatedEmail: vi.fn(async () => undefined),
+  sendSessionCreatedEmail: (
+    ...args: Parameters<(typeof import("@/lib/mail"))["sendSessionCreatedEmail"]>
+  ) => sendSessionCreatedEmailSpy(...args),
   sendSessionCompletedEmail: vi.fn(async () => undefined),
   sendPresenceConfirmedEmail: vi.fn(async () => undefined),
   sendPresenceDeclinedEmail: vi.fn(async () => undefined),
@@ -217,6 +222,7 @@ describe("Sessions", () => {
     sendWaitlistZoomLinkEmailSpy.mockClear();
     sendWaitlistCalledInEmailSpy.mockClear();
     sendWaitlistWaitedOutEmailSpy.mockClear();
+    sendSessionCreatedEmailSpy.mockClear();
   });
 
   // -------------------------------------------------------------------------
@@ -2230,6 +2236,93 @@ describe("Sessions", () => {
       };
       // Day after the 2999-06-15 session ends, not the old date.
       expect(String(upd.payload.eligible_after_at)).toContain("2999-06-16");
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // notifyRequesteesSessionCreated — the firm's "Session Scheduled" email
+  // -------------------------------------------------------------------------
+  describe("notifyRequesteesSessionCreated", () => {
+    let notifyRequesteesSessionCreated: (typeof import("@/lib/actions/session"))["notifyRequesteesSessionCreated"];
+    beforeAll(async () => {
+      ({ notifyRequesteesSessionCreated } = await import("@/lib/actions/session"));
+    });
+
+    // session_cases times are stored in UTC and shown in Central time. Built
+    // the same way as the action so the test doesn't depend on whether today
+    // falls in daylight saving time.
+    const ct = (utc: string) => {
+      const [h, m] = utc.split(":");
+      const d = new Date();
+      d.setUTCHours(parseInt(h), parseInt(m), 0, 0);
+      return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Chicago" });
+    };
+
+    /** Online cases, so the action reads `cases` then `session_cases` and nothing else. */
+    const queue = (
+      cases: Array<{ id: string; title: string; user_id: string }>,
+      times: Array<{ case_id: string; start_time: string; end_time: string }>,
+    ) => [
+      { data: cases.map((c) => ({ ...c, delivery_mode: "online" })), error: null },
+      { data: times, error: null },
+    ];
+
+    it("tells each firm when its own case runs, not just the whole session", async () => {
+      // Two firms' cases share one session. Each firm must be told its own
+      // slot; the session's overall span alone would point firm 2 at firm 1's start.
+      state.participantEmails = new Map([
+        ["firm-1", "one@firm.test"],
+        ["firm-2", "two@firm.test"],
+      ]);
+      state.responses = queue(
+        [
+          { id: "case-A", title: "Smith v. Jones", user_id: "firm-1" },
+          { id: "case-B", title: "Doe v. Roe", user_id: "firm-2" },
+        ],
+        [
+          { case_id: "case-A", start_time: "14:00:00", end_time: "16:00:00" },
+          { case_id: "case-B", start_time: "19:00:00", end_time: "21:00:00" },
+        ],
+      );
+
+      await notifyRequesteesSessionCreated("s-1", ["case-A", "case-B"], "2026-11-20");
+
+      const sent = new Map(sendSessionCreatedEmailSpy.mock.calls.map((c) => [c[0], c]));
+      expect(sent.size).toBe(2);
+      const [, titlesOne, , sessionTime, timesOne] = sent.get("one@firm.test")!;
+      const [, titlesTwo, , , timesTwo] = sent.get("two@firm.test")!;
+      expect(titlesOne).toEqual(["Smith v. Jones"]);
+      expect(timesOne).toEqual([`${ct("14:00")} – ${ct("16:00")} CT`]);
+      expect(titlesTwo).toEqual(["Doe v. Roe"]);
+      expect(timesTwo).toEqual([`${ct("19:00")} – ${ct("21:00")} CT`]);
+      // The session time is still the span of the whole session.
+      expect(sessionTime).toBe(`${ct("14:00")} – ${ct("21:00")} CT`);
+    });
+
+    it("gives a firm with two cases in the session one time per case, in title order", async () => {
+      state.participantEmails = new Map([["firm-1", "one@firm.test"]]);
+      state.responses = queue(
+        [
+          { id: "case-A", title: "Smith v. Jones", user_id: "firm-1" },
+          { id: "case-B", title: "Doe v. Roe", user_id: "firm-1" },
+        ],
+        [
+          // Returned in the opposite order to the cases, so pairing by
+          // position instead of by case_id would swap the times.
+          { case_id: "case-B", start_time: "19:00:00", end_time: "21:00:00" },
+          { case_id: "case-A", start_time: "14:00:00", end_time: "16:00:00" },
+        ],
+      );
+
+      await notifyRequesteesSessionCreated("s-1", ["case-A", "case-B"], "2026-11-20");
+
+      expect(sendSessionCreatedEmailSpy).toHaveBeenCalledTimes(1);
+      const [, titles, , , times] = sendSessionCreatedEmailSpy.mock.calls[0];
+      expect(titles).toEqual(["Smith v. Jones", "Doe v. Roe"]);
+      expect(times).toEqual([
+        `${ct("14:00")} – ${ct("16:00")} CT`,
+        `${ct("19:00")} – ${ct("21:00")} CT`,
+      ]);
     });
   });
 
