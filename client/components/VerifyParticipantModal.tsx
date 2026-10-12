@@ -25,6 +25,7 @@ type Participant = {
   date_of_birth: string | null;
   entry_date: string | null;
   driver_license_number: string | null;
+  paypal_username: string | null;
   idSignedUrl: string | null;
 };
 
@@ -155,6 +156,19 @@ export default function VerifyParticipantModal({
                 value={[p.city, p.state].filter(Boolean).join(", ")}
               />
               <DetailRow label="DL / ID #" value={p.driver_license_number} />
+              {/* The signup form shows its own "@" prefix, but some people type
+                  one anyway or enter their PayPal email, so only add it when
+                  the value has none. */}
+              <DetailRow
+                label="PayPal"
+                value={
+                  p.paypal_username
+                    ? p.paypal_username.includes("@")
+                      ? p.paypal_username
+                      : `@${p.paypal_username}`
+                    : null
+                }
+              />
             </div>
 
             {/* ====== ACTIONS ====== */}

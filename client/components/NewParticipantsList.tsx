@@ -27,6 +27,7 @@ type Participant = {
   date_of_birth: string | null;
   entry_date: string | null;
   driver_license_number: string | null;
+  paypal_username: string | null;
   idSignedUrl: string | null;
 };
 
