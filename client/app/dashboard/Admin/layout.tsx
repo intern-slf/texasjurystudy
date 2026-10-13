@@ -48,6 +48,7 @@ export default async function AdminLayout({
     { count: newParticipantsCount },
     { count: blacklistedParticipantsCount },
     { count: requesteesCount },
+    { count: timeSlotsCount },
   ] = await Promise.all([
     // Only the statuses the badge counts below care about — avoids transferring
     // the entire cases table (rejected/other rows) just to count two badges.
@@ -86,6 +87,12 @@ export default async function AdminLayout({
       .from("roles")
       .select("*", { count: "exact", head: true })
       .eq("role", "requestee"),
+
+    // Count requestee time slots that haven't started yet
+    supabase
+      .from("requestee_time_slots")
+      .select("*", { count: "exact", head: true })
+      .gte("starts_at", new Date().toISOString()),
   ]);
 
   // Match the Approved Cases page filter: include "approved" + "submitted",
@@ -112,6 +119,7 @@ export default async function AdminLayout({
     newParticipants: newParticipantsCount || 0,
     blacklistedParticipants: blacklistedParticipantsCount || 0,
     requestees: requesteesCount || 0,
+    timeSlots: timeSlotsCount || 0,
   };
 
   return (

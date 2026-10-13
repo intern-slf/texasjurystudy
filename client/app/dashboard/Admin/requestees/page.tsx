@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import BackButton from "@/components/BackButton";
+import AddTimeSlotsButton from "@/components/AddTimeSlotsButton";
 import RequesteesTable, {
   type RequesteeCase,
   type RequesteeRow,
@@ -151,7 +152,10 @@ export default async function RequesteesPage() {
           </p>
         </div>
 
-        <BackButton href="/dashboard/Admin" label="Back to Cases" />
+        <div className="flex flex-wrap items-center gap-3">
+          <AddTimeSlotsButton />
+          <BackButton href="/dashboard/Admin" label="Back to Cases" />
+        </div>
       </div>
 
       {/* ================= CONTENT ================= */}

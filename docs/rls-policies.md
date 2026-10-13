@@ -407,6 +407,24 @@ Confirmed unused (0 code references, 0 rows, no FKs/functions/views depending on
 
 ---
 
+### 🟩 `requestee_time_slots` — RLS enabled (2026-10-14)
+
+Times an admin opens for law firms to book an online focus group (`20261014_requestee_time_slots.sql`).
+
+**Code access:**
+- Admin: the Time Slots page (`client/app/dashboard/Admin/requestees/time-slots/page.tsx`) reads one month. The sidebar count in `client/app/dashboard/Admin/layout.tsx` reads too. `client/lib/actions/requesteeTimeSlots.ts` inserts and deletes. All three use the signed-in admin's client, so the policy below applies, and the actions call `requireAdmin()` first.
+- Requestees: none yet. When booking arrives, firms will get open slots from server actions, never from this table, so one firm can't see which slots another firm took.
+
+**Policies (created by the migration):**
+
+| Policy | Cmd | Role | USING | WITH CHECK |
+|---|---|---|---|---|
+| admin can manage requestee_time_slots | ALL | authenticated | `(SELECT public.is_admin())` | `(SELECT public.is_admin())` |
+
+**Grants:** written out in the migration, because Supabase stops granting new `public` tables to `anon`, `authenticated` and `service_role` automatically on 2026-10-30. `authenticated` and `service_role` have SELECT, INSERT, UPDATE and DELETE. `anon` has nothing.
+
+---
+
 ## Storage buckets (added 2026-06-09)
 
 The original audit covered **tables only**. Storage was first dumped 2026-06-09 — see F23. RLS lives on `storage.objects` (single table backing all buckets); per-bucket scoping is done inside each policy via `bucket_id = '<name>'`. Policies are **permissive/OR'd**, so a broad `bucket_id`-only policy shadows any narrower owner/role policy on the same bucket.
