@@ -7,6 +7,7 @@ import { unstable_noStore as noStore, revalidatePath } from "next/cache";
 import { getPendingInvites } from "@/lib/participant/getPendingInvites";
 import { updateInviteStatus } from "@/lib/participant/updateInviteStatus";
 import { hasSessionStarted } from "@/lib/participant/sessionStart";
+import { formatSessionTime } from "@/lib/timezone";
 import {
   WAITLISTED_STATUS,
   OFFLINE_ARRIVE_EARLY_MINUTES,
@@ -65,12 +66,7 @@ export default async function ParticipantSessionsPage({
     .eq("participant_id", participant.user_id)
     .in("invite_status", ["accepted", WAITLISTED_STATUS]);
 
-  const fmtCt = (t: string) => {
-    const [h, m] = t.split(":");
-    const d = new Date();
-    d.setUTCHours(parseInt(h), parseInt(m), 0, 0);
-    return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Chicago" });
-  };
+  const fmtCt = (date: string, t: string) => formatSessionTime(date, t, "America/Chicago");
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -108,7 +104,7 @@ export default async function ParticipantSessionsPage({
       const starts = sessionCases.map((c) => c.start_time).filter((v): v is string => Boolean(v)).sort();
       const ends   = sessionCases.map((c) => c.end_time).filter((v): v is string => Boolean(v)).sort();
       const timeRange = starts.length && ends.length
-        ? `${fmtCt(starts[0])} – ${fmtCt(ends[ends.length - 1])} (CT)`
+        ? `${fmtCt(date, starts[0])} – ${fmtCt(date, ends[ends.length - 1])} (CT)`
         : "TBD";
 
       const caseTitles = sessionCases
@@ -242,7 +238,7 @@ export default async function ParticipantSessionsPage({
             const starts = sessionCases.map((c) => c.start_time).filter((v): v is string => Boolean(v)).sort();
             const ends = sessionCases.map((c) => c.end_time).filter((v): v is string => Boolean(v)).sort();
             const timeRange = starts.length && ends.length
-              ? `${fmtCt(starts[0])} – ${fmtCt(ends[ends.length - 1])} (CT)`
+              ? `${fmtCt(date, starts[0])} – ${fmtCt(date, ends[ends.length - 1])} (CT)`
               : "TBD";
             const displayDate = date
               ? new Date(date).toLocaleDateString("en-US", {
