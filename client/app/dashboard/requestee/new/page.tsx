@@ -18,6 +18,12 @@ import { catchmentSentence } from "@/lib/constants/offline-catchment";
 import { CaseFilters } from "@/lib/filter-utils";
 import { ChevronDown, ChevronUp, Play } from "lucide-react";
 import { FOCUS_GROUP_VIDEOS } from "@/lib/focus-group-videos";
+import Link from "next/link";
+import TimeSlotPicker from "@/components/TimeSlotPicker";
+import { chooseTimeSlot, listOpenTimeSlots } from "@/lib/actions/requesteeSlotBooking";
+import { SUPPORT_EMAIL } from "@/lib/legal-constants";
+import { describeSlot, type TimeSlot } from "@/lib/requesteeTimeSlots";
+import { formatDeadline, slotFitsHours } from "@/lib/slotBooking";
 
 function VideoPlayer({ url, className = "" }: { url: string; className?: string }) {
   if (!url) {
@@ -171,6 +177,30 @@ export default function NewCasePage() {
   const [showCountySuggestions, setShowCountySuggestions] = useState(false);
   const countyRef = useRef<HTMLDivElement>(null);
 
+  // The admin's open time slots, for an online focus group. A picked slot is
+  // booked straight after the case is saved.
+  const [openSlots, setOpenSlots] = useState<TimeSlot[] | null>(null);
+  const [slotsError, setSlotsError] = useState<string | null>(null);
+  const [slotId, setSlotId] = useState<string | null>(null);
+  const [booking, setBooking] = useState<
+    { ok: true; slot: TimeSlot; paid: boolean; dueAt: string | null } | { ok: false; error: string } | null
+  >(null);
+  const hoursForSlot = form.hours_requested ? Number(form.hours_requested) : null;
+  const pickedSlot = openSlots?.find((s) => s.id === slotId) ?? null;
+  // Slots are for online focus groups; picking one replaces the timing questions.
+  const usingSlot = form.delivery_mode !== "offline" && !!pickedSlot;
+
+  useEffect(() => {
+    listOpenTimeSlots()
+      .then((result) => (result.ok ? setOpenSlots(result.slots) : setSlotsError(result.error)))
+      .catch(() => setSlotsError("Couldn't load the available times."));
+  }, []);
+
+  // A slot that no longer fits the hours asked for is unpicked.
+  useEffect(() => {
+    if (pickedSlot && !slotFitsHours(pickedSlot, hoursForSlot)) setSlotId(null);
+  }, [pickedSlot, hoursForSlot]);
+
   useEffect(() => {
     const fn = (e: MouseEvent) => {
       if (countyRef.current && !countyRef.current.contains(e.target as Node)) setShowCountySuggestions(false);
@@ -285,9 +315,10 @@ export default function NewCasePage() {
 
         documentation_type: form.documentation_type, // Now explicitly handled
         status: "current",
-        scheduled_at: form.scheduled_at ? new Date(form.scheduled_at).toISOString() : null,
-        session_completion_timeframe: form.session_completion_timeframe || null,
+        scheduled_at: !usingSlot && form.scheduled_at ? new Date(form.scheduled_at).toISOString() : null,
+        session_completion_timeframe: (!usingSlot && form.session_completion_timeframe) || null,
         deadline_date: (() => {
+          if (usingSlot) return null;
           const daysMap: Record<string, number> = {
             "Within a Week": 7,
             "Within 2 Weeks": 14,
@@ -301,7 +332,7 @@ export default function NewCasePage() {
           d.setHours(23, 59, 0, 0);
           return d.toISOString();
         })(),
-        preferred_day: form.preferred_day || null,
+        preferred_day: (!usingSlot && form.preferred_day) || null,
         filters: softFilterPayload,
         parent_case_id: parentId || null,
       })
@@ -312,6 +343,17 @@ export default function NewCasePage() {
       alert(error.message);
       setLoading(false);
       return;
+    }
+
+    // The case is saved either way. If the time was taken in the meantime, the
+    // firm picks another on the case page; the case is never inserted twice.
+    if (usingSlot && slotId) {
+      setBooking(
+        await chooseTimeSlot(data.id, slotId).catch(() => ({
+          ok: false as const,
+          error: "We couldn't hold that time.",
+        }))
+      );
     }
 
     setCaseId(data.id);
@@ -519,6 +561,40 @@ export default function NewCasePage() {
                   <option value="No">No</option>
                 </select>
               </div>
+              {/* WHEN — one of the admin's open times, for an online focus group */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Pick a time for your focus group</label>
+                {form.delivery_mode === "offline" ? (
+                  <p className="rounded-lg border bg-muted/30 p-3 text-sm text-muted-foreground">
+                    For an in-person focus group, email us at{" "}
+                    <a href={`mailto:${SUPPORT_EMAIL}`} className="font-medium text-primary hover:underline">
+                      {SUPPORT_EMAIL}
+                    </a>{" "}
+                    to arrange a time. You can tell us your preferred timing below.
+                  </p>
+                ) : slotsError ? (
+                  <p className="text-sm text-red-600">{slotsError} You can tell us your preferred timing below.</p>
+                ) : openSlots === null ? (
+                  <p className="text-sm text-muted-foreground">Loading the available times…</p>
+                ) : (
+                  <>
+                    <p className="text-xs text-muted-foreground">
+                      Times are Central Time. We hold the time you pick while we review your case. Payment is due
+                      within one working day; an invoice will follow from our team.
+                    </p>
+                    <TimeSlotPicker
+                      slots={openSlots}
+                      hoursRequested={hoursForSlot}
+                      value={slotId}
+                      onChange={setSlotId}
+                      disabled={loading}
+                    />
+                  </>
+                )}
+              </div>
+
+              {!usingSlot && (
+              <>
               <div className="space-y-2">
                 <label className="text-sm font-medium">When do you need to conduct this focus group?</label>
                 <select
@@ -551,6 +627,8 @@ export default function NewCasePage() {
                   <option value="Sunday">Sunday</option>
                 </select>
               </div>
+              </>
+              )}
 
             </div>
 
@@ -608,6 +686,11 @@ export default function NewCasePage() {
                 <div className="space-y-6 self-start">
                   <div className="space-y-4 bg-card p-6 rounded-2xl border shadow-sm">
                     <label className="text-sm font-bold uppercase tracking-wider text-primary">Scheduling</label>
+                    {usingSlot && pickedSlot ? (
+                      <p className="text-sm text-muted-foreground">
+                        You picked {describeSlot(pickedSlot)} above, so no preferred date is needed.
+                      </p>
+                    ) : (
                     <div className="space-y-2">
                       <label className="text-sm font-medium">Preferable Date</label>
                       <div className="flex gap-2">
@@ -641,6 +724,7 @@ export default function NewCasePage() {
                         </p>
                       )}
                     </div>
+                    )}
                   </div>
 
                   {/* Location filter — hidden, defaults to No Preference (empty arrays) */}
@@ -758,6 +842,31 @@ export default function NewCasePage() {
                 <h2 className="text-3xl font-bold text-green-700">Case Ranking Profile Saved</h2>
                 <p className="text-green-600 mt-2 text-lg">Your attributes are matched. Please upload the required documents to start finding participants.</p>
               </div>
+              {booking &&
+                (booking.ok ? (
+                  <div className="rounded-2xl border border-blue-200 bg-blue-50 p-5 text-left">
+                    <p className="font-semibold text-blue-900">Your time is held: {describeSlot(booking.slot)}</p>
+                    <p className="mt-1 text-sm text-blue-800">
+                      {booking.paid || !booking.dueAt
+                        ? "Payment for this case has been received."
+                        : `Payment is due by ${formatDeadline(booking.dueAt)}. An invoice will follow from our team; if payment hasn't reached us by then, we may release the time.`}
+                    </p>
+                    <p className="mt-1 text-sm text-blue-800">
+                      You can change or cancel it on your case page until we approve the case.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-left">
+                    <p className="font-semibold text-amber-900">Your case is saved, but we couldn&apos;t hold that time.</p>
+                    <p className="mt-1 text-sm text-amber-800">
+                      {booking.error}{" "}
+                      <Link href={`/dashboard/requestee/${caseId}`} className="font-medium underline">
+                        Pick another time on your case page
+                      </Link>
+                      .
+                    </p>
+                  </div>
+                ))}
               <CaseDocumentUploader caseId={caseId} />
 
               {/* Google Drive Link */}
