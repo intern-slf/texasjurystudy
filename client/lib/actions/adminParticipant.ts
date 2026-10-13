@@ -11,6 +11,9 @@ import { markBlacklisted } from "@/lib/participant/blacklist";
 // Every export here is an admin action, and starts with requireAdmin(): as server
 // actions they can be called by anyone signed in, with any participant's id.
 
+// The fields the admin edit form changes, named for the profile-updated email. Also
+// the columns adminUpdateParticipant may write (with "country"), so a field added to
+// EditProfileForm goes here too, or an admin's change to it is dropped.
 const FIELD_LABELS: Record<string, string> = {
     first_name: "First Name",
     last_name: "Last Name",
@@ -43,6 +46,22 @@ const FIELD_LABELS: Record<string, string> = {
     paypal_username: "PayPal Username",
 };
 
+// What adminUpdateParticipant writes. The rest of the row (approval, the blacklist,
+// strikes, the cooldown, reactivation, email, user_id) has its own action or isn't
+// an admin's to set here, and the service role would write it unchecked.
+const EDITABLE_FIELDS = new Set([...Object.keys(FIELD_LABELS), "country"]);
+
+/** A file directly inside this participant's own "<userId>/" folder in id-documents. */
+function isOwnIdPhotoPath(userId: string, path: unknown): boolean {
+    if (typeof path !== "string") return false;
+    // Lower-cased: the form builds the folder from the stored user_id, and the id in
+    // the page's URL may differ in case.
+    const folder = `${userId.toLowerCase()}/`;
+    if (!path.toLowerCase().startsWith(folder)) return false;
+    const name = path.slice(folder.length);
+    return name.length > 0 && !name.includes("/") && name !== "." && name !== "..";
+}
+
 /* =========================
    VERIFY (APPROVE) PARTICIPANT
 ========================= */
@@ -69,6 +88,20 @@ export async function verifyParticipant(userId: string) {
 
 export async function blacklistParticipant(userId: string, reason: string) {
     await requireAdmin();
+
+    // Participants only, as in autoBlacklistIfIneligible: markBlacklisted overwrites
+    // the roles row, so an admin's id (the caller's own included) or a firm's would
+    // lose its access.
+    const { data: target, error: targetError } = await supabaseAdmin
+        .from("roles")
+        .select("role")
+        .eq("user_id", userId)
+        .maybeSingle();
+    if (targetError) throw new Error(targetError.message);
+    if (target?.role === "admin" || target?.role === "requestee") {
+        throw new Error("Only participants can be blacklisted.");
+    }
+
     await markBlacklisted(userId, reason);
     revalidatePath("/dashboard/Admin/participants");
 }
@@ -127,6 +160,17 @@ export async function unblacklistParticipant(userId: string) {
 export async function adminUpdateParticipant(userId: string, payload: Record<string, unknown>) {
     await requireAdmin();
 
+    // Only the fields the edit form owns. It also sends email (unchanged, from the
+    // page-load snapshot) and date_updated (set below), which are dropped here.
+    const updates = Object.fromEntries(
+        Object.entries(payload).filter(([key]) => EDITABLE_FIELDS.has(key))
+    );
+    // The form only sends a photo it has just uploaded to this participant's folder.
+    // Any other path would point their profile at someone else's ID.
+    if ("driver_license_image_url" in updates && !isOwnIdPhotoPath(userId, updates.driver_license_image_url)) {
+        throw new Error("The ID photo must be in this participant's folder.");
+    }
+
     // Fetch current data before updating so we can diff
     const { data: current } = await supabaseAdmin
         .from("jury_participants")
@@ -136,7 +180,7 @@ export async function adminUpdateParticipant(userId: string, payload: Record<str
 
     const { error } = await supabaseAdmin
         .from("jury_participants")
-        .update({ ...payload, date_updated: new Date().toISOString() })
+        .update({ ...updates, date_updated: new Date().toISOString() })
         .eq("user_id", userId);
 
     if (error) throw new Error(error.message);
@@ -147,8 +191,8 @@ export async function adminUpdateParticipant(userId: string, payload: Record<str
     // Notify participant — only list fields whose values actually changed
     try {
         if (current?.email) {
-            const changedFields = Object.keys(payload)
-                .filter((k) => k in FIELD_LABELS && String(payload[k] ?? "") !== String(current[k] ?? ""))
+            const changedFields = Object.keys(updates)
+                .filter((k) => k in FIELD_LABELS && String(updates[k] ?? "") !== String(current[k] ?? ""))
                 .map((k) => FIELD_LABELS[k]);
 
             if (changedFields.length > 0) {

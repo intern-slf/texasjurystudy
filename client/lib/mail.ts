@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import { getMailerAuthToken } from '@/lib/mailerAuth';
 import { MAILING_ADDRESS } from '@/lib/legal-constants';
+import { isHttpUrl } from '@/lib/httpUrl';
 
 // ---------------------------------------------------------------------------
 // Shared email wrapper – provides consistent branded header and footer
@@ -605,7 +606,7 @@ export async function sendApprovalEmail(to: string, caseTitle: string) {
       <tr>
         <td style="padding:16px 20px;">
           <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#1e40af;text-transform:uppercase;letter-spacing:0.08em;">Approved Case</p>
-          <p style="margin:0;font-size:18px;font-weight:700;color:#1e3a8a;">${caseTitle}</p>
+          <p style="margin:0;font-size:18px;font-weight:700;color:#1e3a8a;">${escHtml(caseTitle)}</p>
         </td>
       </tr>
     </table>
@@ -765,7 +766,7 @@ export async function sendRejectionEmail(to: string, caseTitle: string, reason: 
       <tr>
         <td style="padding:16px 20px;">
           <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#991b1b;text-transform:uppercase;letter-spacing:0.08em;">Case</p>
-          <p style="margin:0;font-size:18px;font-weight:700;color:#991b1b;">${caseTitle}</p>
+          <p style="margin:0;font-size:18px;font-weight:700;color:#991b1b;">${escHtml(caseTitle)}</p>
         </td>
       </tr>
     </table>
@@ -774,7 +775,7 @@ export async function sendRejectionEmail(to: string, caseTitle: string, reason: 
       <tr>
         <td style="padding:16px 20px;">
           <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#991b1b;text-transform:uppercase;letter-spacing:0.08em;">Reason for Rejection</p>
-          <p style="margin:0;font-size:14px;color:#1e293b;line-height:1.6;">${reason}</p>
+          <p style="margin:0;font-size:14px;color:#1e293b;line-height:1.6;">${escHtml(reason)}</p>
         </td>
       </tr>
     </table>
@@ -1392,14 +1393,24 @@ export async function sendWaitlistWaitedOutEmail(
 }
 
 // Escape user-supplied text before interpolating into the email HTML (and the
-// pages the email links land on).
+// pages the email links land on). String() so a column that comes back as a
+// number or boolean is shown rather than thrown on.
 export function escHtml(value: string | null | undefined): string {
-  return (value ?? "")
+  return String(value ?? "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}
+
+// A link for an http(s) URL, and escaped plain text for anything else (javascript:,
+// data:, a bare word), so a link typed by a firm can't run script or break out of
+// the attribute. Both the URL and the text are escaped.
+function linkOrText(url: string, style: string, text: string = url): string {
+  return isHttpUrl(url)
+    ? `<a href="${escHtml(url)}" style="${style}">${escHtml(text)}</a>`
+    : escHtml(text);
 }
 
 export interface PresenterCaseInfo {
@@ -1468,7 +1479,7 @@ export async function sendPresenterInfoEmail(
       <tr>
         <td style="padding:16px 20px;">
           <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#1e40af;text-transform:uppercase;letter-spacing:0.08em;">Zoom Meeting Link</p>
-          <a href="${zoomLink}" style="margin:0;font-size:15px;font-weight:600;color:#2563eb;word-break:break-all;">${zoomLink}</a>
+          ${linkOrText(zoomLink, "margin:0;font-size:15px;font-weight:600;color:#2563eb;word-break:break-all;")}
         </td>
       </tr>
     </table>`
@@ -1481,7 +1492,10 @@ export async function sendPresenterInfoEmail(
       </tr>
     </table>`;
 
-  // Cases section — one card per case: name, description, documents, drive links
+  // Cases section — one card per case: name, description, documents, drive links.
+  // Everything in a card comes from the firm (the title, description, file names
+  // and Drive links), and this email goes to whichever address the admin types, so
+  // every value is escaped and only http(s) links are links.
   let casesHtml = "";
   if (cases.length > 0) {
     const caseCards = cases
@@ -1494,7 +1508,7 @@ export async function sendPresenterInfoEmail(
         const docItems = c.documents
           .map(
             (doc) =>
-              `<li style="margin:4px 0;"><a href="${doc.url}" style="font-size:14px;color:#2563eb;word-break:break-all;">${escHtml(doc.name)}</a></li>`,
+              `<li style="margin:4px 0;">${linkOrText(doc.url, "font-size:14px;color:#2563eb;word-break:break-all;", doc.name)}</li>`,
           )
           .join("");
         const docsHtml =
@@ -1505,7 +1519,7 @@ export async function sendPresenterInfoEmail(
         const driveItems = c.driveUrls
           .map(
             (u) =>
-              `<li style="margin:4px 0;"><a href="${u}" style="font-size:14px;color:#2563eb;word-break:break-all;">${u}</a></li>`,
+              `<li style="margin:4px 0;">${linkOrText(u, "font-size:14px;color:#2563eb;word-break:break-all;")}</li>`,
           )
           .join("");
         const caseDriveHtml =
@@ -1541,26 +1555,27 @@ export async function sendPresenterInfoEmail(
     </table>`;
   }
 
-  // Participants table
+  // Participants table. Participants write these fields themselves, so they are
+  // escaped too.
   let participantsHtml = "";
   if (participants.length > 0) {
     const rows = participants
       .map(
         (p, i) => `
       <tr style="background-color:${i % 2 === 0 ? "#ffffff" : "#f8fafc"};">
-        <td style="padding:8px 12px;font-size:13px;color:#1e293b;border-bottom:1px solid #e2e8f0;">${p.first_name} ${p.last_name}</td>
-        <td style="padding:8px 12px;font-size:13px;color:#475569;border-bottom:1px solid #e2e8f0;">${p.email}</td>
+        <td style="padding:8px 12px;font-size:13px;color:#1e293b;border-bottom:1px solid #e2e8f0;">${escHtml(p.first_name)} ${escHtml(p.last_name)}</td>
+        <td style="padding:8px 12px;font-size:13px;color:#475569;border-bottom:1px solid #e2e8f0;">${escHtml(p.email)}</td>
         <td style="padding:8px 12px;font-size:13px;color:#475569;border-bottom:1px solid #e2e8f0;">${p.age ?? "N/A"}</td>
-        <td style="padding:8px 12px;font-size:13px;color:#475569;border-bottom:1px solid #e2e8f0;">${p.gender || "N/A"}</td>
-        <td style="padding:8px 12px;font-size:13px;color:#475569;border-bottom:1px solid #e2e8f0;">${p.race || "N/A"}</td>
-        <td style="padding:8px 12px;font-size:13px;color:#475569;border-bottom:1px solid #e2e8f0;">${p.city || "N/A"}, ${p.county || ""}</td>
-        <td style="padding:8px 12px;font-size:13px;color:#475569;border-bottom:1px solid #e2e8f0;">${p.political_affiliation || "N/A"}</td>
-        <td style="padding:8px 12px;font-size:13px;color:#475569;border-bottom:1px solid #e2e8f0;">${p.education_level || "N/A"}</td>
-        <td style="padding:8px 12px;font-size:13px;color:#475569;border-bottom:1px solid #e2e8f0;">${p.marital_status || "N/A"}</td>
-        <td style="padding:8px 12px;font-size:13px;color:#475569;border-bottom:1px solid #e2e8f0;">${p.currently_employed || "N/A"}</td>
-        <td style="padding:8px 12px;font-size:13px;color:#475569;border-bottom:1px solid #e2e8f0;">${p.family_income || "N/A"}</td>
-        <td style="padding:8px 12px;font-size:13px;color:#475569;border-bottom:1px solid #e2e8f0;">${p.served_on_jury || "N/A"}</td>
-        <td style="padding:8px 12px;font-size:13px;color:#475569;border-bottom:1px solid #e2e8f0;">${p.has_children || "N/A"}</td>
+        <td style="padding:8px 12px;font-size:13px;color:#475569;border-bottom:1px solid #e2e8f0;">${escHtml(p.gender || "N/A")}</td>
+        <td style="padding:8px 12px;font-size:13px;color:#475569;border-bottom:1px solid #e2e8f0;">${escHtml(p.race || "N/A")}</td>
+        <td style="padding:8px 12px;font-size:13px;color:#475569;border-bottom:1px solid #e2e8f0;">${escHtml(p.city || "N/A")}, ${escHtml(p.county)}</td>
+        <td style="padding:8px 12px;font-size:13px;color:#475569;border-bottom:1px solid #e2e8f0;">${escHtml(p.political_affiliation || "N/A")}</td>
+        <td style="padding:8px 12px;font-size:13px;color:#475569;border-bottom:1px solid #e2e8f0;">${escHtml(p.education_level || "N/A")}</td>
+        <td style="padding:8px 12px;font-size:13px;color:#475569;border-bottom:1px solid #e2e8f0;">${escHtml(p.marital_status || "N/A")}</td>
+        <td style="padding:8px 12px;font-size:13px;color:#475569;border-bottom:1px solid #e2e8f0;">${escHtml(p.currently_employed || "N/A")}</td>
+        <td style="padding:8px 12px;font-size:13px;color:#475569;border-bottom:1px solid #e2e8f0;">${escHtml(p.family_income || "N/A")}</td>
+        <td style="padding:8px 12px;font-size:13px;color:#475569;border-bottom:1px solid #e2e8f0;">${escHtml(p.served_on_jury || "N/A")}</td>
+        <td style="padding:8px 12px;font-size:13px;color:#475569;border-bottom:1px solid #e2e8f0;">${escHtml(p.has_children || "N/A")}</td>
       </tr>`
       )
       .join("");

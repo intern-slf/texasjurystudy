@@ -3,9 +3,17 @@
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { sendApprovalEmail, sendRejectionEmail } from "@/lib/mail";
+import { requireAdmin } from "@/lib/requireAdmin";
+import { localToUTC } from "@/lib/timezone";
 import { revalidatePath } from "next/cache";
 
+// Every export here is an admin action, and starts with requireAdmin(): as server
+// actions they can be called by anyone signed in, with any case's id. RLS doesn't stop
+// a firm on its own case, since its login may write that row.
+
 export async function approveCaseAction(caseId: string) {
+  await requireAdmin();
+
   const supabase = await createClient();
 
   const { data: updatedCase, error } = await supabase
@@ -51,6 +59,14 @@ export async function approveCaseAction(caseId: string) {
 }
 
 export async function rejectCaseAction(caseId: string, reason: string) {
+  await requireAdmin();
+
+  // The firm is emailed the reason, so it can't be blank. RejectCaseButton refuses an
+  // empty one too.
+  if (typeof reason !== "string" || !reason.trim()) {
+    throw new Error("A rejection reason is required");
+  }
+
   const supabase = await createClient();
 
   const { data: updatedCase, error } = await supabase
@@ -90,6 +106,45 @@ export async function rejectCaseAction(caseId: string, reason: string) {
       console.error("[rejectCaseAction] No email found for user_id:", updatedCase.user_id);
     }
   }
+
+  revalidatePath("/dashboard/Admin");
+}
+
+/** The Approved tab's "Send": proposes a session time for the firm to confirm. */
+export async function proposeScheduleAction(formData: FormData) {
+  await requireAdmin();
+
+  const caseId = formData.get("caseId") as string;
+  const raw = formData.get("scheduled_at") as string; // "YYYY-MM-DDTHH:MM"
+  const tz = formData.get("tz") as string || "UTC";
+
+  const [datePart, timePart] = raw.split("T");
+  const adminScheduledAt = localToUTC(datePart, timePart, tz);
+
+  const supabase = await createClient();
+
+  await supabase
+    .from("cases")
+    .update({
+      admin_scheduled_at: adminScheduledAt,
+      schedule_status: "pending",
+    })
+    .eq("id", caseId);
+
+  revalidatePath("/dashboard/Admin");
+}
+
+/** The Approved tab's "Unapprove": sends the case back to the Requested queue. */
+export async function unapproveCaseAction(formData: FormData) {
+  await requireAdmin();
+
+  const caseId = formData.get("caseId") as string;
+  const supabase = await createClient();
+
+  await supabase
+    .from("cases")
+    .update({ admin_status: "all" })
+    .eq("id", caseId);
 
   revalidatePath("/dashboard/Admin");
 }

@@ -3,6 +3,7 @@
 import { useState, useEffect, useTransition } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { addDriveLink, deleteDriveLink } from "@/app/dashboard/requestee/actions/caseDriveLinks";
+import { isHttpUrl } from "@/lib/httpUrl";
 
 type Props = {
   caseId: string;
@@ -30,6 +31,7 @@ export default function DriveLinkEditor({ caseId }: Props) {
   const supabase = createClient();
   const [links, setLinks] = useState<DriveLink[]>([]);
   const [input, setInput] = useState("");
+  const [inputError, setInputError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   async function fetchLinks() {
@@ -48,6 +50,12 @@ export default function DriveLinkEditor({ caseId }: Props) {
   function handleAdd() {
     const url = input.trim();
     if (!url) return;
+    // addDriveLink refuses anything but a web link; say so here, where it can be fixed.
+    if (!isHttpUrl(url)) {
+      setInputError("Paste the full link, starting with https://");
+      return;
+    }
+    setInputError(null);
     startTransition(async () => {
       await addDriveLink(caseId, url);
       setInput("");
@@ -111,7 +119,7 @@ export default function DriveLinkEditor({ caseId }: Props) {
           className="input flex-1 text-sm"
           placeholder="https://drive.google.com/..."
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={(e) => { setInput(e.target.value); setInputError(null); }}
           onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAdd(); } }}
           disabled={pending}
         />
@@ -124,6 +132,8 @@ export default function DriveLinkEditor({ caseId }: Props) {
           {pending ? "Saving…" : "Save"}
         </button>
       </div>
+
+      {inputError && <p className="text-xs text-destructive">{inputError}</p>}
 
       <div className="flex items-start gap-1.5 text-xs text-slate-500 leading-relaxed">
         <span className="mt-0.5 shrink-0 w-3.5 h-3.5 rounded-full border border-slate-400 text-slate-400 flex items-center justify-center font-bold text-[9px]">i</span>

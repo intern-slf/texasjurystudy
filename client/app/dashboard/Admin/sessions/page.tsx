@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { requireAdminPage } from "@/lib/requireAdmin";
 import Link from "next/link";
 import BackButton from "@/components/BackButton";
 import {
@@ -267,6 +268,7 @@ export default async function SessionsPage({
 }: {
   searchParams: Promise<{ created?: string; tab?: string }>;
 }) {
+  await requireAdminPage();
   const supabase = await createClient();
   const params = await searchParams;
   const showSuccess = params?.created === "1";

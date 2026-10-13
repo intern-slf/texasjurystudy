@@ -2,6 +2,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { ownsAllCases } from "@/lib/participant/requesteeAccess";
 import { revalidatePath } from "next/cache";
 
 /* =========================
@@ -28,6 +29,14 @@ export async function uploadCaseDocument(
   // record the attestation alongside the document.
   if (!nameAttested) {
     throw new Error("File-name attestation is required before uploading.");
+  }
+
+  // Only onto a case the caller created or is assigned to. Neither the
+  // case_documents INSERT policy nor the storage policy looks at the case, so
+  // without this any login could put a file on another firm's case, where admins
+  // and the presenter email would take it for that firm's evidence.
+  if (!(await ownsAllCases(user.id, [caseId]))) {
+    throw new Error("Case not found or not owned by you");
   }
 
   const fileExt = file.name.split(".").pop();
@@ -58,22 +67,39 @@ export async function uploadCaseDocument(
     });
 
   if (insertError) {
+    // Nothing points at the file without its row, so don't leave it in storage.
+    await supabase.storage.from("case-documents").remove([storagePath]);
     throw insertError;
   }
 
   revalidatePath(`/dashboard/requestee`);
 }
 
-export async function deleteCaseDocument(documentId: string, storagePath: string) {
+/* =========================
+   DELETE DOCUMENT
+   The browser names the document, never a path: the file removed is the one on
+   the caller's own document row.
+   ========================= */
+export async function deleteCaseDocument(documentId: string) {
   const supabase = await createClient();
 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Unauthorized");
 
+  const { data: doc, error: docError } = await supabase
+    .from("case_documents")
+    .select("storage_path")
+    .eq("id", documentId)
+    .eq("uploaded_by", user.id)
+    .maybeSingle();
+
+  if (docError) throw docError;
+  if (!doc) throw new Error("Document not found");
+
   // 1️⃣ Delete from storage
   const { error: storageError } = await supabase.storage
     .from("case-documents")
-    .remove([storagePath]);
+    .remove([doc.storage_path]);
 
   if (storageError) throw storageError;
 
@@ -91,16 +117,29 @@ export async function deleteCaseDocument(documentId: string, storagePath: string
 
 /* =========================
    READ / DOWNLOAD DOCUMENT
+   Signs only the file of a document on a case the caller owns, again named by
+   the document rather than by a path.
    ========================= */
-export async function getCaseDocumentUrl(storagePath: string) {
+export async function getCaseDocumentUrl(documentId: string) {
   const supabase = await createClient();
 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Unauthorized");
 
+  const { data: doc, error: docError } = await supabase
+    .from("case_documents")
+    .select("case_id, storage_path")
+    .eq("id", documentId)
+    .maybeSingle();
+
+  if (docError) throw docError;
+  if (!doc || !(await ownsAllCases(user.id, [doc.case_id]))) {
+    throw new Error("Document not found");
+  }
+
   const { data, error } = await supabase.storage
     .from("case-documents")
-    .createSignedUrl(storagePath, 60 * 5); // 5 minutes
+    .createSignedUrl(doc.storage_path, 60 * 5); // 5 minutes
 
   if (error) throw error;
 

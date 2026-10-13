@@ -28,6 +28,8 @@ type CapturedCall = {
   table: string;
   ops: CapturedOp[];
   eqs: Array<[string, unknown]>;
+  // Every other filter, as [method, ...args]: in, is, not, or.
+  filters: unknown[][];
 };
 
 const serverState: {
@@ -37,12 +39,22 @@ const serverState: {
   captured: CapturedCall[];
   // RLS-style: when true, the next update/insert/delete returns an error
   rlsBlock: boolean;
+  // The caller's own roles row, as requireAdmin reads it. Answered outside the
+  // responses queue, so the positive tests keep their queued case rows.
+  role: string | null;
 } = {
   user: null,
   responses: [],
   captured: [],
   rlsBlock: false,
+  role: null,
 };
+
+/** Signs the test in as an admin, which the adminCase actions need. */
+function asAdmin() {
+  serverState.user = { id: "admin-1" };
+  serverState.role = "admin";
+}
 
 function nextResponse(): { data: unknown; error: unknown } {
   if (serverState.rlsBlock) {
@@ -57,7 +69,7 @@ function makeServerClient() {
       getUser: vi.fn(async () => ({ data: { user: serverState.user } })),
     },
     from: vi.fn((table: string) => {
-      const captured: CapturedCall = { table, ops: [], eqs: [] };
+      const captured: CapturedCall = { table, ops: [], eqs: [], filters: [] };
       serverState.captured.push(captured);
 
       const builder: Record<string, unknown> = {};
@@ -81,9 +93,20 @@ function makeServerClient() {
         captured.eqs.push([col, val]);
         return builder;
       });
-      builder.in = vi.fn(() => builder);
+      for (const method of ["in", "is", "not", "or"]) {
+        builder[method] = vi.fn((...args: unknown[]) => {
+          captured.filters.push([method, ...args]);
+          return builder;
+        });
+      }
       builder.order = vi.fn(() => builder);
+      builder.limit = vi.fn(() => builder);
       builder.single = vi.fn(async () => nextResponse());
+      builder.maybeSingle = vi.fn(async () =>
+        table === "roles"
+          ? { data: serverState.role ? { role: serverState.role } : null, error: null }
+          : nextResponse()
+      );
       // Make the chain awaitable without an explicit terminal (PostgrestBuilder
       // implements PromiseLike — production code relies on this).
       (builder as { then: unknown }).then = (
@@ -150,6 +173,7 @@ describe("Cases", () => {
     serverState.responses = [];
     serverState.captured = [];
     serverState.rlsBlock = false;
+    serverState.role = null;
     adminState.userEmail = null;
     adminState.authError = null;
     sendApprovalEmailSpy.mockClear();
@@ -275,6 +299,7 @@ describe("Cases", () => {
     beforeAll(async () => {
       ({ approveCaseAction } = await import("@/lib/actions/adminCase"));
     });
+    beforeEach(() => asAdmin());
 
     it("Updates admin_status", async () => {
       serverState.responses = [
@@ -317,14 +342,23 @@ describe("Cases", () => {
       );
     });
 
-    it("Non-admin blocked", async () => {
-      // A non-admin caller is blocked at the database boundary by RLS — the
-      // update returns an error and the action propagates it.
-      serverState.rlsBlock = true;
+    it("Non-admin blocked, even the firm that owns the case", async () => {
+      // RLS doesn't stop this one: "user can update own cases" lets a firm's
+      // login write its own row, admin_status included. So the action refuses
+      // anyone but an admin before the update and before the email.
+      serverState.user = { id: "req-1" };
+      serverState.responses = [
+        { data: { title: "Own case", user_id: "req-1", filters: {}, hours_requested: 3 }, error: null },
+      ];
+      adminState.userEmail = "req-1@example.com";
+      for (const role of ["requestee", "participant", "blacklisted", null]) {
+        serverState.role = role;
+        await expect(approveCaseAction("case-own")).rejects.toThrow("Not authorized");
+      }
+      serverState.user = null;
+      await expect(approveCaseAction("case-own")).rejects.toThrow("Not authenticated");
 
-      await expect(approveCaseAction("case-X")).rejects.toMatchObject({
-        code: "42501",
-      });
+      expect(serverState.captured.filter((c) => c.table !== "roles")).toEqual([]);
       expect(sendApprovalEmailSpy).not.toHaveBeenCalled();
     });
   });
@@ -337,6 +371,7 @@ describe("Cases", () => {
     beforeAll(async () => {
       ({ rejectCaseAction } = await import("@/lib/actions/adminCase"));
     });
+    beforeEach(() => asAdmin());
 
     it("Updates status", async () => {
       serverState.responses = [
@@ -389,12 +424,31 @@ describe("Cases", () => {
       );
     });
 
-    it("Non-admin blocked", async () => {
-      serverState.rlsBlock = true;
+    it("Non-admin blocked, even the firm that owns the case", async () => {
+      // Otherwise a firm could reject its own case with a reason of its own
+      // choosing, and have support@ email it that text, as often as it liked.
+      serverState.user = { id: "req-1" };
+      serverState.responses = [{ data: { title: "Own case", user_id: "req-1" }, error: null }];
+      adminState.userEmail = "req-1@example.com";
+      for (const role of ["requestee", "participant", "blacklisted", null]) {
+        serverState.role = role;
+        await expect(rejectCaseAction("case-own", "<a href=x>")).rejects.toThrow("Not authorized");
+      }
+      serverState.user = null;
+      await expect(rejectCaseAction("case-own", "<a href=x>")).rejects.toThrow("Not authenticated");
 
-      await expect(
-        rejectCaseAction("case-Q", "any reason")
-      ).rejects.toMatchObject({ code: "42501" });
+      expect(serverState.captured.filter((c) => c.table !== "roles")).toEqual([]);
+      expect(sendRejectionEmailSpy).not.toHaveBeenCalled();
+    });
+
+    it("Refuses a blank reason before writing or emailing", async () => {
+      serverState.responses = [{ data: { title: "Case Q", user_id: "req-9" }, error: null }];
+      adminState.userEmail = "q@example.com";
+
+      for (const reason of ["", "   ", undefined as unknown as string]) {
+        await expect(rejectCaseAction("case-Q", reason)).rejects.toThrow(/reason is required/);
+      }
+      expect(serverState.captured.filter((c) => c.table !== "roles")).toEqual([]);
       expect(sendRejectionEmailSpy).not.toHaveBeenCalled();
     });
   });
@@ -596,133 +650,240 @@ describe("Cases", () => {
   });
 
   // -------------------------------------------------------------------------
-  // confirm-schedule.test.ts
-  //
-  // respondToSchedule is the inline action at app/dashboard/requestee/page.tsx:250.
+  // The firm's own case forms — real actions in
+  // app/dashboard/requestee/actions/caseUpdates.ts. Each acts only on a case in
+  // the state its form is shown for, checked in the UPDATE itself.
   // -------------------------------------------------------------------------
+  const form = (fields: Record<string, string>) => {
+    const fd = new FormData();
+    for (const [key, value] of Object.entries(fields)) fd.set(key, value);
+    return fd;
+  };
+
+  const caseUpdates = () =>
+    serverState.captured.filter((c) => c.table === "cases" && c.ops.some((o) => o.op === "update"));
+
+  const updatePayload = (call: CapturedCall) =>
+    (call.ops.find((o) => o.op === "update") as { op: "update"; payload: Record<string, unknown> }).payload;
+
   describe("confirm-schedule.test.ts", () => {
-    async function respondToSchedule(
-      caseId: string,
-      response: "accepted" | "rejected"
-    ) {
-      const { createClient } = await import("@/lib/supabase/server");
-      const supabase = await createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const updatePayload: Record<string, string | null> = {
-        schedule_status: response,
-      };
-      if (response === "accepted") {
-        const { data: caseData } = await supabase
-          .from("cases")
-          .select("admin_scheduled_at")
-          .eq("id", caseId)
-          .single();
-        updatePayload.scheduled_at =
-          (caseData as { admin_scheduled_at: string | null } | null)
-            ?.admin_scheduled_at ?? null;
-      }
-      await supabase
-        .from("cases")
-        .update(updatePayload)
-        .eq("id", caseId)
-        .eq("user_id", user.id);
-    }
-
-    it("pending → accepted", async () => {
+    let respondToSchedule: (typeof import("@/app/dashboard/requestee/actions/caseUpdates"))["respondToSchedule"];
+    beforeAll(async () => {
+      ({ respondToSchedule } = await import("@/app/dashboard/requestee/actions/caseUpdates"));
+    });
+    beforeEach(() => {
       serverState.user = { id: "req-1", user_metadata: { role: "requestee" } };
-      // 1st response: select admin_scheduled_at
-      // 2nd response: terminal update
+    });
+
+    // The buttons show while a proposed time awaits an answer: one is set, and
+    // schedule_status is 'pending', or null after a reschedule reset it.
+    const AWAITING = ["or", "schedule_status.is.null,schedule_status.eq.pending"];
+
+    it("pending → accepted, on the time the firm was shown", async () => {
+      serverState.responses = [
+        { data: { admin_scheduled_at: "2026-06-10T17:00:00Z" }, error: null }, // the case, awaiting an answer
+        { data: null, error: null }, // the update
+      ];
+
+      await respondToSchedule(form({ caseId: "case-sched-1", response: "accepted" }));
+
+      const [read, write] = serverState.captured.filter((c) => c.table === "cases");
+      expect(read.eqs).toEqual([["id", "case-sched-1"], ["user_id", "req-1"]]);
+      expect(read.filters).toContainEqual(["not", "admin_scheduled_at", "is", null]);
+      expect(read.filters).toContainEqual(AWAITING);
+
+      expect(updatePayload(write)).toEqual({ schedule_status: "accepted", scheduled_at: "2026-06-10T17:00:00Z" });
+      // The same state and the same time again in the write, so a new proposal
+      // that lands in between isn't answered with this one.
+      expect(write.eqs).toEqual([
+        ["id", "case-sched-1"],
+        ["user_id", "req-1"],
+        ["admin_scheduled_at", "2026-06-10T17:00:00Z"],
+      ]);
+      expect(write.filters).toContainEqual(AWAITING);
+    });
+
+    it("Decline records the answer only", async () => {
       serverState.responses = [
         { data: { admin_scheduled_at: "2026-06-10T17:00:00Z" }, error: null },
         { data: null, error: null },
       ];
 
-      await respondToSchedule("case-sched-1", "accepted");
+      await respondToSchedule(form({ caseId: "case-sched-1", response: "rejected" }));
 
-      const updateCall = serverState.captured.find((c) =>
-        c.ops.some((o) => o.op === "update")
-      )!;
-      const upd = updateCall.ops.find((o) => o.op === "update") as {
-        op: "update";
-        payload: Record<string, unknown>;
-      };
-      expect(upd.payload.schedule_status).toBe("accepted");
-      expect(upd.payload.scheduled_at).toBe("2026-06-10T17:00:00Z");
+      expect(caseUpdates().map(updatePayload)).toEqual([{ schedule_status: "rejected" }]);
     });
 
-    it("Admin reschedule resets status", async () => {
-      // When an admin proposes a new schedule, the requestee's prior "accepted"
-      // is invalidated: schedule_status is reset to "pending" so they must
-      // confirm again.
-      async function adminProposeSchedule(caseId: string, isoTs: string) {
-        const { createClient } = await import("@/lib/supabase/server");
-        const supabase = await createClient();
-        await supabase
-          .from("cases")
-          .update({
-            admin_scheduled_at: isoTs,
-            schedule_status: "pending",
-          })
-          .eq("id", caseId);
+    it("Ignores any other answer, before reading the case", async () => {
+      for (const response of ["pending", "<b>yes</b>", ""]) {
+        await respondToSchedule(form({ caseId: "case-sched-1", response }));
       }
+      expect(serverState.captured).toEqual([]);
+    });
 
-      await adminProposeSchedule("case-sched-1", "2026-06-15T17:00:00Z");
+    it("Writes nothing when no time is awaiting an answer", async () => {
+      // Already answered, never proposed, or someone else's case: the read
+      // finds nothing, so nothing is written.
+      serverState.responses = [{ data: null, error: null }];
 
-      const c = serverState.captured.find((x) => x.table === "cases")!;
-      const upd = c.ops.find((o) => o.op === "update") as {
-        op: "update";
-        payload: Record<string, unknown>;
-      };
-      expect(upd.payload.schedule_status).toBe("pending");
-      expect(upd.payload.admin_scheduled_at).toBe("2026-06-15T17:00:00Z");
+      await respondToSchedule(form({ caseId: "case-sched-1", response: "accepted" }));
+
+      expect(caseUpdates()).toEqual([]);
+    });
+  });
+
+  describe("update-case.test.ts", () => {
+    let updateCase: (typeof import("@/app/dashboard/requestee/actions/caseUpdates"))["updateCase"];
+    beforeAll(async () => {
+      ({ updateCase } = await import("@/app/dashboard/requestee/actions/caseUpdates"));
+    });
+    beforeEach(() => {
+      serverState.user = { id: "req-1", user_metadata: { role: "requestee" } };
+    });
+
+    const details = {
+      case_id: "case-1",
+      title: "Smith v. Jones",
+      description: "Updated",
+      scheduled_at: "",
+      focus_group_type: "",
+      case_type: "",
+      hours_requested: "3",
+      county: "Harris",
+      participants_from_county: "",
+      session_completion_timeframe: "",
+      preferred_day: "",
+    };
+
+    it("Edits only a current case that isn't approved yet", async () => {
+      serverState.responses = [{ data: null, error: null }];
+
+      await updateCase(form(details));
+
+      const [write] = caseUpdates();
+      expect(updatePayload(write)).toMatchObject({ title: "Smith v. Jones", hours_requested: 3, county: "Harris" });
+      expect(write.eqs).toEqual([["id", "case-1"], ["user_id", "req-1"], ["status", "current"]]);
+      // 'rejected' stays editable until Request Again; approved and submitted don't.
+      expect(write.filters).toContainEqual(["in", "admin_status", ["all", "rejected"]]);
+    });
+
+    it("Drops the format once the case is in a session", async () => {
+      serverState.responses = [
+        { data: [{ id: "sc-1" }], error: null }, // session_cases: scheduled
+        { data: null, error: null },
+      ];
+
+      await updateCase(form({ ...details, delivery_mode: "offline" }));
+
+      expect(updatePayload(caseUpdates()[0])).not.toHaveProperty("delivery_mode");
+    });
+
+    it("Signed out: nothing written", async () => {
+      serverState.user = null;
+      await updateCase(form(details));
+      expect(serverState.captured).toEqual([]);
+    });
+  });
+
+  describe("request-again.test.ts", () => {
+    let requestAgain: (typeof import("@/app/dashboard/requestee/actions/caseUpdates"))["requestAgain"];
+    beforeAll(async () => {
+      ({ requestAgain } = await import("@/app/dashboard/requestee/actions/caseUpdates"));
+    });
+
+    it("Only a rejected, current case goes back to the queue", async () => {
+      // Without the admin_status filter a firm could pull its approved case out
+      // of the Approved list, and its session's Notify Presenter, by asking again.
+      serverState.user = { id: "req-1", user_metadata: { role: "requestee" } };
+      serverState.responses = [{ data: null, error: null }];
+
+      await requestAgain(form({ case_id: "case-r" }));
+
+      const [write] = caseUpdates();
+      expect(updatePayload(write)).toEqual({ admin_status: "all", rejection_reason: null });
+      expect(write.eqs).toEqual([
+        ["id", "case-r"],
+        ["user_id", "req-1"],
+        ["status", "current"],
+        ["admin_status", "rejected"],
+      ]);
+    });
+
+    it("Signed out: nothing written", async () => {
+      await requestAgain(form({ case_id: "case-r" }));
+      expect(serverState.captured).toEqual([]);
     });
   });
 
   // -------------------------------------------------------------------------
-  // propose-schedule.test.ts
-  //
-  // proposeSchedule is the inline action at app/dashboard/Admin/page.tsx:57.
+  // propose-schedule.test.ts / unapprove-case.test.ts — the Approved tab's
+  // Send and Unapprove, real actions in lib/actions/adminCase.ts.
   // -------------------------------------------------------------------------
   describe("propose-schedule.test.ts", () => {
-    async function proposeSchedule(caseId: string, isoTs: string) {
-      const { createClient } = await import("@/lib/supabase/server");
-      const supabase = await createClient();
-      await supabase
-        .from("cases")
-        .update({
-          admin_scheduled_at: isoTs,
-          schedule_status: "pending",
-        })
-        .eq("id", caseId);
-    }
-
-    it("Sets admin_scheduled_at", async () => {
-      await proposeSchedule("case-1", "2026-07-01T20:30:00Z");
-
-      const c = serverState.captured.find((x) => x.table === "cases")!;
-      const upd = c.ops.find((o) => o.op === "update") as {
-        op: "update";
-        payload: Record<string, unknown>;
-      };
-      expect(upd.payload.admin_scheduled_at).toBe("2026-07-01T20:30:00Z");
-      expect(c.eqs).toContainEqual(["id", "case-1"]);
+    let proposeScheduleAction: (typeof import("@/lib/actions/adminCase"))["proposeScheduleAction"];
+    beforeAll(async () => {
+      ({ proposeScheduleAction } = await import("@/lib/actions/adminCase"));
     });
 
-    it("Resets schedule_status when schedule changes", async () => {
-      // Case had been accepted; admin proposes a new slot → status flips back
-      // to "pending" so the requestee must re-confirm.
-      await proposeSchedule("case-1", "2026-07-15T20:30:00Z");
+    it("Sets admin_scheduled_at and resets schedule_status, so the firm must confirm", async () => {
+      asAdmin();
+      const { localToUTC } = await import("@/lib/timezone");
 
-      const c = serverState.captured.find((x) => x.table === "cases")!;
-      const upd = c.ops.find((o) => o.op === "update") as {
-        op: "update";
-        payload: Record<string, unknown>;
-      };
-      expect(upd.payload.schedule_status).toBe("pending");
+      await proposeScheduleAction(form({ caseId: "case-1", scheduled_at: "2026-07-01T15:30", tz: "America/Chicago" }));
+
+      const [write] = caseUpdates();
+      expect(updatePayload(write)).toEqual({
+        admin_scheduled_at: localToUTC("2026-07-01", "15:30", "America/Chicago"),
+        schedule_status: "pending",
+      });
+      expect(write.eqs).toEqual([["id", "case-1"]]);
+    });
+
+    it("Refuses anyone but an admin, even on the firm's own case", async () => {
+      // "user can update own cases" would let a firm's login set its own
+      // proposed time, which it could then confirm.
+      serverState.user = { id: "req-1" };
+      for (const role of ["requestee", "participant", "blacklisted", null]) {
+        serverState.role = role;
+        await expect(
+          proposeScheduleAction(form({ caseId: "case-own", scheduled_at: "2026-07-01T15:30", tz: "UTC" }))
+        ).rejects.toThrow("Not authorized");
+      }
+      serverState.user = null;
+      await expect(
+        proposeScheduleAction(form({ caseId: "case-own", scheduled_at: "2026-07-01T15:30", tz: "UTC" }))
+      ).rejects.toThrow("Not authenticated");
+
+      expect(serverState.captured.filter((c) => c.table !== "roles")).toEqual([]);
+    });
+  });
+
+  describe("unapprove-case.test.ts", () => {
+    let unapproveCaseAction: (typeof import("@/lib/actions/adminCase"))["unapproveCaseAction"];
+    beforeAll(async () => {
+      ({ unapproveCaseAction } = await import("@/lib/actions/adminCase"));
+    });
+
+    it("Sends an admin's case back to the Requested queue", async () => {
+      asAdmin();
+
+      await unapproveCaseAction(form({ caseId: "case-1" }));
+
+      const [write] = caseUpdates();
+      expect(updatePayload(write)).toEqual({ admin_status: "all" });
+      expect(write.eqs).toEqual([["id", "case-1"]]);
+    });
+
+    it("Refuses anyone but an admin, even on the firm's own case", async () => {
+      serverState.user = { id: "req-1" };
+      for (const role of ["requestee", "participant", "blacklisted", null]) {
+        serverState.role = role;
+        await expect(unapproveCaseAction(form({ caseId: "case-own" }))).rejects.toThrow("Not authorized");
+      }
+      serverState.user = null;
+      await expect(unapproveCaseAction(form({ caseId: "case-own" }))).rejects.toThrow("Not authenticated");
+
+      expect(serverState.captured.filter((c) => c.table !== "roles")).toEqual([]);
     });
   });
 });

@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import BackButton from "@/components/BackButton";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { requireAdminPage } from "@/lib/requireAdmin";
 import { sendReactivationEmails } from "@/lib/actions/adminParticipant";
 import { MAILING_ADDRESS } from "@/lib/legal-constants";
 import SubmitButton from "./SubmitButton";
@@ -43,6 +44,8 @@ export default async function SendMailConfirmPage({
 }: {
   searchParams: Promise<{ ids?: string }>;
 }) {
+  // Lists the recipients' names and emails, read with the service role.
+  await requireAdminPage();
   const params = await searchParams;
   const idList = (params.ids || "")
     .split(",")

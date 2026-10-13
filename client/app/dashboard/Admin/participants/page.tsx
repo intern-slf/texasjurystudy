@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { getIdPhotoReadUrl } from "@/lib/actions/idPhotoUrls";
+import { requireAdminPage } from "@/lib/requireAdmin";
 import BackButton from "@/components/BackButton";
 import NewParticipantsList from "@/components/NewParticipantsList";
 import ParticipantsTable from "@/components/ParticipantsTable";
@@ -19,6 +20,7 @@ export default async function ParticipantsPage({
 }: {
   searchParams: Promise<{ tab?: ParticipantTab; sent?: string; failed?: string; skipped?: string }>;
 }) {
+  await requireAdminPage();
   const supabase = await createClient();
   const resolvedParams = await searchParams;
   const rawTab = resolvedParams?.tab;
