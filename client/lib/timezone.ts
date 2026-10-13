@@ -17,11 +17,8 @@ export function utcTimeToLocal(sessionDate: string, utcTimeStr: string, ianaTime
   return `${h}:${m}`;
 }
 
-export function localToUTC(dateStr: string, timeStr: string, ianaTimezone: string): string {
-  // Parse the date+time as if it were UTC (server runs in UTC)
-  const asUTC = new Date(`${dateStr}T${timeStr}:00Z`);
-
-  // Format that UTC instant in the target timezone to find the local offset
+/** How far the zone's wall clock is ahead of UTC at this instant, in ms (negative in the US). */
+function zoneOffsetMs(instantMs: number, ianaTimezone: string): number {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: ianaTimezone,
     year: "numeric",
@@ -30,15 +27,23 @@ export function localToUTC(dateStr: string, timeStr: string, ianaTimezone: strin
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
-    hour12: false,
-  }).formatToParts(asUTC);
+    hourCycle: "h23",
+  }).formatToParts(new Date(instantMs));
 
-  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "00";
-  const inTz = new Date(
-    `${get("year")}-${get("month")}-${get("day")}T${get("hour")}:${get("minute")}:${get("second")}Z`
-  );
+  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? "0");
+  const wallClockMs = Date.UTC(get("year"), get("month") - 1, get("day"), get("hour"), get("minute"), get("second"));
+  return wallClockMs - instantMs;
+}
 
-  // diffMs is the UTC offset for this timezone at this exact moment (handles DST)
-  const diffMs = asUTC.getTime() - inTz.getTime();
-  return new Date(asUTC.getTime() + diffMs).toISOString();
+export function localToUTC(dateStr: string, timeStr: string, ianaTimezone: string): string {
+  // Parse the date+time as if it were UTC (server runs in UTC)
+  const wallClockMs = new Date(`${dateStr}T${timeStr}:00Z`).getTime();
+
+  // The offset has to be the one in force at the answer, which we don't have
+  // yet. Measuring it at the wall-clock time read as UTC is a few hours off, and
+  // on the day clocks change that can land on the other side of the change: in
+  // Central Time, 3:00 AM on the November changeover came out as 2:00 AM. So
+  // take a first guess, then measure the offset again at the guess.
+  const guessMs = wallClockMs - zoneOffsetMs(wallClockMs, ianaTimezone);
+  return new Date(wallClockMs - zoneOffsetMs(guessMs, ianaTimezone)).toISOString();
 }

@@ -36,6 +36,25 @@ describe("localToUTC", () => {
     expect(result).toMatch(/^2025-11-02T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
   });
 
+  // The offset used to be measured at the wall-clock time read as UTC, which on
+  // a changeover day is on the wrong side of the change for early-morning times.
+  it("uses Central Standard Time after clocks go back (2026-11-01)", () => {
+    expect(localToUTC("2026-11-01", "03:00", "America/Chicago")).toBe("2026-11-01T09:00:00.000Z");
+    expect(localToUTC("2026-11-01", "06:30", "America/Chicago")).toBe("2026-11-01T12:30:00.000Z");
+    expect(localToUTC("2026-11-01", "10:00", "America/Chicago")).toBe("2026-11-01T16:00:00.000Z");
+  });
+
+  it("uses Central Daylight Time after clocks go forward (2026-03-08)", () => {
+    expect(localToUTC("2026-03-08", "05:00", "America/Chicago")).toBe("2026-03-08T10:00:00.000Z");
+    expect(localToUTC("2026-03-08", "07:30", "America/Chicago")).toBe("2026-03-08T12:30:00.000Z");
+    expect(localToUTC("2026-03-08", "10:00", "America/Chicago")).toBe("2026-03-08T15:00:00.000Z");
+  });
+
+  it("keeps the times before the change on the old offset", () => {
+    expect(localToUTC("2026-11-01", "00:00", "America/Chicago")).toBe("2026-11-01T05:00:00.000Z");
+    expect(localToUTC("2026-03-08", "01:00", "America/Chicago")).toBe("2026-03-08T07:00:00.000Z");
+  });
+
   it("throws for an invalid IANA zone string", () => {
     expect(() => localToUTC("2025-01-15", "10:00", "Not/A_Zone")).toThrow();
   });
