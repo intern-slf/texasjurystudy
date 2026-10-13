@@ -425,6 +425,26 @@ Times an admin opens for law firms to book an online focus group (`20261014_requ
 
 ---
 
+### 🟩 `requestee_slot_bookings` — RLS enabled (2026-10-16)
+
+Which case holds which time slot, and whether the firm has paid (`20261016_requestee_slot_bookings.sql`). One row per case.
+
+**Code access:**
+- Admin: `client/lib/actions/adminSlotBooking.ts` (mark paid / unpaid, release, move, book for a firm) writes through the admin's own client, after `requireAdmin()`. Every write names the slot the admin saw, so a booking changed in the meantime is never overwritten.
+- Admin reads with the service role, in `client/lib/slotBookingData.ts` (it joins the firm's name from `confidentiality_agreements_requestee`, which admins can't read under RLS). The Time Slots page and the case page's Time slot box check for an admin themselves before calling it; the case lists and Build Session only ask about cases the admin's own client already returned.
+- Firms: none yet. They will book through server actions, never this table.
+- Trigger `cases_release_slot_booking` on `cases` updates it as SECURITY DEFINER, so a firm archiving its own case frees its unpaid hold. It only ever clears `slot_id` on that case's own row; EXECUTE is revoked from PUBLIC, `anon` and `authenticated`.
+
+**Policies (created by the migration):**
+
+| Policy | Cmd | Role | USING | WITH CHECK |
+|---|---|---|---|---|
+| admin can manage requestee_slot_bookings | ALL | authenticated | `(SELECT public.is_admin())` | `(SELECT public.is_admin())` |
+
+**Grants:** explicit, as for `requestee_time_slots`: `authenticated` and `service_role` have SELECT, INSERT, UPDATE and DELETE; `anon` has nothing.
+
+---
+
 ## Storage buckets (added 2026-06-09)
 
 The original audit covered **tables only**. Storage was first dumped 2026-06-09 — see F23. RLS lives on `storage.objects` (single table backing all buckets); per-bucket scoping is done inside each policy via `bucket_id = '<name>'`. Policies are **permissive/OR'd**, so a broad `bucket_id`-only policy shadows any narrower owner/role policy on the same bucket.

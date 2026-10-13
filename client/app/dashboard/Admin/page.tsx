@@ -24,6 +24,10 @@ import { deliveryModeLabel, isOffline, normalizeDeliveryMode } from "@/lib/case/
 import { baseRatePerHourCents, formatCents } from "@/lib/receipt-pricing";
 import { hourlyRateCents } from "@/lib/participant/waitlist";
 import { Calendar, FileText } from "lucide-react";
+import { getBookingsForCases } from "@/lib/slotBookingData";
+import { bookingState } from "@/lib/slotBooking";
+import { describeSlot } from "@/lib/requesteeTimeSlots";
+import { BookingStateBadge } from "@/components/BookingSummary";
 
 /* =========================
    TYPES
@@ -183,6 +187,16 @@ export default async function AdminDashboardPage({
     })),
     is_in_session: (c.session_cases ?? []).length > 0,
   }));
+
+  // The time slot each case holds, if any. Read for the cases this page already
+  // shows, so it reveals nothing more about them.
+  const nowMs = Date.now();
+  let bookingByCase: Awaited<ReturnType<typeof getBookingsForCases>> = new Map();
+  try {
+    bookingByCase = await getBookingsForCases(cases.map((c) => c.id));
+  } catch (err) {
+    console.error("[admin dashboard] bookings failed:", err);
+  }
 
   // On the approved tab, hide cases whose session has already passed
   const todayStr = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
@@ -420,6 +434,16 @@ export default async function AdminDashboardPage({
                           Not scheduled
                         </span>
                       )}
+                      {(() => {
+                        const booking = bookingByCase.get(c.id);
+                        if (!booking?.slot) return null;
+                        return (
+                          <div className="mt-2 space-y-1 text-xs">
+                            <p className="font-medium text-slate-700">Booked: {describeSlot(booking.slot)}</p>
+                            <BookingStateBadge state={bookingState(booking.slot, booking, nowMs)} />
+                          </div>
+                        );
+                      })()}
                     </TableCell>
 
                     {/* ADMIN SCHEDULE */}
