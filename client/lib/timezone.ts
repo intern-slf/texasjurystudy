@@ -1,3 +1,36 @@
+/**
+ * "10:00 AM": a session_cases time (stored as UTC "HH:MM:SS") as a clock in another
+ * zone, on its session's date. A zone's offset depends on the date, so formatting on
+ * today's date put a November session an hour off whenever it was shown in October.
+ * With no session date it falls back to today, which is what every caller did before.
+ */
+export function formatSessionTime(
+  sessionDate: string | null | undefined,
+  utcTime: string,
+  ianaTimezone: string
+): string {
+  const date = sessionDate || new Date().toISOString().slice(0, 10);
+  const onDate = (days: number) => {
+    const instant = new Date(`${date}T${utcTime.slice(0, 5)}:00Z`);
+    instant.setUTCDate(instant.getUTCDate() + days);
+    return instant;
+  };
+  const dateInZone = (instant: Date) =>
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: ianaTimezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(instant);
+
+  // An evening session in the US is stored on the next UTC day, so of the three
+  // nearby instants with this UTC time, take the one that falls on the session's
+  // date in the zone.
+  const candidates = [onDate(0), onDate(1), onDate(-1)];
+  const instant = candidates.find((c) => dateInZone(c) === date) ?? candidates[0];
+  return instant.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: ianaTimezone });
+}
+
 /** Convert local date+time to a UTC time string "HH:MM:SS" (for storing in a time column). */
 export function localToUTCTime(dateStr: string, timeStr: string, ianaTimezone: string): string {
   return localToUTC(dateStr, timeStr, ianaTimezone).split("T")[1].slice(0, 8);

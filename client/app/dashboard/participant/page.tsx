@@ -5,6 +5,7 @@ import { getPendingInvites } from "@/lib/participant/getPendingInvites";
 import { updateInviteStatus } from "@/lib/participant/updateInviteStatus";
 import { hasSessionStarted } from "@/lib/participant/sessionStart";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { formatSessionTime } from "@/lib/timezone";
 import {
   WAITLISTED_STATUS,
   OFFLINE_ARRIVE_EARLY_MINUTES,
@@ -275,12 +276,7 @@ export default async function ParticipantDashboard({
               const startTimes = cases.map((c) => c.start_time).filter((v): v is string => Boolean(v)).sort();
               const endTimes = cases.map((c) => c.end_time).filter((v): v is string => Boolean(v)).sort();
 
-              const fmtCt = (t: string) => {
-                const [h, m] = t.split(":");
-                const d = new Date();
-                d.setUTCHours(parseInt(h), parseInt(m), 0, 0);
-                return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Chicago" });
-              };
+              const fmtCt = (t: string) => formatSessionTime(session?.session_date, t, "America/Chicago");
 
               const timeLabel =
                 startTimes.length && endTimes.length

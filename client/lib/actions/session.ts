@@ -31,7 +31,7 @@ import { assertCasesShareDeliveryMode, isOffline } from "@/lib/case/deliveryMode
 import { getSessionDeliveryModeOrDefault } from "@/lib/case/getSessionDeliveryMode";
 import { NO_LOGIN_REASON, getAllIdsWithoutLogin, getIdsWithoutLogin } from "@/lib/participant/loginAccount";
 import { revalidatePath } from "next/cache";
-import { localToUTC, localToUTCTime } from "@/lib/timezone";
+import { formatSessionTime, localToUTC, localToUTCTime } from "@/lib/timezone";
 
 /* =========================
    CREATE SESSION
@@ -464,12 +464,7 @@ async function inviteParticipantsInner(
     .select("start_time, end_time")
     .eq("session_id", sessionId);
 
-  const formatCentralTime = (t: string) => {
-    const [h, m] = t.split(":");
-    const d = new Date();
-    d.setUTCHours(parseInt(h), parseInt(m), 0, 0);
-    return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Chicago" });
-  };
+  const formatCentralTime = (t: string) => formatSessionTime(sessionDate, t, "America/Chicago");
 
   let timeStr = "TBD";
   if (sessionCaseRows && sessionCaseRows.length > 0) {
@@ -737,12 +732,7 @@ export async function notifyRequesteesSessionCreated(
     .select("case_id, start_time, end_time")
     .eq("session_id", sessionId);
 
-  const formatCentralTime = (t: string) => {
-    const [h, m] = t.split(":");
-    const d = new Date();
-    d.setUTCHours(parseInt(h), parseInt(m), 0, 0);
-    return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Chicago" });
-  };
+  const formatCentralTime = (t: string) => formatSessionTime(sessionDate, t, "America/Chicago");
 
   let timeStr = "TBD";
   if (sessionCaseRows?.length) {
@@ -1564,19 +1554,17 @@ async function sessionTimeString(
   supabase: Awaited<ReturnType<typeof createClient>>,
   sessionId: string,
 ): Promise<string | undefined> {
-  const { data: rows } = await supabase
-    .from("session_cases")
-    .select("start_time, end_time")
-    .eq("session_id", sessionId);
+  const [{ data: rows }, { data: session }] = await Promise.all([
+    supabase.from("session_cases").select("start_time, end_time").eq("session_id", sessionId),
+    // The times are read on the session's date: a clock change between now and
+    // then moves them by an hour.
+    supabase.from("sessions").select("session_date").eq("id", sessionId).maybeSingle(),
+  ]);
 
   if (!rows?.length) return undefined;
 
-  const formatCentralTime = (t: string) => {
-    const [h, m] = t.split(":");
-    const d = new Date();
-    d.setUTCHours(parseInt(h), parseInt(m), 0, 0);
-    return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Chicago" });
-  };
+  const formatCentralTime = (t: string) =>
+    formatSessionTime(session?.session_date as string | null | undefined, t, "America/Chicago");
 
   const starts = rows.map((r) => r.start_time).filter(Boolean).sort();
   const ends = rows.map((r) => r.end_time).filter(Boolean).sort();

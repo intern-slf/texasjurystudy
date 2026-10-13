@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { localToUTC, localToUTCTime } from "@/lib/timezone";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { formatSessionTime, localToUTC, localToUTCTime } from "@/lib/timezone";
 
 describe("localToUTC", () => {
   it("returns the same instant when the timezone is UTC", () => {
@@ -52,5 +52,40 @@ describe("localToUTCTime", () => {
 
   it("returns 04:30:00 for 10:00 Asia/Kolkata", () => {
     expect(localToUTCTime("2025-01-15", "10:00", "Asia/Kolkata")).toBe("04:30:00");
+  });
+});
+
+describe("formatSessionTime", () => {
+  // Some ICU versions put a narrow no-break space before AM/PM.
+  const shown = (sessionDate: string | undefined, utcTime: string) =>
+    formatSessionTime(sessionDate, utcTime, "America/Chicago").replace(/\s/g, " ");
+
+  afterEach(() => vi.useRealTimers());
+
+  it("shows a November session in Central Standard Time while it is still October", () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-14T12:00:00Z"));
+    // 10:00 AM CST is stored as 16:00 UTC. On an October date it read as 11:00 AM.
+    expect(shown("2026-11-05", "16:00:00")).toBe("10:00 AM");
+    expect(shown("2026-10-20", "15:00:00")).toBe("10:00 AM");
+  });
+
+  it("shows an October session in Central Daylight Time once it is November", () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-10T12:00:00Z"));
+    expect(shown("2026-10-29", "15:00:00")).toBe("10:00 AM");
+  });
+
+  it("finds an evening session, which is stored on the next UTC day", () => {
+    // 7:00 PM CDT on Oct 20 is 00:00 UTC on Oct 21.
+    expect(shown("2026-10-20", "00:00:00")).toBe("7:00 PM");
+    // 7:00 PM CST on the changeover day, Nov 1, is 01:00 UTC on Nov 2.
+    expect(shown("2026-11-01", "01:00:00")).toBe("7:00 PM");
+  });
+
+  it("falls back to today's date when the session has none", () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-14T12:00:00Z"));
+    expect(shown(undefined, "15:00:00")).toBe("10:00 AM");
   });
 });
