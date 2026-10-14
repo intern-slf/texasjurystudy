@@ -28,7 +28,10 @@ type CapturedTableCall = {
 
 type CapturedStorageCall =
   | { kind: "upload"; bucket: string; path: string; file: { name: string; size: number; type: string } }
-  | { kind: "remove"; bucket: string; paths: string[] };
+  | { kind: "remove"; bucket: string; paths: string[] }
+  | { kind: "sign"; bucket: string; path: string };
+
+type CaseRow = { id: string; user_id: string; requestee_id: string | null };
 
 const state: {
   user: { id: string; user_metadata?: { role?: string } } | null;
@@ -37,6 +40,10 @@ const state: {
   captured: CapturedTableCall[];
   capturedStorage: CapturedStorageCall[];
   rlsBlock: boolean;
+  // The cases the service role sees, for the ownership check (ownsAllCases in
+  // lib/participant/requesteeAccess), and every table it read.
+  cases: CaseRow[];
+  adminReads: string[];
 } = {
   user: null,
   responses: [],
@@ -44,6 +51,8 @@ const state: {
   captured: [],
   capturedStorage: [],
   rlsBlock: false,
+  cases: [],
+  adminReads: [],
 };
 
 function nextTableResponse(): Record<string, unknown> {
@@ -110,9 +119,10 @@ function makeStorageBucket(bucket: string) {
       state.capturedStorage.push({ kind: "remove", bucket, paths });
       return nextStorageResponse();
     }),
-    createSignedUrl: vi.fn(async () =>
-      nextStorageResponse()
-    ),
+    createSignedUrl: vi.fn(async (path: string) => {
+      state.capturedStorage.push({ kind: "sign", bucket, path });
+      return nextStorageResponse();
+    }),
   };
 }
 
@@ -132,9 +142,36 @@ vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(async () => makeClient()),
 }));
 
+// ownsAllCases reads cases with the service role: select(...).in("id", ids).
+vi.mock("@/lib/supabase/admin", () => ({
+  supabaseAdmin: {
+    from: vi.fn((table: string) => {
+      state.adminReads.push(table);
+      return {
+        select: vi.fn(() => ({
+          in: vi.fn(async (_col: string, ids: string[]) => ({
+            data: table === "cases" ? state.cases.filter((c) => ids.includes(c.id)) : [],
+            error: null,
+          })),
+        })),
+      };
+    }),
+  },
+}));
+
 vi.mock("next/cache", () => ({
   revalidatePath: vi.fn(),
 }));
+
+// req-1 created case-A and case-XYZ and is the assigned requestee on case-assigned;
+// req-2 owns case-other.
+const CASES: CaseRow[] = [
+  { id: "case-A", user_id: "req-1", requestee_id: null },
+  { id: "case-XYZ", user_id: "req-1", requestee_id: null },
+  { id: "case-1", user_id: "req-1", requestee_id: null },
+  { id: "case-assigned", user_id: "admin-1", requestee_id: "req-1" },
+  { id: "case-other", user_id: "req-2", requestee_id: null },
+];
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -147,6 +184,8 @@ describe("Documents & Drive Links", () => {
     state.captured = [];
     state.capturedStorage = [];
     state.rlsBlock = false;
+    state.cases = CASES.map((c) => ({ ...c }));
+    state.adminReads = [];
   });
 
   // -------------------------------------------------------------------------
@@ -229,6 +268,46 @@ describe("Documents & Drive Links", () => {
       expect(state.capturedStorage).toHaveLength(0);
       expect(state.captured).toHaveLength(0);
     });
+
+    it("Refuses another firm's case before uploading anything", async () => {
+      // Neither the case_documents INSERT policy nor the storage policy looks at
+      // the case, so this check is all that stops a file landing on someone
+      // else's case, where the presenter email would link it.
+      state.user = { id: "req-1", user_metadata: { role: "requestee" } };
+
+      for (const caseId of ["case-other", "no-such-case"]) {
+        await expect(uploadCaseDocument(caseId, makeFile(), true)).rejects.toThrow(/not owned/);
+      }
+      expect(state.capturedStorage).toHaveLength(0);
+      expect(state.captured).toHaveLength(0);
+    });
+
+    it("Accepts the case's assigned requestee", async () => {
+      state.user = { id: "req-1", user_metadata: { role: "requestee" } };
+      state.storageResponses = [{ data: { path: "x" }, error: null }];
+      state.responses = [{ error: null }];
+
+      await uploadCaseDocument("case-assigned", makeFile(), true);
+
+      expect(state.capturedStorage.map((c) => c.kind)).toEqual(["upload"]);
+    });
+
+    it("Removes the uploaded file when its row can't be saved", async () => {
+      state.user = { id: "req-1", user_metadata: { role: "requestee" } };
+      state.storageResponses = [{ data: { path: "x" }, error: null }];
+      state.responses = [{ error: { message: "insert failed", code: "XX000" } }];
+
+      await expect(uploadCaseDocument("case-XYZ", makeFile(), true)).rejects.toMatchObject({
+        message: "insert failed",
+      });
+
+      const [upload, remove] = state.capturedStorage;
+      expect(remove).toEqual({
+        kind: "remove",
+        bucket: "case-documents",
+        paths: [(upload as { path: string }).path],
+      });
+    });
   });
 
   // -------------------------------------------------------------------------
@@ -244,38 +323,96 @@ describe("Documents & Drive Links", () => {
 
     it("Removes file and database row", async () => {
       state.user = { id: "req-1", user_metadata: { role: "requestee" } };
+      state.responses = [
+        { data: { storage_path: "case-A/abc.pdf" }, error: null }, // the caller's own row
+        { error: null }, // row delete
+      ];
       state.storageResponses = [{ data: { path: "x" }, error: null }];
-      state.responses = [{ error: null }];
 
-      await deleteCaseDocument("doc-1", "case-A/abc.pdf");
+      await deleteCaseDocument("doc-1");
 
       const remove = state.capturedStorage.find((c) => c.kind === "remove");
       expect(remove).toBeDefined();
       expect(remove!.bucket).toBe("case-documents");
+      // The path comes from the row, never from the browser.
       expect((remove as { paths: string[] }).paths).toEqual(["case-A/abc.pdf"]);
 
-      const tableCall = state.captured.find((c) => c.table === "case_documents")!;
-      expect(tableCall.ops.some((o) => o.op === "delete")).toBe(true);
-      expect(tableCall.eqs).toContainEqual(["id", "doc-1"]);
+      const rowDelete = state.captured.find(
+        (c) => c.table === "case_documents" && c.ops.some((o) => o.op === "delete")
+      )!;
+      expect(rowDelete.eqs).toContainEqual(["id", "doc-1"]);
     });
 
     it("Owner-only deletion", async () => {
       state.user = { id: "req-1", user_metadata: { role: "requestee" } };
+      state.responses = [
+        { data: { storage_path: "case-A/abc.pdf" }, error: null },
+        { error: null },
+      ];
       state.storageResponses = [{ data: { path: "x" }, error: null }];
-      state.responses = [{ error: null }];
 
-      await deleteCaseDocument("doc-1", "case-A/abc.pdf");
+      await deleteCaseDocument("doc-1");
 
-      const tableCall = state.captured.find((c) => c.table === "case_documents")!;
-      // The owner-only guard is the .eq("uploaded_by", user.id) filter — any
-      // delete that does not carry that filter scoped to the caller's id is a
-      // regression.
-      expect(tableCall.eqs).toContainEqual(["uploaded_by", "req-1"]);
+      // The owner-only guard is the .eq("uploaded_by", user.id) filter, on the
+      // read that finds the file and on the delete — any call that does not
+      // carry it scoped to the caller's id is a regression.
+      const calls = state.captured.filter((c) => c.table === "case_documents");
+      expect(calls).toHaveLength(2);
+      for (const call of calls) expect(call.eqs).toContainEqual(["uploaded_by", "req-1"]);
+    });
+
+    it("Deletes no file for a document that isn't the caller's", async () => {
+      // Someone else's document, or no such document: the read finds no row,
+      // so no file is removed whatever path the browser might have sent.
+      state.user = { id: "req-1", user_metadata: { role: "requestee" } };
+      state.responses = [{ data: null, error: null }];
+
+      await expect(deleteCaseDocument("doc-of-someone-else")).rejects.toThrow(/Document not found/);
+      expect(state.capturedStorage).toHaveLength(0);
+      expect(state.captured.some((c) => c.ops.some((o) => o.op === "delete"))).toBe(false);
     });
   });
 
   // -------------------------------------------------------------------------
-  // add-drive-link.test.ts — real addDriveLink + URL-validity guard
+  // case-document-url.test.ts — real getCaseDocumentUrl
+  // -------------------------------------------------------------------------
+  describe("case-document-url.test.ts", () => {
+    let getCaseDocumentUrl: (typeof import("@/app/dashboard/requestee/actions/caseDocuments"))["getCaseDocumentUrl"];
+    beforeAll(async () => {
+      ({ getCaseDocumentUrl } = await import(
+        "@/app/dashboard/requestee/actions/caseDocuments"
+      ));
+    });
+
+    it("Signs the file of a document on the caller's own case", async () => {
+      state.user = { id: "req-1", user_metadata: { role: "requestee" } };
+      state.responses = [{ data: { case_id: "case-A", storage_path: "case-A/abc.pdf" }, error: null }];
+      state.storageResponses = [{ data: { signedUrl: "https://storage.test/signed" }, error: null }];
+
+      expect(await getCaseDocumentUrl("doc-1")).toBe("https://storage.test/signed");
+      expect(state.capturedStorage).toEqual([{ kind: "sign", bucket: "case-documents", path: "case-A/abc.pdf" }]);
+    });
+
+    it("Signs nothing for a document on someone else's case, or one it can't see", async () => {
+      state.user = { id: "req-1", user_metadata: { role: "requestee" } };
+      state.responses = [
+        { data: { case_id: "case-other", storage_path: "case-other/x.pdf" }, error: null },
+        { data: null, error: null },
+      ];
+
+      await expect(getCaseDocumentUrl("doc-planted")).rejects.toThrow(/Document not found/);
+      await expect(getCaseDocumentUrl("doc-hidden")).rejects.toThrow(/Document not found/);
+      expect(state.capturedStorage).toHaveLength(0);
+    });
+
+    it("Refuses a signed-out caller", async () => {
+      await expect(getCaseDocumentUrl("doc-1")).rejects.toThrow(/Unauthorized/);
+      expect(state.captured).toHaveLength(0);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // add-drive-link.test.ts — real addDriveLink, with its URL and owner checks
   // -------------------------------------------------------------------------
   describe("add-drive-link.test.ts", () => {
     let addDriveLink: (typeof import("@/app/dashboard/requestee/actions/caseDriveLinks"))["addDriveLink"];
@@ -285,30 +422,11 @@ describe("Documents & Drive Links", () => {
       ));
     });
 
-    // The production server action does not itself validate the URL — the
-    // form should reject invalid input before it reaches the action. The
-    // wrapper below mirrors that contract so the guarantee is captured here.
-    async function addValidatedDriveLink(caseId: string, url: string) {
-      let parsed: URL;
-      try {
-        parsed = new URL(url);
-      } catch {
-        throw new Error("Invalid URL");
-      }
-      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-        throw new Error("Invalid URL");
-      }
-      await addDriveLink(caseId, url);
-    }
-
     it("Valid URL persists", async () => {
       state.user = { id: "req-1", user_metadata: { role: "requestee" } };
       state.responses = [{ error: null }];
 
-      await addValidatedDriveLink(
-        "case-1",
-        "https://drive.google.com/folders/abc"
-      );
+      await addDriveLink("case-1", "  https://drive.google.com/folders/abc ");
 
       const c = state.captured.find((x) => x.table === "case_drive_links")!;
       const insert = c.ops.find((o) => o.op === "insert") as {
@@ -321,12 +439,35 @@ describe("Documents & Drive Links", () => {
     });
 
     it("Invalid URL rejected", async () => {
+      // The link is opened by admins and goes into the presenter email as a
+      // link, so only http(s) is accepted: no javascript:, data: or bare words.
       state.user = { id: "req-1", user_metadata: { role: "requestee" } };
 
-      await expect(
-        addValidatedDriveLink("case-1", "not a real url")
-      ).rejects.toThrow(/Invalid URL/);
+      for (const url of [
+        "not a real url",
+        "drive.google.com/folders/abc",
+        "javascript:alert(1)",
+        "data:text/html,<script>alert(1)</script>",
+        "ftp://files.example/x",
+      ]) {
+        await expect(addDriveLink("case-1", url)).rejects.toThrow(/Invalid URL/);
+      }
       // The DB layer was never touched
+      expect(state.captured).toHaveLength(0);
+      expect(state.adminReads).toHaveLength(0);
+    });
+
+    it("Refuses another firm's case", async () => {
+      // The drive-link policy only checks uploaded_by, so without this a link
+      // could be attached to anyone's case.
+      state.user = { id: "req-1", user_metadata: { role: "requestee" } };
+
+      await expect(addDriveLink("case-other", "https://evil.example/x")).rejects.toThrow(/not owned/);
+      expect(state.captured).toHaveLength(0);
+    });
+
+    it("Refuses a signed-out caller", async () => {
+      await expect(addDriveLink("case-1", "https://drive.google.com/x")).rejects.toThrow(/Unauthorized/);
       expect(state.captured).toHaveLength(0);
     });
   });

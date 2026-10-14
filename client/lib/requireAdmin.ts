@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 
 /**
@@ -21,6 +22,32 @@ export async function requireAdmin(): Promise<string> {
     .eq("user_id", user.id)
     .maybeSingle();
   if (roleRow?.role !== "admin") throw new Error("Not authorized");
+
+  return user.id;
+}
+
+/**
+ * For admin pages, called before the page reads anything. Admin/layout.tsx checks the
+ * role too, but a page can't rely on it: Next renders a page segment without its
+ * parent layout when the request says that layout is already on screen (an RSC request
+ * with a hand-written Next-Router-State-Tree header), so the layout's redirect never
+ * runs. Redirects rather than throwing, as the layout does.
+ *
+ * Returns the admin's user id.
+ */
+export async function requireAdminPage(): Promise<string> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/auth/login");
+
+  const { data: roleRow } = await supabase
+    .from("roles")
+    .select("role")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (roleRow?.role !== "admin") redirect("/dashboard");
 
   return user.id;
 }

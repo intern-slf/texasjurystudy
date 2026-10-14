@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { requireAdminPage } from "@/lib/requireAdmin";
 import { CaseFilters } from "@/lib/filter-utils";
 import ReceiptPricingPreview from "@/components/ReceiptPricingPreview";
 import { deliveryModeLabel } from "@/lib/case/deliveryMode";
@@ -83,6 +84,8 @@ export default async function AdminCaseDetailPage({
 }: {
   params: Promise<{ caseId: string }>;
 }) {
+  // Reads the firm's email and signed agreement with the service role.
+  await requireAdminPage();
   const supabase = await createClient();
   const { caseId } = await params;
 

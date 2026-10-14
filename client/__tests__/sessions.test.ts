@@ -47,6 +47,9 @@ const state: {
   // would report them. Answered outside the response queue so a test only has to
   // opt in when the no-login guard is what it is testing.
   noLoginIds: string[];
+  // The caller's own roles row, as requireAdmin reads it (roles … maybeSingle).
+  // Also outside the queue, so a test of an admin action only says who is calling.
+  callerRole: string | null;
 } = {
   user: null,
   responses: [],
@@ -54,7 +57,14 @@ const state: {
   rlsBlock: false,
   participantEmails: new Map(),
   noLoginIds: [],
+  callerRole: null,
 };
+
+/** Signs the test in as an admin, which every action in lib/actions/session.ts needs. */
+function asAdmin(id = "admin-1") {
+  state.user = { id };
+  state.callerRole = "admin";
+}
 
 function nextResponse(): Record<string, unknown> {
   if (state.rlsBlock) {
@@ -100,7 +110,11 @@ function makeChainBuilder(table: string) {
     return builder;
   });
   builder.order = vi.fn(() => builder);
-  builder.maybeSingle = vi.fn(async () => nextResponse());
+  builder.maybeSingle = vi.fn(async () =>
+    table === "roles"
+      ? { data: state.callerRole ? { role: state.callerRole } : null, error: null }
+      : nextResponse()
+  );
   builder.single = vi.fn(async () => nextResponse());
   (builder as { then: unknown }).then = (
     resolve: (v: unknown) => unknown
@@ -157,27 +171,61 @@ const sendWaitlistConfirmationEmailSpy = vi.fn(async () => undefined);
 const sendWaitlistZoomLinkEmailSpy = vi.fn(async () => undefined);
 const sendWaitlistCalledInEmailSpy = vi.fn(async () => undefined);
 const sendWaitlistWaitedOutEmailSpy = vi.fn(async () => undefined);
+const sendRescheduleEmailSpy = vi.fn(async () => undefined);
 const sendSessionCreatedEmailSpy = vi.fn<
   (...args: Parameters<(typeof import("@/lib/mail"))["sendSessionCreatedEmail"]>) => Promise<void>
 >(async () => undefined);
+const sendSessionCompletedEmailSpy = vi.fn(async () => undefined);
+const sendPresenceConfirmedEmailSpy = vi.fn(async () => undefined);
+const sendPresenceDeclinedEmailSpy = vi.fn(async () => undefined);
+const sendPresenterInfoEmailSpy = vi.fn(async () => undefined);
+const sendWaitlistLocationEmailSpy = vi.fn(async () => undefined);
+
+/** Every mail function session.ts can reach, so a test can say nothing was sent. */
+const allMailSpies = [
+  sendEmailSpy,
+  sendInviteAcceptedConfirmationEmailSpy,
+  sendInviteDeclinedConfirmationEmailSpy,
+  sendSessionFullEmailSpy,
+  sendZoomLinkEmailSpy,
+  sendSessionLocationEmailSpy,
+  sendWaitlistConfirmationEmailSpy,
+  sendWaitlistZoomLinkEmailSpy,
+  sendWaitlistCalledInEmailSpy,
+  sendWaitlistWaitedOutEmailSpy,
+  sendRescheduleEmailSpy,
+  sendSessionCreatedEmailSpy,
+  sendSessionCompletedEmailSpy,
+  sendPresenceConfirmedEmailSpy,
+  sendPresenceDeclinedEmailSpy,
+  sendPresenterInfoEmailSpy,
+  sendWaitlistLocationEmailSpy,
+];
 
 vi.mock("@/lib/mail", async (importOriginal) => ({
   // The real block, not a stand-in: the invitation tests below check that the
   // admin-typed address is escaped, and only the real one can show that.
   venueAddressBlock: (await importOriginal<typeof import("@/lib/mail")>()).venueAddressBlock,
   sendEmail: (args: SendEmailArgs) => sendEmailSpy(args),
-  sendRescheduleEmail: vi.fn(async () => undefined),
+  sendRescheduleEmail: (...args: unknown[]) =>
+    sendRescheduleEmailSpy(...(args as [])),
   sendSessionCreatedEmail: (
     ...args: Parameters<(typeof import("@/lib/mail"))["sendSessionCreatedEmail"]>
   ) => sendSessionCreatedEmailSpy(...args),
-  sendSessionCompletedEmail: vi.fn(async () => undefined),
-  sendPresenceConfirmedEmail: vi.fn(async () => undefined),
-  sendPresenceDeclinedEmail: vi.fn(async () => undefined),
+  sendSessionCompletedEmail: (...args: unknown[]) =>
+    sendSessionCompletedEmailSpy(...(args as [])),
+  sendPresenceConfirmedEmail: (...args: unknown[]) =>
+    sendPresenceConfirmedEmailSpy(...(args as [])),
+  sendPresenceDeclinedEmail: (...args: unknown[]) =>
+    sendPresenceDeclinedEmailSpy(...(args as [])),
   sendZoomLinkEmail: (...args: unknown[]) =>
     sendZoomLinkEmailSpy(...(args as [])),
   sendSessionLocationEmail: (...args: unknown[]) =>
     sendSessionLocationEmailSpy(...(args as [])),
-  sendPresenterInfoEmail: vi.fn(async () => undefined),
+  sendWaitlistLocationEmail: (...args: unknown[]) =>
+    sendWaitlistLocationEmailSpy(...(args as [])),
+  sendPresenterInfoEmail: (...args: unknown[]) =>
+    sendPresenterInfoEmailSpy(...(args as [])),
   sendInviteAcceptedConfirmationEmail: (...args: unknown[]) =>
     sendInviteAcceptedConfirmationEmailSpy(...(args as [])),
   sendInviteDeclinedConfirmationEmail: (...args: unknown[]) =>
@@ -212,17 +260,8 @@ describe("Sessions", () => {
     state.rlsBlock = false;
     state.participantEmails = new Map();
     state.noLoginIds = [];
-    sendEmailSpy.mockClear();
-    sendInviteAcceptedConfirmationEmailSpy.mockClear();
-    sendInviteDeclinedConfirmationEmailSpy.mockClear();
-    sendSessionFullEmailSpy.mockClear();
-    sendZoomLinkEmailSpy.mockClear();
-    sendSessionLocationEmailSpy.mockClear();
-    sendWaitlistConfirmationEmailSpy.mockClear();
-    sendWaitlistZoomLinkEmailSpy.mockClear();
-    sendWaitlistCalledInEmailSpy.mockClear();
-    sendWaitlistWaitedOutEmailSpy.mockClear();
-    sendSessionCreatedEmailSpy.mockClear();
+    state.callerRole = null;
+    for (const spy of allMailSpies) spy.mockClear();
   });
 
   // -------------------------------------------------------------------------
@@ -235,10 +274,7 @@ describe("Sessions", () => {
     });
 
     it("Inserts row with admin as created_by", async () => {
-      state.user = {
-        id: "admin-1",
-        user_metadata: { role: "admin" },
-      };
+      asAdmin("admin-1");
       state.responses = [
         { data: { id: "session-42" }, error: null },
       ];
@@ -260,7 +296,7 @@ describe("Sessions", () => {
     it("Saves the venue of an in-person session with the row", async () => {
       // The invitations go out straight after this insert and must carry the
       // address, so it is written here rather than added later.
-      state.user = { id: "admin-1", user_metadata: { role: "admin" } };
+      asAdmin("admin-1");
       state.responses = [{ data: { id: "session-43" }, error: null }];
 
       await createSession("2026-07-04", "  Heritage Plaza Office Suites\n402 Simonton St, Conroe, TX 77301 ");
@@ -275,17 +311,14 @@ describe("Sessions", () => {
       );
     });
 
-    it("Non-admin blocked", async () => {
-      // Non-admins are blocked at the RLS boundary — insert returns 42501.
-      state.user = {
-        id: "user-not-admin",
-        user_metadata: { role: "requestee" },
-      };
-      state.rlsBlock = true;
+    it("Non-admin blocked before the insert", async () => {
+      // Refused by the action itself, not left to RLS: a firm's login is
+      // signed in, and only its roles row says it isn't an admin.
+      state.user = { id: "user-not-admin", user_metadata: { role: "admin" } };
+      state.callerRole = "requestee";
 
-      await expect(createSession("2026-07-04")).rejects.toMatchObject({
-        code: "42501",
-      });
+      await expect(createSession("2026-07-04")).rejects.toThrow("Not authorized");
+      expect(state.captured.filter((c) => c.table !== "roles")).toEqual([]);
     });
   });
 
@@ -297,6 +330,7 @@ describe("Sessions", () => {
     beforeAll(async () => {
       ({ addCasesToSession } = await import("@/lib/actions/session"));
     });
+    beforeEach(() => asAdmin());
 
     const cases = [
       { caseId: "case-A", start: "09:00", end: "10:00" },
@@ -518,6 +552,7 @@ describe("Sessions", () => {
     beforeAll(async () => {
       ({ replaceCaseInSession } = await import("@/lib/actions/session"));
     });
+    beforeEach(() => asAdmin());
 
     /** The two reads the delivery-mode guard makes: incoming case, then attached. */
     const replaceGuard = (incoming: string, attached: string[]) => [
@@ -599,6 +634,30 @@ describe("Sessions", () => {
     let inviteParticipants: (typeof import("@/lib/actions/session"))["inviteParticipants"];
     beforeAll(async () => {
       ({ inviteParticipants } = await import("@/lib/actions/session"));
+    });
+    beforeEach(() => asAdmin());
+
+    it("refuses anyone but an admin, as a result rather than a throw, before reading anyone's name", async () => {
+      // The guards read names and emails with the service role, and a refused
+      // invite used to come back naming the person, so a firm calling this with
+      // participant ids learnt who they were.
+      state.user = { id: "req-1" };
+      for (const role of ["participant", "requestee", "blacklisted", null]) {
+        state.callerRole = role;
+        expect(await inviteParticipants("session-1", ["p-1"], "2026-06-15")).toEqual({
+          ok: false,
+          invited: 0,
+          skipped: { blacklisted: 0, inactive: 0, noAccount: 0 },
+          error: "Not authorized",
+        });
+      }
+      state.user = null;
+      expect((await inviteParticipants("session-1", ["p-1"], "2026-06-15")).error).toBe(
+        "Not authenticated"
+      );
+
+      expect(state.captured.filter((c) => c.table !== "roles")).toEqual([]);
+      expect(sendEmailSpy).not.toHaveBeenCalled();
     });
 
     const VENUE = "Heritage Plaza Office Suites\n402 Simonton St, Conroe, TX 77301";
@@ -739,6 +798,25 @@ describe("Sessions", () => {
       // The cancellation warning is in-person only — it is about a wasted
       // journey, so it must not leak into the online invite.
       expect(html).not.toMatch(/will not be paid/i);
+    });
+
+    it("An invite reads the case times on the session's date, not today's", async () => {
+      // Today is on daylight time (CDT) and the session, after the Nov 1
+      // change, on standard time (CST): 14:00 UTC must read 8:00 AM. Reading it
+      // on today's date gave 9:00 AM (#84).
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-10-14T15:00:00Z"));
+      try {
+        queueInviteResponses(["p-1"], "online");
+        state.participantEmails.set("p-1", "p-1@example.com");
+
+        await inviteParticipants("session-1", ["p-1"], "2026-11-05");
+
+        const { html } = sendEmailSpy.mock.calls[0][0];
+        expect(html.replace(/\s/g, " ")).toContain("8:00 AM – 9:00 AM CT");
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it("An in-person invite quotes $40/hr and the in-person waitlist terms", async () => {
@@ -1979,7 +2057,7 @@ describe("Sessions", () => {
     it("refuses anyone but an admin before striking, since three strikes blacklist", async () => {
       for (const role of ["participant", "requestee", "blacklisted"]) {
         state.user = { id: "p-7" };
-        state.responses = [{ data: { role }, error: null }]; // the caller's roles row
+        state.callerRole = role; // the caller's roles row
         await expect(flagParticipant("p-7", "s-1")).rejects.toThrow("Not authorized");
       }
       state.user = null;
@@ -1989,9 +2067,8 @@ describe("Sessions", () => {
     });
 
     it("records an admin's strike with them as the striker", async () => {
-      state.user = { id: "admin-9" };
+      asAdmin("admin-9");
       state.responses = [
-        { data: { role: "admin" }, error: null }, // the caller's roles row
         { data: { id: "sp-9", struck_at: null }, error: null }, // invite lookup
         { error: null }, // struck_at stamp
         { data: { flag_count: 0 }, error: null }, // read current count
@@ -2023,6 +2100,7 @@ describe("Sessions", () => {
     beforeAll(async () => {
       ({ rescheduleSession } = await import("@/lib/actions/session"));
     });
+    beforeEach(() => asAdmin());
 
     const FUTURE = "2999-06-15";
     const PAST = "2020-01-01";
@@ -2247,16 +2325,26 @@ describe("Sessions", () => {
     beforeAll(async () => {
       ({ notifyRequesteesSessionCreated } = await import("@/lib/actions/session"));
     });
+    // An admin action since F28.
+    beforeEach(() => asAdmin());
 
     // session_cases times are stored in UTC and shown in Central time. Built
     // the same way as the action so the test doesn't depend on whether today
     // falls in daylight saving time.
-    const ct = (utc: string) => {
-      const [h, m] = utc.split(":");
-      const d = new Date();
-      d.setUTCHours(parseInt(h), parseInt(m), 0, 0);
-      return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Chicago" });
-    };
+    // What a firm should read for a UTC case time on the session's date,
+    // 2026-11-20 (Central Standard Time). Worked out from the full instant, not
+    // the way the code does it: this used to copy the code's old reading on
+    // today's date, which was an hour off in October and passed anyway.
+    const ct = (utc: string) =>
+      new Date(`2026-11-20T${utc}:00Z`).toLocaleTimeString("en-US", {
+        hour: "numeric",
+        minute: "2-digit",
+        timeZone: "America/Chicago",
+      });
+
+    it("reads case times on the session's date (CST), not today's", () => {
+      expect(ct("14:00").replace(/\s/g, " ")).toBe("8:00 AM");
+    });
 
     /** Online cases, so the action reads `cases` then `session_cases` and nothing else. */
     const queue = (
@@ -2326,4 +2414,152 @@ describe("Sessions", () => {
     });
   });
 
+  // The admin-only actions refuse everyone else (F28). Server actions are
+  // public endpoints: a firm or participant who is signed in can call any of
+  // these with any session's id, and the admin layout's role check never runs
+  // for an action. Each call below carries arguments that would otherwise reach
+  // a write or an email; the only table it may touch is the caller's roles row.
+  // -------------------------------------------------------------------------
+  describe("admin-only session actions", () => {
+    type Actions = typeof import("@/lib/actions/session");
+    let actions: Actions;
+    beforeAll(async () => {
+      actions = await import("@/lib/actions/session");
+    });
+
+    const form = (fields: Record<string, string>) => {
+      const fd = new FormData();
+      for (const [key, value] of Object.entries(fields)) fd.set(key, value);
+      return fd;
+    };
+
+    const calls: Array<[name: string, run: (a: Actions) => Promise<unknown>]> = [
+      ["createSession", (a) => a.createSession("2026-12-01")],
+      ["addCasesToSession", (a) =>
+        a.addCasesToSession("s-1", [{ caseId: "case-A", start: "09:00", end: "17:00" }], "2026-12-01", "UTC")],
+      ["notifyRequesteesSessionCreated", (a) =>
+        a.notifyRequesteesSessionCreated("s-1", ["case-A"], "2026-12-01")],
+      ["rescheduleSession", (a) =>
+        a.rescheduleSession("s-1", "2999-12-30", [{ caseId: "case-A", start: "09:00", end: "17:00" }], "UTC")],
+      ["adminRespondOnBehalf", (a) => a.adminRespondOnBehalf("s-1", "p-1", "accepted")],
+      ["callInWaitlistParticipant", (a) => a.callInWaitlistParticipant("s-1", "p-1")],
+      ["markWaitlistWaitedOut", (a) => a.markWaitlistWaitedOut("s-1", "p-1")],
+      ["updateSessionParticipantCap", (a) => a.updateSessionParticipantCap("s-1", 0)],
+      ["sendCompletionNow", (a) => a.sendCompletionNow(form({ sessionId: "s-1" }))],
+      ["sendZoomLink", (a) =>
+        a.sendZoomLink(form({ sessionId: "s-1", zoomLink: "https://evil.example/j/1" }))],
+      ["sendSessionLocation", (a) =>
+        a.sendSessionLocation(form({ sessionId: "s-1", location: "Somewhere else entirely" }))],
+      ["replaceCaseInSession", (a) =>
+        a.replaceCaseInSession("s-1", "case-A", "case-B", "14:00:00", "15:00:00", "2026-12-01")],
+      ["notifyPresenterByEmail", (a) => a.notifyPresenterByEmail("s-1", "anyone@example.com")],
+    ];
+
+    for (const [name, run] of calls) {
+      describe(name, () => {
+        it("refuses a participant, a firm, a blacklisted login and a login with no role, before any read, write or email", async () => {
+          state.user = { id: "p-1" };
+          for (const role of ["participant", "requestee", "blacklisted", null]) {
+            state.callerRole = role;
+            await expect(run(actions)).rejects.toThrow("Not authorized");
+          }
+          expect(state.captured.filter((c) => c.table !== "roles")).toEqual([]);
+          for (const spy of allMailSpies) expect(spy).not.toHaveBeenCalled();
+        });
+
+        it("refuses a signed-out caller", async () => {
+          state.user = null;
+          await expect(run(actions)).rejects.toThrow("Not authenticated");
+          expect(state.captured).toEqual([]);
+          for (const spy of allMailSpies) expect(spy).not.toHaveBeenCalled();
+        });
+      });
+    }
+
+    it("updateSessionParticipantCap: an admin's new cap is written, and one below 1 is refused first", async () => {
+      asAdmin();
+      await expect(actions.updateSessionParticipantCap("s-1", 0)).rejects.toThrow(/at least 1/);
+      await expect(actions.updateSessionParticipantCap("s-1", 2.5)).rejects.toThrow(/whole number/);
+      expect(state.captured.filter((c) => c.table === "sessions")).toEqual([]);
+
+      state.responses = [{ error: null }]; // the cap write; the full check then finds no session
+      await actions.updateSessionParticipantCap("s-1", 12);
+      const write = state.captured
+        .filter((c) => c.table === "sessions")
+        .flatMap((c) => c.ops)
+        .find((o) => o.op === "update") as { op: "update"; payload: Record<string, unknown> };
+      expect(write.payload).toEqual({ participant_cap: 12, session_full_notified: false });
+    });
+
+    it("sendZoomLink still emails an admin's link to the seated and the waitlisted", async () => {
+      asAdmin();
+      state.participantEmails.set("p-1", "p1@example.com");
+      state.participantEmails.set("p-2", "p2@example.com");
+      state.responses = [
+        { data: [{ cases: { delivery_mode: "online" } }], error: null }, // session mode
+        { data: { session_date: "2026-12-01" }, error: null }, // the session
+        // sessionTimeString reads the case times and the session's date together.
+        // The mock answers maybeSingle() as soon as it is called, which is while
+        // the Promise.all array is built, before the times query is awaited, so
+        // the date comes first here.
+        { data: { session_date: "2026-12-01" }, error: null }, // the date the times are read on
+        { data: [{ start_time: "14:00:00", end_time: "15:00:00" }], error: null }, // times
+        {
+          data: [
+            { participant_id: "p-1", invite_status: "accepted" },
+            { participant_id: "p-2", invite_status: "waitlisted" },
+          ],
+          error: null,
+        },
+        { error: null }, // zoom_link saved
+      ];
+
+      await actions.sendZoomLink(form({ sessionId: "s-1", zoomLink: "https://zoom.us/j/1" }));
+
+      expect(sendZoomLinkEmailSpy).toHaveBeenCalledTimes(1);
+      expect(sendWaitlistZoomLinkEmailSpy).toHaveBeenCalledTimes(1);
+      // The time is read on the session's date, 2026-12-01 (CST): 14:00 UTC is
+      // 8:00 AM there, whatever today's offset is (#84).
+      const plain = (value: unknown) => String(value).replace(/\s/g, " ");
+      expect(plain((sendZoomLinkEmailSpy.mock.calls[0] as unknown[])[4])).toBe("8:00 AM – 9:00 AM CT");
+      expect(plain((sendWaitlistZoomLinkEmailSpy.mock.calls[0] as unknown[])[7])).toBe("8:00 AM – 9:00 AM CT");
+      const saved = state.captured
+        .filter((c) => c.table === "sessions")
+        .flatMap((c) => c.ops)
+        .find((o) => o.op === "update") as { op: "update"; payload: Record<string, unknown> };
+      expect(saved.payload).toEqual({ zoom_link: "https://zoom.us/j/1" });
+    });
+
+    it("notifyPresenterByEmail still mails an admin's presenter and marks the cases submitted", async () => {
+      asAdmin();
+      state.responses = [
+        { data: { session_date: "2026-12-01", zoom_link: "https://zoom.us/j/1", location: null }, error: null },
+        { data: [{ cases: { delivery_mode: "online" } }], error: null }, // session mode
+        { data: [{ case_id: "case-A" }], error: null }, // the session's cases
+        { data: [{ id: "case-A", title: "Smith v. Jones", description: "Brief", drive_link: null }], error: null },
+        { data: [], error: null }, // no documents
+        { data: [{ url: "https://drive.google.com/x" }], error: null }, // case-A's links
+        { data: [], error: null }, // nobody accepted yet
+        { error: null }, // admin_status -> submitted
+      ];
+
+      await actions.notifyPresenterByEmail("s-1", "presenter@example.com");
+
+      expect(sendPresenterInfoEmailSpy).toHaveBeenCalledTimes(1);
+      const [to, , zoomLink, cases] = sendPresenterInfoEmailSpy.mock.calls[0] as unknown as [
+        string, string, string, Array<{ title: string; driveUrls: string[] }>,
+      ];
+      expect(to).toBe("presenter@example.com");
+      expect(zoomLink).toBe("https://zoom.us/j/1");
+      expect(cases).toEqual([expect.objectContaining({ title: "Smith v. Jones", driveUrls: ["https://drive.google.com/x"] })]);
+
+      const submitted = state.captured.find(
+        (c) => c.table === "cases" && c.ops.some((o) => o.op === "update")
+      )!;
+      expect(submitted.ops.find((o) => o.op === "update")).toEqual({
+        op: "update",
+        payload: { admin_status: "submitted" },
+      });
+    });
+  });
 });

@@ -31,13 +31,11 @@ import {
   normalizeDeliveryMode,
 } from "@/lib/case/deliveryMode";
 import { baseRatePerHourCents, formatCents } from "@/lib/receipt-pricing";
-
-const TIMEFRAME_TO_DAYS: Record<string, number> = {
-  "Within a Week": 7,
-  "Within 2 Weeks": 14,
-  "Within a Month": 30,
-  "Within 3 Months": 90,
-};
+import {
+  requestAgain,
+  respondToSchedule,
+  updateCase,
+} from "@/app/dashboard/requestee/actions/caseUpdates";
 
 /**
  * Whether this case is already attached to a session, which freezes its format.
@@ -185,7 +183,12 @@ export default async function RequesteeDashboard({
         deleted_at: new Date().toISOString(),
       })
       .eq("id", caseId)
-      .eq("user_id", activeUser.id);
+      .eq("user_id", activeUser.id)
+      // What the Requested tab offers it on. Once a case is approved the firm
+      // contacts us instead: archiving it would drop it from the admin's view
+      // of the firm's cases and from the lineage of later ones.
+      .eq("status", "current")
+      .in("admin_status", ["all", "rejected"]);
 
     revalidatePath("/dashboard/requestee");
   }
@@ -205,7 +208,11 @@ export default async function RequesteeDashboard({
         deleted_at: null,
       })
       .eq("id", caseId)
-      .eq("user_id", activeUser.id);
+      .eq("user_id", activeUser.id)
+      // What the Past tab offers it on: an archived case whose preferred date
+      // hasn't passed.
+      .eq("status", "previous")
+      .or(`scheduled_at.is.null,scheduled_at.gt."${new Date().toISOString()}"`);
 
     revalidatePath("/dashboard/requestee");
   }
@@ -228,122 +235,8 @@ export default async function RequesteeDashboard({
     revalidatePath("/dashboard/requestee");
   }
 
-  async function updateCase(formData: FormData) {
-    "use server";
-
-    const caseId = formData.get("case_id") as string;
-    const title = formData.get("title") as string;
-    const description = formData.get("description") as string;
-    const scheduledAt = formData.get("scheduled_at") as string;
-    const focusGroupType = formData.get("focus_group_type") as string;
-    const caseType = formData.get("case_type") as string;
-    const hoursRequested = formData.get("hours_requested") as string;
-    const deliveryMode = formData.get("delivery_mode") as string | null;
-    const county = formData.get("county") as string;
-    const participantsFromCounty = formData.get("participants_from_county") as string;
-    const sessionCompletionTimeframe = formData.get("session_completion_timeframe") as string;
-    const preferredDay = formData.get("preferred_day") as string;
-
-    const supabase = await createClient();
-    const { data: { user: activeUser } } = await supabase.auth.getUser();
-    if (!activeUser) return;
-
-    const updatePayload: Record<string, unknown> = {
-      title,
-      description,
-      scheduled_at: scheduledAt ? new Date(scheduledAt).toISOString() : null,
-      focus_group_type: focusGroupType || null,
-      case_type: caseType || null,
-      hours_requested: hoursRequested ? Number(hoursRequested) : null,
-      county: county || null,
-      participants_from_county: participantsFromCounty || null,
-      session_completion_timeframe: sessionCompletionTimeframe || null,
-      preferred_day: preferredDay || null,
-    };
-
-    // The format is only writable while the case is unscheduled — flipping it
-    // under a booked session would move it between price and payout regimes. The
-    // form omits the field once the case is in a session; this re-checks, so a
-    // replayed or hand-crafted POST is dropped here rather than surfacing the
-    // database trigger's rejection as a bare 500.
-    if (deliveryMode) {
-      const { data: scheduled } = await supabase
-        .from("session_cases")
-        .select("id")
-        .eq("case_id", caseId)
-        .limit(1);
-
-      if (!scheduled?.length) {
-        updatePayload.delivery_mode = normalizeDeliveryMode(deliveryMode);
-      }
-    }
-
-    const days = TIMEFRAME_TO_DAYS[sessionCompletionTimeframe];
-    if (days) {
-      const d = new Date();
-      d.setDate(d.getDate() + days);
-      d.setHours(23, 59, 0, 0);
-      updatePayload.deadline_date = d.toISOString();
-    } else if (sessionCompletionTimeframe === "") {
-      updatePayload.deadline_date = null;
-    }
-
-    await supabase
-      .from("cases")
-      .update(updatePayload)
-      .eq("id", caseId)
-      .eq("user_id", activeUser.id);
-
-    revalidatePath("/dashboard/requestee");
-    revalidatePath(`/dashboard/requestee/${caseId}`);
-  }
-
-  async function respondToSchedule(formData: FormData) {
-    "use server";
-
-    const caseId = formData.get("caseId") as string;
-    const response = formData.get("response") as "accepted" | "rejected";
-
-    const supabase = await createClient();
-    const { data: { user: activeUser } } = await supabase.auth.getUser();
-
-    if (!activeUser) return;
-
-    const updatePayload: Record<string, string | null> = { schedule_status: response };
-    if (response === "accepted") {
-      const { data: caseData } = await supabase
-        .from("cases")
-        .select("admin_scheduled_at")
-        .eq("id", caseId)
-        .single();
-      updatePayload.scheduled_at = caseData?.admin_scheduled_at ?? null;
-    }
-
-    await supabase
-      .from("cases")
-      .update(updatePayload)
-      .eq("id", caseId)
-      .eq("user_id", activeUser.id);
-
-    revalidatePath("/dashboard/requestee");
-  }
-
-  async function requestAgain(formData: FormData) {
-    "use server";
-
-    const caseId = formData.get("case_id") as string;
-    const supabase = await createClient();
-    const { data: { user: activeUser } } = await supabase.auth.getUser();
-    if (!activeUser) return;
-
-    await supabase
-      .from("cases")
-      .update({ admin_status: "all", rejection_reason: null })
-      .eq("id", caseId)
-      .eq("user_id", activeUser.id);
-
-    revalidatePath("/dashboard/requestee");
-  }
+  // Editing a requested case, answering a proposed time and Request Again are in
+  // actions/caseUpdates.ts, which checks the case's state as well as its owner.
 
   /* ===========================
       UI
