@@ -2312,12 +2312,20 @@ describe("Sessions", () => {
     // session_cases times are stored in UTC and shown in Central time. Built
     // the same way as the action so the test doesn't depend on whether today
     // falls in daylight saving time.
-    const ct = (utc: string) => {
-      const [h, m] = utc.split(":");
-      const d = new Date();
-      d.setUTCHours(parseInt(h), parseInt(m), 0, 0);
-      return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Chicago" });
-    };
+    // What a firm should read for a UTC case time on the session's date,
+    // 2026-11-20 (Central Standard Time). Worked out from the full instant, not
+    // the way the code does it: this used to copy the code's old reading on
+    // today's date, which was an hour off in October and passed anyway.
+    const ct = (utc: string) =>
+      new Date(`2026-11-20T${utc}:00Z`).toLocaleTimeString("en-US", {
+        hour: "numeric",
+        minute: "2-digit",
+        timeZone: "America/Chicago",
+      });
+
+    it("reads case times on the session's date (CST), not today's", () => {
+      expect(ct("14:00").replace(/\s/g, " ")).toBe("8:00 AM");
+    });
 
     /** Online cases, so the action reads `cases` then `session_cases` and nothing else. */
     const queue = (
