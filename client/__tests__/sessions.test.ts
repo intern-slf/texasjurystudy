@@ -800,6 +800,25 @@ describe("Sessions", () => {
       expect(html).not.toMatch(/will not be paid/i);
     });
 
+    it("An invite reads the case times on the session's date, not today's", async () => {
+      // Today is on daylight time (CDT) and the session, after the Nov 1
+      // change, on standard time (CST): 14:00 UTC must read 8:00 AM. Reading it
+      // on today's date gave 9:00 AM (#84).
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-10-14T15:00:00Z"));
+      try {
+        queueInviteResponses(["p-1"], "online");
+        state.participantEmails.set("p-1", "p-1@example.com");
+
+        await inviteParticipants("session-1", ["p-1"], "2026-11-05");
+
+        const { html } = sendEmailSpy.mock.calls[0][0];
+        expect(html.replace(/\s/g, " ")).toContain("8:00 AM – 9:00 AM CT");
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it("An in-person invite quotes $40/hr and the in-person waitlist terms", async () => {
       queueInviteResponses(["p-1"], "offline");
       state.participantEmails.set("p-1", "p-1@example.com");
@@ -2479,8 +2498,12 @@ describe("Sessions", () => {
       state.responses = [
         { data: [{ cases: { delivery_mode: "online" } }], error: null }, // session mode
         { data: { session_date: "2026-12-01" }, error: null }, // the session
-        { data: [{ start_time: "14:00:00", end_time: "15:00:00" }], error: null }, // times
+        // sessionTimeString reads the case times and the session's date together.
+        // The mock answers maybeSingle() as soon as it is called, which is while
+        // the Promise.all array is built, before the times query is awaited, so
+        // the date comes first here.
         { data: { session_date: "2026-12-01" }, error: null }, // the date the times are read on
+        { data: [{ start_time: "14:00:00", end_time: "15:00:00" }], error: null }, // times
         {
           data: [
             { participant_id: "p-1", invite_status: "accepted" },
@@ -2495,6 +2518,11 @@ describe("Sessions", () => {
 
       expect(sendZoomLinkEmailSpy).toHaveBeenCalledTimes(1);
       expect(sendWaitlistZoomLinkEmailSpy).toHaveBeenCalledTimes(1);
+      // The time is read on the session's date, 2026-12-01 (CST): 14:00 UTC is
+      // 8:00 AM there, whatever today's offset is (#84).
+      const plain = (value: unknown) => String(value).replace(/\s/g, " ");
+      expect(plain((sendZoomLinkEmailSpy.mock.calls[0] as unknown[])[4])).toBe("8:00 AM – 9:00 AM CT");
+      expect(plain((sendWaitlistZoomLinkEmailSpy.mock.calls[0] as unknown[])[7])).toBe("8:00 AM – 9:00 AM CT");
       const saved = state.captured
         .filter((c) => c.table === "sessions")
         .flatMap((c) => c.ops)
