@@ -1,6 +1,5 @@
-import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { requireAdmin } from "@/lib/requireAdmin";
+import { requireAdminPage } from "@/lib/requireAdmin";
 import BackButton from "@/components/BackButton";
 import TimeSlotCalendar from "@/components/TimeSlotCalendar";
 import { getBookingsForSlots, getOpenSlots, toBookingView } from "@/lib/slotBookingData";
@@ -26,12 +25,8 @@ export default async function RequesteeTimeSlotsPage({
 }) {
   // Firms' names and bookings are read with the service role below, so this page
   // checks for an admin itself: the layout's check doesn't re-run on every
-  // client-side navigation.
-  try {
-    await requireAdmin();
-  } catch {
-    redirect("/dashboard");
-  }
+  // client-side navigation (F28).
+  await requireAdminPage();
 
   const params = await searchParams;
   const nowMs = Date.now();

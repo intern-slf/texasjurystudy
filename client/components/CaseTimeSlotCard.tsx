@@ -32,14 +32,23 @@ export default async function CaseTimeSlotCard({ caseId }: { caseId: string }) {
   if (!theCase || (theCase.user_id !== userId && theCase.requestee_id !== userId)) return null;
 
   const nowMs = Date.now();
-  const record = (await getBookingsForCases([caseId])).get(caseId);
-  const slot = record?.slot ?? null;
   const offline = theCase.delivery_mode === "offline";
   const underReview = theCase.admin_status === "all" && theCase.status === "current" && !theCase.deleted_at;
   const canChange = !offline && underReview;
-  const openSlots = canChange
-    ? await getOpenSlots(earliestBookableStart(nowMs).toISOString(), new Date(nowMs + SIX_MONTHS_MS).toISOString())
-    : [];
+
+  let record;
+  let openSlots;
+  try {
+    record = (await getBookingsForCases([caseId])).get(caseId);
+    openSlots = canChange
+      ? await getOpenSlots(earliestBookableStart(nowMs).toISOString(), new Date(nowMs + SIX_MONTHS_MS).toISOString())
+      : [];
+  } catch (err) {
+    // Most likely the booking tables don't exist yet; the rest of the page works.
+    console.error("[CaseTimeSlotCard] couldn't read the booking:", err);
+    return null;
+  }
+  const slot = record?.slot ?? null;
   const due = record?.held_since && !record.paid_at ? paymentDueAt(record.held_since) : null;
 
   // Nothing to show: no time held, and nothing the firm can do about it here.

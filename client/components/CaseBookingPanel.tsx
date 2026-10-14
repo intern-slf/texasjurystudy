@@ -25,15 +25,32 @@ export default async function CaseBookingPanel({ caseId }: { caseId: string }) {
   }
 
   const nowMs = Date.now();
-  const [{ data: theCase }, records, openSlots] = await Promise.all([
-    supabaseAdmin
-      .from("cases")
-      .select("admin_status, status, deleted_at, delivery_mode, hours_requested")
-      .eq("id", caseId)
-      .maybeSingle(),
-    getBookingsForCases([caseId]),
-    getOpenSlots(new Date(nowMs).toISOString(), new Date(nowMs + SIX_MONTHS_MS).toISOString()),
-  ]);
+  let loaded;
+  try {
+    loaded = await Promise.all([
+      supabaseAdmin
+        .from("cases")
+        .select("admin_status, status, deleted_at, delivery_mode, hours_requested")
+        .eq("id", caseId)
+        .maybeSingle(),
+      getBookingsForCases([caseId]),
+      getOpenSlots(new Date(nowMs).toISOString(), new Date(nowMs + SIX_MONTHS_MS).toISOString()),
+    ]);
+  } catch (err) {
+    // Most likely the booking tables don't exist yet (migrations not run). The
+    // rest of the case page still works.
+    console.error("[CaseBookingPanel] couldn't read the booking:", err);
+    return (
+      <section className="rounded-xl border bg-white p-5 shadow-sm sm:p-8">
+        <h3 className="mb-4 text-xl font-bold">Time slot</h3>
+        <p className="text-sm text-slate-600">
+          Couldn&apos;t load this case&apos;s time slot. If this is a new deploy, run the time-slot migrations
+          (20261014_requestee_time_slots.sql, then 20261016_requestee_slot_bookings.sql) and reload.
+        </p>
+      </section>
+    );
+  }
+  const [{ data: theCase }, records, openSlots] = loaded;
   if (!theCase) return null;
 
   const record = records.get(caseId);
@@ -41,7 +58,7 @@ export default async function CaseBookingPanel({ caseId }: { caseId: string }) {
 
   let content: React.ReactNode;
   if (slot) {
-    const detail = (await getBookingsForSlots([slot.id])).get(slot.id);
+    const detail = (await getBookingsForSlots([slot.id]).catch(() => new Map())).get(slot.id);
     const booking = detail ? toBookingView(detail, slot, nowMs) : null;
     content = booking ? (
       <div className="space-y-4">
