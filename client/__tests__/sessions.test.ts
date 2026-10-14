@@ -2480,6 +2480,7 @@ describe("Sessions", () => {
         { data: [{ cases: { delivery_mode: "online" } }], error: null }, // session mode
         { data: { session_date: "2026-12-01" }, error: null }, // the session
         { data: [{ start_time: "14:00:00", end_time: "15:00:00" }], error: null }, // times
+        { data: { session_date: "2026-12-01" }, error: null }, // the date the times are read on
         {
           data: [
             { participant_id: "p-1", invite_status: "accepted" },

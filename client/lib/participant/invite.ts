@@ -14,6 +14,7 @@ import { isOffline } from "@/lib/case/deliveryMode";
 import { getSessionDeliveryModeOrDefault } from "@/lib/case/getSessionDeliveryMode";
 import { NO_LOGIN_REASON, getIdsWithoutLogin } from "@/lib/participant/loginAccount";
 import { revalidatePath } from "next/cache";
+import { formatSessionTime } from "@/lib/timezone";
 
 /**
  * Outcome of an invite attempt. Returned rather than thrown so the caller can
@@ -309,12 +310,7 @@ async function inviteToSessionInner(
     .select("start_time, end_time")
     .eq("session_id", sessionId);
 
-  const formatCentralTime = (t: string) => {
-    const [h, m] = t.split(":");
-    const d = new Date();
-    d.setUTCHours(parseInt(h), parseInt(m), 0, 0);
-    return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Chicago" });
-  };
+  const formatCentralTime = (t: string) => formatSessionTime(sessionDate, t, "America/Chicago");
 
   let timeStr = "TBD";
   if (sessionCaseRows && sessionCaseRows.length > 0) {
