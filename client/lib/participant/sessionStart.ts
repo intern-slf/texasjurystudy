@@ -1,4 +1,4 @@
-import { calendarDate, sessionSpan } from "@/lib/timezone";
+import { CENTRAL_TIME_ZONE, calendarDate, localToUTC, sessionSpan } from "@/lib/timezone";
 
 /* =========================
    SESSION TIMING
@@ -23,8 +23,9 @@ import { calendarDate, sessionSpan } from "@/lib/timezone";
 /**
  * The instant a session begins, or null when there is no usable date.
  *
- * A session with no case times falls back to midnight UTC on its date: it cannot
- * be run without cases, so once the day arrives the invite is no longer live.
+ * A session with no case times falls back to the start of its Central date: it
+ * cannot be run without cases, so once the day arrives the invite is no longer
+ * live. (Midnight UTC was 7 PM the evening before.)
  */
 export function sessionStartInstant(
   sessionDate: string | null | undefined,
@@ -32,7 +33,7 @@ export function sessionStartInstant(
 ): Date | null {
   const day = calendarDate(sessionDate);
   if (!day) return null;
-  return sessionSpan(day, startTimes, [])?.start ?? new Date(`${day}T00:00:00Z`);
+  return sessionSpan(day, startTimes, [])?.start ?? new Date(localToUTC(day, "00:00", CENTRAL_TIME_ZONE));
 }
 
 /**

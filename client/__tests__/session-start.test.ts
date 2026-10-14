@@ -35,14 +35,16 @@ describe("sessionStartInstant", () => {
     );
   });
 
-  it("falls back to midnight UTC when the session has no case times", () => {
-    // A session with no cases cannot be run, so the day itself closes it.
+  it("falls back to the start of its Central date when the session has no case times", () => {
+    // A session with no cases cannot be run, so the day itself closes it: midnight
+    // CDT in August, midnight CST in November. Midnight UTC was 7 PM the evening before.
     expect(sessionStartInstant("2026-08-22", [])?.toISOString()).toBe(
-      "2026-08-22T00:00:00.000Z"
+      "2026-08-22T05:00:00.000Z"
     );
     expect(sessionStartInstant("2026-08-22", [null, undefined])?.toISOString()).toBe(
-      "2026-08-22T00:00:00.000Z"
+      "2026-08-22T05:00:00.000Z"
     );
+    expect(sessionStartInstant("2026-11-22", [])?.toISOString()).toBe("2026-11-22T06:00:00.000Z");
   });
 
   it("returns null when there is no usable date", () => {
@@ -112,6 +114,12 @@ describe("hasSessionStarted", () => {
     expect(hasSessionStarted("2026-10-20", evening, at("2026-10-20T15:00:00Z"))).toBe(false); // Oct 20, 10 AM
     expect(hasSessionStarted("2026-10-20", evening, at("2026-10-21T00:29:59Z"))).toBe(false);
     expect(hasSessionStarted("2026-10-20", evening, at("2026-10-21T00:30:00Z"))).toBe(true);
+  });
+
+  it("keeps a session with no case times open until its Central date arrives", () => {
+    // Oct 19 at 7:05 PM CDT, then midnight CDT on Oct 20.
+    expect(hasSessionStarted("2026-10-20", [], at("2026-10-20T00:05:00Z"))).toBe(false);
+    expect(hasSessionStarted("2026-10-20", [], at("2026-10-20T05:00:00Z"))).toBe(true);
   });
 
   it("does not block when the date cannot be read", () => {
