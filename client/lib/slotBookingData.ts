@@ -190,6 +190,7 @@ export function toBookingView(detail: BookingDetail, slot: TimeSlot, nowMs: numb
     paidAt: detail.paid_at,
     dueAt: detail.held_since ? paymentDueAt(detail.held_since).toISOString() : null,
     warnings,
+    approved: detail.case.admin_status === "approved" || detail.case.admin_status === "submitted",
   };
 }
 

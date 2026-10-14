@@ -3,7 +3,9 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { rescheduleSession } from "@/lib/actions/session";
-import { CENTRAL_TIME_ZONE, utcTimeToLocal } from "@/lib/timezone";
+import { CENTRAL_TIME_ZONE, localToUTCTime, sessionSpan, utcTimeToLocal } from "@/lib/timezone";
+import { isOutsideSlot } from "@/lib/slotBooking";
+import { describeSlot, type TimeSlot } from "@/lib/requesteeTimeSlots";
 import { caseMinutes, formatMinutes, paidMinutes, paidTimeProblem, storedCaseMinutes } from "@/lib/case/paidTime";
 
 interface CaseEntry {
@@ -13,6 +15,8 @@ interface CaseEntry {
   end_time: string;
   /** What the firm asked for, which is what it pays for (lib/case/paidTime.ts). */
   hours_requested?: number | null;
+  /** The time slot the firm booked, if any: moving outside it is allowed, with a warning. */
+  booked_slot?: TimeSlot | null;
 }
 
 interface Props {
@@ -58,6 +62,18 @@ export default function RescheduleModal({ sessionId, sessionDate, cases }: Props
     }),
   );
   const hasProblem = Object.values(problems).some(Boolean);
+
+  /** The booked slot a case's new time falls outside of, if it does. Only a warning. */
+  const outsideSlot = (c: CaseEntry): TimeSlot | null => {
+    const t = times[c.case_id];
+    if (!c.booked_slot || !date || !t || !t.start || !t.end) return null;
+    const span = sessionSpan(
+      date,
+      [localToUTCTime(date, t.start.slice(0, 5), CENTRAL_TIME_ZONE)],
+      [localToUTCTime(date, t.end.slice(0, 5), CENTRAL_TIME_ZONE)],
+    );
+    return span && isOutsideSlot(span.start, span.end, c.booked_slot) ? c.booked_slot : null;
+  };
 
   /** A case still running longer than it was paid for, which it may only keep: say so. */
   const overPaid = (c: CaseEntry): string | null => {
@@ -176,6 +192,11 @@ export default function RescheduleModal({ sessionId, sessionDate, cases }: Props
                       <p className="text-xs text-red-600">{problems[c.case_id]}</p>
                     )}
                     {overPaid(c) && <p className="text-xs text-amber-700">{overPaid(c)}</p>}
+                    {outsideSlot(c) && (
+                      <p className="text-xs text-amber-700">
+                        Outside the slot its firm booked: {describeSlot(outsideSlot(c)!)}.
+                      </p>
+                    )}
                   </div>
                 ))}
               </div>

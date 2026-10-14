@@ -47,6 +47,58 @@ function slotHoursLine(slot: TimeSlot, list: BookingView[]): string {
   return left > 0 ? `${bookedText} · ${formatMinutes(left)} left` : `${bookedText} · full`;
 }
 
+/** Where a booked case's session stands: built (and whether it keeps to the slot), or not yet. */
+export function SessionLine({ booking }: { booking: BookingView }) {
+  if (!booking.session) {
+    return <p className="text-xs text-slate-500">No session built yet.</p>;
+  }
+  return (
+    <div className="space-y-1 text-xs">
+      <p className="text-slate-700">
+        In session:{" "}
+        <Link href="/dashboard/Admin/sessions" className="font-medium text-blue-700 hover:underline">
+          {booking.session.date}
+          {booking.session.time ? `, ${booking.session.time}` : ""}
+        </Link>
+      </p>
+      {booking.session.outsideSlot && (
+        <p className="rounded-md bg-amber-50 px-2 py-1 text-amber-800">
+          The session runs outside this booked slot. Reschedule it, or move the booking.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Opens Build Session with the slot's cases that can go into one: approved and
+ * not in a session yet. Its date and their times start from the slot.
+ */
+export function BuildSessionLink({ slot, list }: { slot: TimeSlot; list: BookingView[] }) {
+  const ready = list.filter((b) => b.approved && !b.session);
+  const waiting = list.filter((b) => !b.approved && !b.session).length;
+  if (!ready.length && !waiting) return null;
+  const query = new URLSearchParams({ slot: slot.id });
+  for (const b of ready) query.append("selectedCases", b.caseId);
+  return (
+    <div className="space-y-1">
+      {ready.length > 0 && (
+        <Button asChild size="sm">
+          <Link href={`/dashboard/Admin/sessions/new?${query.toString()}`}>
+            Build session with {ready.length} case{ready.length === 1 ? "" : "s"}
+          </Link>
+        </Button>
+      )}
+      {waiting > 0 && (
+        <p className="text-xs text-slate-500">
+          {waiting} case{waiting === 1 ? " isn't" : "s aren't"} approved yet, so {waiting === 1 ? "it isn't" : "they aren't"}{" "}
+          included.
+        </p>
+      )}
+    </div>
+  );
+}
+
 const MONTH_NAV_CLASSES =
   "flex h-8 w-8 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800";
 
@@ -310,6 +362,11 @@ export default function TimeSlotCalendar({ monthKey, todayKey, slots, bookings, 
                                 {booking.caseTitle}
                               </Link>
                               <span className="text-slate-400">· {formatMinutes(booking.minutes)}</span>
+                              {booking.session && (
+                                <span className={booking.session.outsideSlot ? "text-amber-700" : "text-green-700"}>
+                                  · {booking.session.outsideSlot ? "in a session outside this slot" : "in session"}
+                                </span>
+                              )}
                             </p>
                           ))}
                         </div>
@@ -366,9 +423,11 @@ export default function TimeSlotCalendar({ monthKey, todayKey, slots, bookings, 
                     {formatMinutes(booking.minutes)}
                   </p>
                   <BookingSummary booking={booking} />
+                  <SessionLine booking={booking} />
                   <BookingAdminControls booking={booking} openSlots={openSlots} />
                 </div>
               ))}
+              <BuildSessionLink slot={openSlot} list={bookings[openSlot.id]} />
               <div className="flex justify-end">
                 <Button variant="outline" onClick={() => setOpenSlot(null)}>
                   Close

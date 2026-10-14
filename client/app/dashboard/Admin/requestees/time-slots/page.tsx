@@ -3,7 +3,9 @@ import { requireAdminPage } from "@/lib/requireAdmin";
 import BackButton from "@/components/BackButton";
 import TimeSlotCalendar from "@/components/TimeSlotCalendar";
 import { getBookingsForSlots, getOpenSlots, toBookingView } from "@/lib/slotBookingData";
-import type { BookingView } from "@/lib/slotBooking";
+import { isOutsideSlot, type BookingView } from "@/lib/slotBooking";
+import { caseSessionTime, type CaseSessionRow } from "@/lib/case/caseSessionTime";
+import { formatSessionDate } from "@/lib/timezone";
 import {
   datesToInstantRange,
   isMonthKey,
@@ -72,6 +74,37 @@ export default async function RequesteeTimeSlotsPage({
     } catch (err) {
       console.error("[time slots page] bookings failed:", err);
       bookingsUnavailable = true;
+    }
+  }
+
+  // The session each booked case is in, once one is built: the slot's cases
+  // make one session. Without it the calendar still works, just without them.
+  const bookedCaseIds = Object.values(bookings).flat().map((b) => b.caseId);
+  if (bookedCaseIds.length) {
+    const { data: sessionRows, error: sessionError } = await supabase
+      .from("session_cases")
+      .select("case_id, start_time, end_time, sessions(session_date)")
+      .in("case_id", bookedCaseIds);
+    if (sessionError) console.error("[time slots page] sessions failed:", sessionError.message);
+    const rowsByCase = new Map<string, CaseSessionRow[]>();
+    for (const row of (sessionRows ?? []) as (CaseSessionRow & { case_id: string })[]) {
+      rowsByCase.set(row.case_id, [...(rowsByCase.get(row.case_id) ?? []), row]);
+    }
+    for (const slot of slots) {
+      bookings[slot.id] = (bookings[slot.id] ?? []).map((booking) => {
+        const time = caseSessionTime(rowsByCase.get(booking.caseId));
+        return {
+          ...booking,
+          session: time
+            ? {
+                date: formatSessionDate(time.sessionDate, "short"),
+                time: time.time,
+                outsideSlot: isOutsideSlot(time.start, time.end, slot),
+              }
+            : null,
+        };
+      });
+      if (!bookings[slot.id].length) delete bookings[slot.id];
     }
   }
 

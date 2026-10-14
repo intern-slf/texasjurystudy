@@ -8,7 +8,12 @@ const HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0"));
 const MINUTES = ["00", "30"];
 
 type TimeVal = { h: string; m: string };
-type Props = { caseId: string; hoursRequested?: number };
+type Props = {
+  caseId: string;
+  hoursRequested?: number;
+  /** "HH:MM" to start from, e.g. the case's place in its booked slot (lib/case/slotPrefill.ts). */
+  initialStart?: string;
+};
 
 /* ── Reusable dropdown picker ──────────────────────────────── */
 function PickerDropdown({
@@ -128,9 +133,14 @@ function TimePicker({
  * (lib/case/paidTime.ts): picking a start sets the end to the full paid length,
  * and the end can be moved earlier, not later.
  */
-export default function CaseTimeInputs({ caseId, hoursRequested }: Props) {
-  const [start, setStart] = useState<TimeVal>({ h: "", m: "" });
-  const [end, setEnd] = useState("");
+export default function CaseTimeInputs({ caseId, hoursRequested, initialStart }: Props) {
+  const [start, setStart] = useState<TimeVal>(() =>
+    initialStart ? { h: initialStart.slice(0, 2), m: initialStart.slice(3, 5) } : { h: "", m: "" },
+  );
+  const [end, setEnd] = useState(() => {
+    const choices = initialStart ? endTimeChoices(initialStart, hoursRequested) : [];
+    return choices.length ? choices[choices.length - 1].value : "";
+  });
   const startClock = start.h && start.m ? `${start.h}:${start.m}` : "";
   const choices = endTimeChoices(startClock, hoursRequested);
 

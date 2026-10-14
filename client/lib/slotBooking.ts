@@ -54,6 +54,10 @@ export type BookingView = {
   dueAt: string | null;
   /** Things the admin should look at: a rejected or archived case, a slot shorter than the case needs. */
   warnings: string[];
+  /** Approved (or submitted), so it can go into a session. */
+  approved: boolean;
+  /** The session the case is in, once one is built; the Time Slots page fills it in. */
+  session?: { date: string; time: string | null; outsideSlot: boolean } | null;
 };
 
 export const BOOKING_STATE_LABEL: Record<BookingState, string> = {
@@ -148,6 +152,11 @@ export function slotFitsHours(
 ): boolean {
   const room = slot.minutes_left ?? slotMinutes(slot);
   return room >= billableHours(hoursRequested) * 60;
+}
+
+/** Whether a case's session time falls outside the slot it booked, even partly. */
+export function isOutsideSlot(start: Date, end: Date | null, slot: Pick<TimeSlot, "starts_at" | "ends_at">): boolean {
+  return start.getTime() < Date.parse(slot.starts_at) || (end ?? start).getTime() > Date.parse(slot.ends_at);
 }
 
 /** "2 of 3 hours left", or null while nothing in the slot is booked. */

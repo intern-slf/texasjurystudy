@@ -588,6 +588,18 @@ Also in [admin-slot-booking.test.ts](../client/__tests__/admin-slot-booking.test
 
 Not covered: the Reschedule and Replace Case dialogs (both closed until clicked, and Reschedule needs the router), and Build Session's own check before it creates the session, which is an inline action on the page; each uses the functions above, and the actions behind them are pinned in `sessions.test.ts`.
 
+### 3.31 [calendar-session.test.ts](../client/__tests__/calendar-session.test.ts) — the calendar and Build Session together
+
+**Subject:** `sessionPrefill` ([lib/case/slotPrefill](../client/lib/case/slotPrefill.ts)), `isOutsideSlot` ([lib/slotBooking](../client/lib/slotBooking.ts)), the Build Session time picker started from a time, and the calendar's `SessionLine` and `BuildSessionLink` ([components/TimeSlotCalendar](../client/components/TimeSlotCalendar.tsx)), rendered with `renderToStaticMarkup`.
+
+| `describe` | Coverage |
+|---|---|
+| Build Session's starting point | The slot's Central date (daylight and standard time); its cases one after another from its start, earliest booking first, each for its paid hours (an empty request is 1 hour); the slot the calendar link names, else the one most cases booked (not just the earliest), with the others named; nothing when no case booked a slot; the picker starts there and ends after the paid time. |
+| a session outside its booked slot | Any part before the slot starts or after it ends. |
+| the calendar's booked cases | No session yet, a session inside the slot, and one outside it (warned); Build session takes only approved cases not yet in a session, says how many await approval, and shows nothing when every case is in a session. |
+
+Not covered: the Build Session and sessions pages and the Reschedule dialog themselves, which use these functions.
+
 ---
 
 ## 4. Mocking patterns used across the suite
