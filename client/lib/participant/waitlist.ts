@@ -27,6 +27,7 @@
 ========================= */
 
 import { isOffline, type DeliveryMode } from "@/lib/case/deliveryMode";
+import { sessionSpan } from "@/lib/timezone";
 
 /** `session_participants.invite_status` value for a reserve slot. */
 export const WAITLISTED_STATUS = "waitlisted";
@@ -101,8 +102,12 @@ export function formatCents(cents: number | null | undefined): string {
 
 /**
  * Total session length in hours, spanning the earliest case start to the latest
- * case end. `session_cases` times are stored UTC, and both ends shift together,
- * so a plain difference is correct without any timezone handling.
+ * case end. `session_cases` times are stored UTC on the session's Central date, so
+ * which is "earliest" depends on that date: an evening session's later cases fall
+ * past midnight UTC (from 6 PM CST / 7 PM CDT). Comparing the stored times as plain
+ * minutes mismeasured those sessions, e.g. 5-6 PM plus 6-7 PM CST as 1 hour, or
+ * 4-5:30 PM plus 6:30-8 PM CST as 23, and the length sets the payout. Pass the
+ * session's date; without one, today's offset is used.
  *
  * Returns 0 when the times are missing or unparseable — the caller decides
  * whether that means "no payout yet" or "leave the amount alone".
@@ -110,26 +115,11 @@ export function formatCents(cents: number | null | undefined): string {
 export function sessionLengthHours(
   startTimes: readonly (string | null | undefined)[],
   endTimes: readonly (string | null | undefined)[],
+  sessionDate?: string | null,
 ): number {
-  const toMinutes = (value: string | null | undefined): number | null => {
-    if (!value) return null;
-    const m = /^(\d{1,2}):(\d{2})/.exec(value.trim());
-    if (!m) return null;
-    return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
-  };
-
-  const starts = startTimes.map(toMinutes).filter((v): v is number => v !== null);
-  const ends = endTimes.map(toMinutes).filter((v): v is number => v !== null);
-  if (!starts.length || !ends.length) return 0;
-
-  const first = Math.min(...starts);
-  // Roll each end past midnight BEFORE taking the maximum. Comparing the raw
-  // maximum against the start would miss a session like 19:30→22:30 plus
-  // 22:30→00:30: max() picks 22:30 over 00:30 and the wrap is never seen, so the
-  // session measures 3 hours instead of 5.
-  const last = Math.max(...ends.map((end) => (end < first ? end + 24 * 60 : end)));
-
-  return Math.max(0, (last - first) / 60);
+  const span = sessionSpan(sessionDate, startTimes, endTimes);
+  if (!span?.end) return 0;
+  return Math.max(0, (span.end.getTime() - span.start.getTime()) / 3_600_000);
 }
 
 /** What a seated (or called-in) participant is owed for a session of this length. */
