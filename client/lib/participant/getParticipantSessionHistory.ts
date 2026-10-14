@@ -1,3 +1,4 @@
+import { centralToday } from "@/lib/centralToday";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { formatSessionSpan } from "@/lib/timezone";
@@ -113,8 +114,7 @@ export async function getParticipantSessionHistory(
     return null;
   }
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const today = centralToday();
 
   // Same session can appear twice (re-invites) — keep the strongest response.
   const bySession = new Map<string, ParticipantSessionRow>();
@@ -161,7 +161,7 @@ export async function getParticipantSessionHistory(
       inviteStatus: inv.invite_status ?? "pending",
       respondedAt: inv.responded_at ?? null,
       struckAt: inv.struck_at ?? null,
-      isPast: new Date(date) < today,
+      isPast: date.slice(0, 10) < today,
       cases,
     };
 
