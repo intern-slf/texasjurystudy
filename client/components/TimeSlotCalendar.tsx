@@ -7,6 +7,8 @@ import { CalendarPlus, ChevronLeft, ChevronRight, Plus, Trash2 } from "lucide-re
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import AddTimeSlotsDialog from "@/components/AddTimeSlotsDialog";
+import BookingAdminControls from "@/components/BookingAdminControls";
+import BookingSummary, { BOOKING_STATE_CLASSES, BookingStateBadge } from "@/components/BookingSummary";
 import TimeSlotModal from "@/components/TimeSlotModal";
 import { deleteRequesteeTimeSlot } from "@/lib/actions/requesteeTimeSlots";
 import {
@@ -21,6 +23,7 @@ import {
   slotDateKey,
   type TimeSlot,
 } from "@/lib/requesteeTimeSlots";
+import type { BookingView } from "@/lib/slotBooking";
 import { cn } from "@/lib/utils";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -38,9 +41,13 @@ type Props = {
   todayKey: string;
   /** The slots starting on any date the grid shows, earliest first. */
   slots: TimeSlot[];
+  /** Who holds each booked slot, by slot id. */
+  bookings: Record<string, BookingView>;
+  /** Free future slots, which a booking can be moved to. */
+  openSlots: TimeSlot[];
 };
 
-export default function TimeSlotCalendar({ monthKey, todayKey, slots }: Props) {
+export default function TimeSlotCalendar({ monthKey, todayKey, slots, bookings, openSlots }: Props) {
   const router = useRouter();
   const [addingOn, setAddingOn] = useState<string | null>(null);
   const [openSlot, setOpenSlot] = useState<TimeSlot | null>(null);
@@ -182,23 +189,29 @@ export default function TimeSlotCalendar({ monthKey, todayKey, slots }: Props) {
                 {daySlots.length > 0 && (
                   <>
                     <ul className="mt-1 hidden space-y-1 sm:block">
-                      {daySlots.slice(0, CHIPS_PER_DAY).map((slot) => (
-                        <li key={slot.id}>
-                          <button
-                            type="button"
-                            onClick={() => setOpenSlot(slot)}
-                            title={slot.note ?? undefined}
-                            className={cn(
-                              "w-full truncate rounded px-1.5 py-0.5 text-left text-[11px] font-medium transition-colors",
-                              isPast
-                                ? "bg-slate-100 text-slate-500 hover:bg-slate-200"
-                                : "bg-blue-50 text-blue-700 hover:bg-blue-100"
-                            )}
-                          >
-                            {formatSlotRange(slot)}
-                          </button>
-                        </li>
-                      ))}
+                      {daySlots.slice(0, CHIPS_PER_DAY).map((slot) => {
+                        const booking = bookings[slot.id];
+                        return (
+                          <li key={slot.id}>
+                            <button
+                              type="button"
+                              onClick={() => setOpenSlot(slot)}
+                              title={booking ? `${booking.firm}: ${booking.caseTitle}` : (slot.note ?? undefined)}
+                              className={cn(
+                                "w-full rounded px-1.5 py-0.5 text-left text-[11px] font-medium transition-opacity hover:opacity-80",
+                                booking
+                                  ? BOOKING_STATE_CLASSES[booking.state]
+                                  : isPast
+                                    ? "bg-slate-100 text-slate-500"
+                                    : BOOKING_STATE_CLASSES.open
+                              )}
+                            >
+                              <span className="block truncate">{formatSlotRange(slot)}</span>
+                              {booking && <span className="block truncate text-[10px] font-normal">{booking.firm}</span>}
+                            </button>
+                          </li>
+                        );
+                      })}
                       {daySlots.length > CHIPS_PER_DAY && (
                         <li className="px-1.5 text-[11px] text-slate-500">
                           +{daySlots.length - CHIPS_PER_DAY} more
@@ -211,7 +224,10 @@ export default function TimeSlotCalendar({ monthKey, todayKey, slots }: Props) {
                       {daySlots.slice(0, 4).map((slot) => (
                         <span
                           key={slot.id}
-                          className={cn("h-1.5 w-1.5 rounded-full", isPast ? "bg-slate-300" : "bg-blue-500")}
+                          className={cn(
+                            "h-1.5 w-1.5 rounded-full",
+                            bookings[slot.id] ? "bg-amber-500" : isPast ? "bg-slate-300" : "bg-blue-500"
+                          )}
                         />
                       ))}
                     </div>
@@ -249,17 +265,38 @@ export default function TimeSlotCalendar({ monthKey, todayKey, slots }: Props) {
                   {formatDateKey(dateKey)}
                 </p>
                 <ul className="flex-1 space-y-1">
-                  {(slotsByDate.get(dateKey) ?? []).map((slot) => (
-                    <li key={slot.id} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
-                      <p className="min-w-0 text-sm">
-                        <span className="font-medium text-slate-800">
-                          {formatSlotRange(slot)} {SLOT_TIME_ZONE_LABEL}
-                        </span>
-                        {slot.note && <span className="text-slate-500"> · {slot.note}</span>}
-                      </p>
-                      <DeleteSlotButton slotId={slot.id} />
-                    </li>
-                  ))}
+                  {(slotsByDate.get(dateKey) ?? []).map((slot) => {
+                    const booking = bookings[slot.id];
+                    return (
+                      <li key={slot.id} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+                        <div className="min-w-0 text-sm">
+                          <p>
+                            <span className="font-medium text-slate-800">
+                              {formatSlotRange(slot)} {SLOT_TIME_ZONE_LABEL}
+                            </span>
+                            {slot.note && <span className="text-slate-500"> · {slot.note}</span>}
+                          </p>
+                          {booking && (
+                            <p className="mt-0.5 flex flex-wrap items-center gap-2 text-slate-600">
+                              <BookingStateBadge state={booking.state} />
+                              <span>{booking.firm}</span>
+                              <span className="text-slate-400">·</span>
+                              <Link href={`/dashboard/Admin/${booking.caseId}`} className="text-blue-700 hover:underline">
+                                {booking.caseTitle}
+                              </Link>
+                            </p>
+                          )}
+                        </div>
+                        {booking ? (
+                          <Button type="button" variant="outline" size="sm" onClick={() => setOpenSlot(slot)}>
+                            Manage
+                          </Button>
+                        ) : (
+                          <DeleteSlotButton slotId={slot.id} />
+                        )}
+                      </li>
+                    );
+                  })}
                 </ul>
               </li>
             ))}
@@ -291,12 +328,28 @@ export default function TimeSlotCalendar({ monthKey, todayKey, slots }: Props) {
             )}
           </dl>
 
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
-            <DeleteSlotButton slotId={openSlot.id} onDeleted={() => setOpenSlot(null)} />
-            <Button variant="outline" onClick={() => setOpenSlot(null)}>
-              Close
-            </Button>
-          </div>
+          {bookings[openSlot.id] ? (
+            <div className="space-y-4 border-t pt-4">
+              <BookingSummary booking={bookings[openSlot.id]} />
+              <BookingAdminControls
+                booking={bookings[openSlot.id]}
+                openSlots={openSlots}
+                onLeftSlot={() => setOpenSlot(null)}
+              />
+              <div className="flex justify-end">
+                <Button variant="outline" onClick={() => setOpenSlot(null)}>
+                  Close
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
+              <DeleteSlotButton slotId={openSlot.id} onDeleted={() => setOpenSlot(null)} />
+              <Button variant="outline" onClick={() => setOpenSlot(null)}>
+                Close
+              </Button>
+            </div>
+          )}
         </TimeSlotModal>
       )}
     </div>

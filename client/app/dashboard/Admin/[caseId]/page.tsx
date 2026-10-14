@@ -7,6 +7,7 @@ import { deliveryModeLabel } from "@/lib/case/deliveryMode";
 import { baseRatePerHourCents, formatCents } from "@/lib/receipt-pricing";
 import CaseLineagePanel from "@/components/CaseLineagePanel";
 import CaseSessionsPanel from "@/components/CaseSessionsPanel";
+import CaseBookingPanel from "@/components/CaseBookingPanel";
 import BackButton from "@/components/BackButton";
 
 const fmtDate = (v: string | null | undefined) =>
@@ -305,6 +306,9 @@ export default async function AdminCaseDetailPage({
           </div>
         )}
       </section>
+
+      {/* TIME SLOT THE FIRM BOOKED */}
+      <CaseBookingPanel caseId={caseInfo.id} />
 
       {/* SESSIONS & PARTICIPANTS */}
       <CaseSessionsPanel caseId={caseInfo.id} />

@@ -358,6 +358,15 @@ describe("time slot actions", () => {
     expect(calls).toContainEqual({ verb: "eq", args: ["id", SLOT_ID] });
   });
 
+  it("explains that a booked slot has to be released first", async () => {
+    // The booking's foreign key (ON DELETE RESTRICT) refuses the delete.
+    db.error = { code: "23503", message: "violates foreign key constraint" };
+    await expect(actions.deleteRequesteeTimeSlot(SLOT_ID)).resolves.toEqual({
+      ok: false,
+      error: "This slot is booked. Move or cancel the booking first.",
+    });
+  });
+
   it("says so when nothing was deleted", async () => {
     db.deleted = [];
     await expect(actions.deleteRequesteeTimeSlot(SLOT_ID)).resolves.toEqual({

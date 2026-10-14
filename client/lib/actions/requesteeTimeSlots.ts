@@ -91,6 +91,10 @@ export async function deleteRequesteeTimeSlot(slotId: string): Promise<{ ok: tru
     .eq("id", slotId)
     .select("id");
 
+  // The booking's foreign key refuses to let a booked slot go.
+  if (error?.code === "23503") {
+    return { ok: false, error: "This slot is booked. Move or cancel the booking first." };
+  }
   if (error) {
     console.error("[deleteRequesteeTimeSlot] delete failed:", error);
     return { ok: false, error: "Couldn't delete the time slot. Try again." };
