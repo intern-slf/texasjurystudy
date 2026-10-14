@@ -432,7 +432,7 @@ Which case holds which time slot, and whether the firm has paid (`20261016_reque
 **Code access:**
 - Admin: `client/lib/actions/adminSlotBooking.ts` (mark paid / unpaid, release, move, book for a firm) writes through the admin's own client, after `requireAdmin()`. Every write names the slot the admin saw, so a booking changed in the meantime is never overwritten.
 - Admin reads with the service role, in `client/lib/slotBookingData.ts` (it joins the firm's name from `confidentiality_agreements_requestee`, which admins can't read under RLS). The Time Slots page and the case page's Time slot box check for an admin themselves before calling it; the case lists and Build Session only ask about cases the admin's own client already returned.
-- Firms: none yet. They will book through server actions, never this table.
+- Firms: never this table. `client/lib/actions/requesteeSlotBooking.ts` (`listOpenTimeSlots`, `chooseTimeSlot`, `cancelMyTimeSlot`) reads and writes it with the service role after `requireRequestee()` (`client/lib/requireRequestee.ts`, which reads `roles`, not `user_metadata`) and after checking the case is the caller's own (`user_id` or `requestee_id`) and still under review, online and not archived. Another firm's case gets the same answer as a missing one, and the open-times list carries only each slot's own fields. The firm's case page and dashboard read the bookings of cases their own user-scoped queries returned.
 - Trigger `cases_release_slot_booking` on `cases` updates it as SECURITY DEFINER, so a firm archiving its own case frees its unpaid hold. It only ever clears `slot_id` on that case's own row; EXECUTE is revoked from PUBLIC, `anon` and `authenticated`.
 
 **Policies (created by the migration):**

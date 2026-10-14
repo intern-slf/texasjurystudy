@@ -22,6 +22,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Calendar, Clock, AlertCircle, FileText, Upload, ArrowRight } from "lucide-react";
 import LocalDateTime from "@/components/LocalDateTime";
+import { getBookingsForCases } from "@/lib/slotBookingData";
+import { describeSlot, type TimeSlot } from "@/lib/requesteeTimeSlots";
 import { TEXAS_COUNTIES } from "@/lib/constants/texas-counties";
 import {
   deliveryModeLabel,
@@ -150,6 +152,18 @@ export default async function RequesteeDashboard({
   }
 
   const { data: cases } = await caseQuery;
+
+  // The time slot each case holds. Read with the service role, but only for the
+  // cases above, which the query already limits to this firm's own.
+  const heldSlotByCase = new Map<string, TimeSlot>();
+  try {
+    const bookings = await getBookingsForCases((cases ?? []).map((c) => c.id as string));
+    for (const [bookedCaseId, booking] of bookings) {
+      if (booking.slot) heldSlotByCase.set(bookedCaseId, booking.slot);
+    }
+  } catch (err) {
+    console.error("[requestee dashboard] bookings failed:", err);
+  }
 
 
   /* ===========================
@@ -418,6 +432,11 @@ export default async function RequesteeDashboard({
                                 <LocalDateTime iso={(c.admin_scheduled_at || c.scheduled_at) as string} mode="date" />
                             </Badge>
                           ) : null}
+                          {heldSlotByCase.has(c.id) && (
+                            <Badge variant="outline" className="font-medium">
+                              Time held: {describeSlot(heldSlotByCase.get(c.id)!)}
+                            </Badge>
+                          )}
                         </div>
                     </div>
                 </CardHeader>
