@@ -1,4 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { join, relative, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 import { centralToday } from "@/lib/centralToday";
 import { getCaseSessions } from "@/lib/case/getCaseSessions";
 import { getParticipantSessionHistory } from "@/lib/participant/getParticipantSessionHistory";
@@ -122,5 +125,44 @@ describe("an evening session stays upcoming until Central midnight", () => {
     history = await getParticipantSessionHistory(["p-1"]);
     expect(history?.past.map((s) => s.sessionId)).toEqual(["s-1"]);
     expect(history?.stats.attended).toBe(1);
+  });
+});
+
+/* The pages that decide "past" (My Sessions, the participant dashboard, the
+   admin lists and the sidebar count) aren't rendered by this suite, so this
+   guards them by reading the source: today's date for a session date must come
+   from centralToday(), and these patterns take it from the server's UTC clock
+   (or the browser's). */
+describe("nothing takes today's date from the UTC clock", () => {
+  const CLIENT = fileURLToPath(new URL("..", import.meta.url));
+  const UTC_TODAY = /new Date\(\)\.toISOString\(\)\.(slice\(0, ?10\)|split\(["']T["']\)\[0\])|\.setHours\(0, ?0, ?0, ?0\)/;
+  /** Files that may, and why. */
+  const ALLOWED: Record<string, string> = {
+    "lib/timezone.ts": "falls back to today for a time read without a session date",
+    "components/EditProfileForm.tsx": "the date-of-birth input's max, not a session date",
+  };
+
+  const sourceFiles = (dir: string): string[] =>
+    readdirSync(dir).flatMap((name) => {
+      const path = join(dir, name);
+      if (statSync(path).isDirectory()) return sourceFiles(path);
+      return /\.tsx?$/.test(name) ? [path] : [];
+    });
+
+  it("in app/, lib/ and components/", () => {
+    const offenders = ["app", "lib", "components"]
+      .flatMap((dir) => sourceFiles(join(CLIENT, dir)))
+      .map((path) => relative(CLIENT, path).split(sep).join("/"))
+      .filter((file) => !(file in ALLOWED))
+      .flatMap((file) =>
+        readFileSync(join(CLIENT, file), "utf8")
+          .split("\n")
+          .flatMap((text, i) => (UTC_TODAY.test(text) ? [`${file}:${i + 1}  ${text.trim()}`] : [])),
+      );
+
+    expect(
+      offenders,
+      "Use centralToday() from lib/centralToday for today's date. If a file really needs the UTC date, add it to ALLOWED with the reason.",
+    ).toEqual([]);
   });
 });

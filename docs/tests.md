@@ -287,6 +287,7 @@ Uses a **table-keyed** fake client rather than the FIFO response queue of 4.1: t
 |---|---|
 | `centralToday` | The Central date at 7:05 PM CDT (UTC already the next day), at 11:59:59 PM and at midnight; the same turnover on standard time (Nov 5); reads the clock by default. |
 | an evening session stays upcoming until Central midnight | A 7-9 PM CDT session is not past at 7:05 PM on the admin case page (`getCaseSessions`) or in a participant's session history, where it isn't counted as attended yet; at Central midnight it is past in both. |
+| nothing takes today's date from the UTC clock | The pages that decide "past" (My Sessions, the participant dashboard, the admin lists, the sidebar count) aren't rendered by this suite, so this reads the source of `app/`, `lib/` and `components/` and fails on `new Date().toISOString().slice(0, 10)`, `.split("T")[0]` or `setHours(0, 0, 0, 0)` outside two allowed files, each with its reason: `lib/timezone.ts` (a time read without a session date) and `EditProfileForm.tsx` (the date-of-birth input). |
 
 Also, in [sessions.test.ts](../client/__tests__/sessions.test.ts), a session rescheduled at 7:05 PM CDT to 8 PM that evening has its payouts repriced, since it isn't dated in the past.
 
