@@ -363,9 +363,77 @@ describe("Sessions", () => {
       },
     ];
 
+    /**
+     * The paid-time read that follows the guard: each case's title and the hours
+     * its firm asked for, which is what it pays for. One hour each unless a test
+     * says otherwise.
+     */
+    const paidRead = (hours: Record<string, number | null> = {}) => ({
+      data: ["case-A", "case-B", "case-C"].map((id) => ({
+        id,
+        title: `Case ${id.slice(-1)}`,
+        hours_requested: id in hours ? hours[id] : 1,
+      })),
+      error: null,
+    });
+
+    /* ---------------------------------------------------------------------
+       PAID TIME — a case runs no longer than its firm paid for: the hours it
+       asked for, or 1 hour when it left that empty (lib/case/paidTime.ts).
+    --------------------------------------------------------------------- */
+
+    it("Refuses a case given more time than its firm paid for, before anything is written", async () => {
+      state.responses = [...modeGuard(), paidRead()];
+
+      await expect(
+        addCasesToSession(
+          "session-1",
+          [cases[0], { caseId: "case-B", start: "10:30", end: "12:30" }, cases[2]],
+          "2026-06-15",
+        ),
+      ).rejects.toThrow(/"Case B" is paid for 1 hour, so it can't run 2 hours\./);
+
+      expect(state.captured.some((c) => c.ops.some((o) => o.op === "insert" || o.op === "update"))).toBe(false);
+    });
+
+    it("Gives a case all the time it paid for, or less, and counts an empty request as 1 hour", async () => {
+      state.responses = [
+        ...modeGuard(),
+        paidRead({ "case-A": 3, "case-B": null, "case-C": 2 }),
+        { error: null }, // session_cases insert
+        { data: [], error: null }, // the cases' preferred times
+        { error: null },
+        { error: null },
+        { error: null },
+      ];
+
+      await addCasesToSession(
+        "session-1",
+        [
+          { caseId: "case-A", start: "09:00", end: "12:00" }, // all 3 hours it paid for
+          { caseId: "case-B", start: "12:00", end: "13:00" }, // an empty request: 1 hour
+          { caseId: "case-C", start: "23:30", end: "00:30" }, // 1 of its 2 hours, past midnight
+        ],
+        "2026-06-15",
+      );
+
+      expect(
+        state.captured.some((c) => c.table === "session_cases" && c.ops.some((o) => o.op === "insert")),
+      ).toBe(true);
+    });
+
+    it("Refuses a case that ends when it starts", async () => {
+      state.responses = [...modeGuard(), paidRead()];
+
+      await expect(
+        addCasesToSession("session-1", [{ caseId: "case-A", start: "09:00", end: "09:00" }], "2026-06-15"),
+      ).rejects.toThrow(/"Case A" has to end after it starts\./);
+    });
+
     it("Creates one row per case", async () => {
       state.responses = [
         ...modeGuard(),
+        paidRead(),
         { error: null }, // session_cases insert
         // select cases.in
         {
@@ -402,6 +470,7 @@ describe("Sessions", () => {
       // sent along, so an admin in India typing 9:00 stored 03:30 UTC.
       state.responses = [
         ...modeGuard(),
+        paidRead(),
         { error: null },
         {
           data: [
@@ -447,6 +516,7 @@ describe("Sessions", () => {
     it("Updates each case's admin_scheduled_at", async () => {
       state.responses = [
         ...modeGuard(),
+        paidRead(),
         { error: null },
         {
           data: [
@@ -495,6 +565,7 @@ describe("Sessions", () => {
     it("Attaching all-offline cases is fine", async () => {
       state.responses = [
         ...modeGuard({ incoming: ["offline", "offline", "offline"] }),
+        paidRead(),
         { error: null },
         { data: [], error: null },
       ];
@@ -541,6 +612,7 @@ describe("Sessions", () => {
     it("An in-person case may join a session that already holds in-person ones", async () => {
       state.responses = [
         ...modeGuard({ incoming: ["offline", "offline", "offline"], attached: ["offline"] }),
+        paidRead(),
         { error: null },
         { data: [], error: null },
       ];
@@ -579,6 +651,7 @@ describe("Sessions", () => {
     it("Swaps in a case of the same format", async () => {
       state.responses = [
         ...replaceGuard("offline", ["offline"]),
+        { data: { title: "Doe v. Roe", hours_requested: 1 }, error: null }, // paid for 1 hour
         { error: null }, // delete old session_cases row
         { error: null }, // reset old case
         { error: null }, // insert new session_cases row
@@ -607,6 +680,7 @@ describe("Sessions", () => {
     it("Dates the incoming case by when it really ends, even in the evening", async () => {
       state.responses = [
         ...replaceGuard("online", ["online"]),
+        { data: { title: "Doe v. Roe", hours_requested: 2 }, error: null }, // paid for 2 hours
         { error: null }, // delete old session_cases row
         { error: null }, // reset old case
         { error: null }, // insert new session_cases row
@@ -629,6 +703,7 @@ describe("Sessions", () => {
       state.participantEmails.set("requestee-1", "firm@example.com");
       state.responses = [
         ...replaceGuard("online", ["online"]),
+        { data: { title: "Doe v. Roe", hours_requested: 2 }, error: null }, // paid for 2 hours
         { error: null }, // delete old session_cases row
         { error: null }, // reset old case
         { error: null }, // insert new session_cases row
@@ -664,6 +739,24 @@ describe("Sessions", () => {
     it("Doesn't tell a firm to confirm a case on its Past tab, which has no Confirm button", async () => {
       const [[, , , details]] = await replaceAndEmail({ status: "previous", admin_status: "approved" });
       expect(details).toMatchObject({ askToConfirm: false });
+    });
+
+    it("Refuses a case paid for less time than the slot, before touching the session", async () => {
+      // The slot is 7:30-9:00 PM CDT, an hour and a half; the incoming case paid for 1 hour.
+      state.responses = [
+        ...replaceGuard("online", ["online"]),
+        { data: { title: "Doe v. Roe", hours_requested: 1 }, error: null },
+      ];
+
+      await expect(
+        replaceCaseInSession("session-1", "case-old", "case-new", "00:30:00", "02:00:00", "2026-10-20"),
+      ).rejects.toThrow(/"Doe v. Roe" is paid for 1 hour, so it can't run 1 hour 30 minutes\./);
+
+      expect(
+        state.captured.some(
+          (c) => c.table === "session_cases" && c.ops.some((o) => o.op === "delete" || o.op === "insert"),
+        ),
+      ).toBe(false);
     });
 
     it("Refuses times it cannot read before touching the session", async () => {
@@ -2323,12 +2416,26 @@ describe("Sessions", () => {
     const PAST = "2020-01-01";
     const updates = [{ caseId: "case-A", start: "09:00", end: "14:00" }];
 
+    /** One of the session's cases as it stands: case-A, 9 AM-2 PM CDT, paid for 5 hours. */
+    const currentRow = (over: Record<string, unknown> = {}) => ({
+      case_id: "case-A",
+      start_time: "14:00:00",
+      end_time: "19:00:00",
+      sessions: { session_date: FUTURE },
+      cases: { title: "Smith v. Jones", hours_requested: 5 },
+      ...over,
+    });
+
+    /** The read of the session's cases, for their paid time, before any write. */
+    const currentRead = (rows: Array<Record<string, unknown>> = [currentRow()]) => ({ data: rows, error: null });
+
     /**
-     * rescheduleSession's own writes, in order: the session date, then per case
-     * the session_cases times and cases.admin_scheduled_at, then the
-     * schedule_status reset.
+     * rescheduleSession's own reads and writes, in order: the session's cases as
+     * they stand, the session date, then per case the session_cases times and
+     * cases.admin_scheduled_at, then the schedule_status reset.
      */
     const preamble = () => [
+      currentRead(),
       { error: null }, // sessions.update(session_date)
       { error: null }, // session_cases.update(times)
       { error: null }, // cases.update(admin_scheduled_at)
@@ -2645,6 +2752,54 @@ describe("Sessions", () => {
       expect(await firmEmailAfterReschedule(PAST, { status: "current", admin_status: "approved" })).toMatchObject({
         askToConfirm: false,
       });
+    });
+
+    it("Refuses to give a case more time than its firm paid for, before writing anything", async () => {
+      state.responses = [
+        currentRead([
+          currentRow({ end_time: "15:00:00", cases: { title: "Smith v. Jones", hours_requested: 1 } }),
+        ]),
+      ];
+
+      await expect(
+        rescheduleSession("s-1", FUTURE, [{ caseId: "case-A", start: "09:00", end: "11:00" }]),
+      ).rejects.toThrow(/"Smith v. Jones" is paid for 1 hour, so it can't run 2 hours\./);
+
+      expect(state.captured.some((c) => c.ops.some((o) => o.op === "update"))).toBe(false);
+    });
+
+    it("Lets a case keep a longer length it already had, but not make it any longer", async () => {
+      // Built before this was checked: 2 hours on a 1-hour request.
+      const twoHours = currentRow({ end_time: "16:00:00", cases: { title: "Smith v. Jones", hours_requested: 1 } });
+
+      state.responses = [currentRead([twoHours])];
+      await expect(
+        rescheduleSession("s-1", FUTURE, [{ caseId: "case-A", start: "10:00", end: "12:30" }]),
+      ).rejects.toThrow(/is paid for 1 hour, so it can't run 2 hours 30 minutes\./);
+      expect(state.captured.some((c) => c.ops.some((o) => o.op === "update"))).toBe(false);
+
+      state.responses = [
+        currentRead([twoHours]),
+        { error: null }, // sessions.update(session_date)
+        { error: null }, // session_cases.update(times)
+        { error: null }, // cases.update(admin_scheduled_at)
+        { error: null }, // cases.update(schedule_status)
+        { data: null, error: { message: "read failed" } }, // the resync's re-read
+        { data: [], error: null }, // who to email
+        { data: [], error: null }, // the firms
+      ];
+      await rescheduleSession("s-1", FUTURE, [{ caseId: "case-A", start: "10:00", end: "12:00" }]);
+      expect(
+        state.captured.some((c) => c.table === "sessions" && c.ops.some((o) => o.op === "update")),
+      ).toBe(true);
+    });
+
+    it("Refuses to move a case that isn't in the session", async () => {
+      state.responses = [currentRead([currentRow({ case_id: "case-B" })])];
+
+      await expect(rescheduleSession("s-1", FUTURE, updates)).rejects.toThrow(/isn't in this session/);
+
+      expect(state.captured.some((c) => c.ops.some((o) => o.op === "update"))).toBe(false);
     });
 
     it("Moves the cooldown with the session", async () => {

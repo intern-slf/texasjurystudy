@@ -28,6 +28,7 @@ import {
   formatCents,
 } from "@/lib/participant/waitlist";
 import { assertCasesShareDeliveryMode, isOffline } from "@/lib/case/deliveryMode";
+import { assertPaidTime, caseMinutes, storedCaseMinutes } from "@/lib/case/paidTime";
 import { getSessionDeliveryModeOrDefault } from "@/lib/case/getSessionDeliveryMode";
 import { getAllIdsWithoutLogin } from "@/lib/participant/loginAccount";
 import { revalidatePath } from "next/cache";
@@ -132,6 +133,22 @@ export async function addCasesToSession(
     sessionId,
     cases.map((c) => c.caseId),
   );
+
+  // Each case runs no longer than its firm paid for, checked before anything is
+  // written (lib/case/paidTime.ts).
+  const { data: paidRows, error: paidError } = await supabase
+    .from("cases")
+    .select("id, title, hours_requested")
+    .in("id", cases.map((c) => c.caseId));
+  if (paidError) throw paidError;
+  for (const c of cases) {
+    const paid = (paidRows ?? []).find((r) => r.id === c.caseId);
+    assertPaidTime(
+      paid?.title ?? "This case",
+      caseMinutes(sessionDate ?? centralToday(), c.start, c.end),
+      paid?.hours_requested,
+    );
+  }
 
   // The admin picks the times in Central Time, the zone participants and firms
   // are told. The form used to send the browser's zone, so an admin outside
@@ -458,6 +475,34 @@ export async function rescheduleSession(
   // the service role, so check for an admin before anything else.
   await requireAdmin();
   const supabase = await createClient();
+
+  // Before any write: each case runs no longer than its firm paid for. A case
+  // that already ran longer, from before that was checked, may keep its length
+  // but not grow. And only this session's cases can be moved with it.
+  const { data: current, error: currentError } = await supabase
+    .from("session_cases")
+    .select("case_id, start_time, end_time, sessions(session_date), cases(title, hours_requested)")
+    .eq("session_id", sessionId);
+  if (currentError) throw currentError;
+  type CurrentRow = {
+    case_id: string;
+    start_time: string | null;
+    end_time: string | null;
+    sessions?: { session_date?: string | null } | { session_date?: string | null }[] | null;
+    cases?: { title?: string | null; hours_requested?: number | null } | { title?: string | null; hours_requested?: number | null }[] | null;
+  };
+  const one = <T,>(v: T | T[] | null | undefined): T | undefined => (Array.isArray(v) ? v[0] : v ?? undefined);
+  for (const cu of caseUpdates) {
+    const row = ((current ?? []) as CurrentRow[]).find((r) => r.case_id === cu.caseId);
+    if (!row) throw new Error("A case being moved isn't in this session any more. Refresh the page and try again.");
+    const theCase = one(row.cases);
+    assertPaidTime(
+      theCase?.title ?? "This case",
+      caseMinutes(newDate, cu.start, cu.end),
+      theCase?.hours_requested,
+      storedCaseMinutes(one(row.sessions)?.session_date, row.start_time, row.end_time) ?? 0,
+    );
+  }
 
   // 1. Update session date
   const { error: sessionError } = await supabase
@@ -1333,6 +1378,20 @@ export async function replaceCaseInSession(
   // already accepted. Checked BEFORE the delete below, so a rejected swap leaves
   // the session exactly as it was rather than half-emptied.
   await assertSessionDeliveryModeFits(supabase, sessionId, [newCaseId]);
+
+  // The incoming case takes over the outgoing one's time, so its firm must have
+  // paid for that long. Also checked before the delete.
+  const { data: incoming, error: incomingError } = await supabase
+    .from("cases")
+    .select("title, hours_requested")
+    .eq("id", newCaseId)
+    .maybeSingle();
+  if (incomingError) throw incomingError;
+  assertPaidTime(
+    incoming?.title ?? "The replacement case",
+    storedCaseMinutes(sessionDate, startTime, endTime),
+    incoming?.hours_requested,
+  );
 
   // 1. Remove old case from session
   await supabase

@@ -38,6 +38,7 @@ import InviteMoreModal, { type Candidate } from "@/components/InviteMoreModal";
 import RescheduleModal from "@/components/RescheduleModal";
 import ReplaceCaseModal, { type ReplacementCandidate } from "@/components/ReplaceCaseModal";
 import CentralTimeRange from "@/components/CentralTimeRange";
+import { paidMinutes } from "@/lib/case/paidTime";
 import ParticipantActionsMenu from "@/components/ParticipantActionsMenu";
 import { sendCompletionNow } from "@/lib/actions/session";
 import ZoomLinkSender from "@/components/ZoomLinkSender";
@@ -289,9 +290,10 @@ export default async function SessionsPage({
   // `delivery_mode` rides along so each Replace modal can offer only the cases
   // that fit its session — swapping an online case for an in-person one would
   // leave the session with two venues and two pay rates.
+  // `hours_requested` too: a case can only take over a time its firm paid for.
   const { data: rawCandidates } = await supabase
     .from("cases")
-    .select("id, title, delivery_mode")
+    .select("id, title, delivery_mode, hours_requested")
     .eq("admin_status", "approved");
   const replacementCandidates: ReplacementCandidate[] = (rawCandidates ?? [])
     .filter((c) => !scheduledCaseIds.has(c.id))
@@ -299,6 +301,7 @@ export default async function SessionsPage({
       id: c.id,
       title: c.title,
       deliveryMode: isOffline(c.delivery_mode) ? "offline" : "online",
+      paidMinutes: paidMinutes(c.hours_requested),
     }));
 
   const { data: sessions } = await supabase
@@ -353,7 +356,7 @@ export default async function SessionsPage({
       const { data: caseDetails } = caseIds.length
         ? await supabase
           .from("cases")
-          .select("id, title, admin_status, schedule_status, delivery_mode")
+          .select("id, title, admin_status, schedule_status, delivery_mode, hours_requested")
           .in("id", caseIds)
         : { data: [] };
 
@@ -621,6 +624,7 @@ export default async function SessionsPage({
                         title: caseDetails?.find((cd) => cd.id === sc.case_id)?.title ?? "Unknown",
                         start_time: sc.start_time,
                         end_time: sc.end_time,
+                        hours_requested: caseDetails?.find((cd) => cd.id === sc.case_id)?.hours_requested ?? null,
                       }))}
                     />
                   </div>
