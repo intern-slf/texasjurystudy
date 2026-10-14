@@ -18,7 +18,7 @@ This document is the canonical reference for every automated check that runs aga
 | Secret scanning | **Gitleaks** | CI only |
 | CI runner | **GitHub Actions** (Ubuntu, Node 22 — `@google-cloud/storage@8` requires ≥22) | [.github/workflows/ci.yml](../.github/workflows/ci.yml) |
 
-All tests live under [client/__tests__/](../client/__tests__/). The convention is one `<topic>.test.ts` per **product area**, with each file containing a top-level `describe` and nested `describe` blocks for each sub-feature. There is **no React / DOM rendering** in this suite — every test exercises pure functions, server actions, or API route handlers with mocked Supabase / GCS / mail / Next.js boundaries.
+All tests live under [client/__tests__/](../client/__tests__/). The convention is one `<topic>.test.ts` per **product area**, with each file containing a top-level `describe` and nested `describe` blocks for each sub-feature. There is **no DOM rendering** in this suite; the one place React renders is [§3.27](#327-case-booking-viewstestts--the-booking-boxes-when-a-read-fails), which turns two async server components into static HTML. Every other test exercises pure functions, server actions, or API route handlers with mocked Supabase / GCS / mail / Next.js boundaries.
 
 ### Running tests locally
 
@@ -512,8 +512,8 @@ Not covered: the migration itself (no database in this suite; the SQL checks its
 
 | Case | Coverage |
 |---|---|
-| Firm's box | If the open times can't be read, the firm still sees the time it holds and its payment deadline, with a reload message instead of the controls, and the error is logged; with both reads working the controls show; if the booking itself can't be read, the box is left out. |
-| Admin's box | A failed read of the booking's details is logged and named as such, not passed off as "the booking changed while the page loaded" (which still shows when the booking is really gone); every read working shows the booking and its controls; a failed first read points at the migrations. |
+| Firm's box | If the open times can't be read, the firm still sees the time it holds and its payment deadline, with a reload message instead of the controls (and no "pick one of our open times below" when it holds none), and the error is logged; with both reads working the controls show; if the booking itself can't be read, the box is left out. |
+| Admin's box | A failed read of the booking's details is logged and named as such, not passed off as "the booking changed while the page loaded" (which still shows when the booking is really gone); if only the open times fail, the booking and its controls stay, with a note that there's nothing to move it to; a failed case read is logged and shown, not silently dropped; every read working shows the booking and its controls; a failed first read points at the migrations. |
 | Time Slots page | Checks for an admin (`requireAdminPage`) before any read. |
 
 ---
@@ -590,7 +590,7 @@ When you add a new feature, follow this checklist:
 ## 6. Known limitations
 
 - **No real PostgreSQL.** RLS is asserted only against a TypeScript simulator. A SQL-only policy regression will not be caught.
-- **No React rendering.** UI behavior (toast messages, button disabled states, optimistic updates) is not covered. The closest proxy is the rendered HTML assertion in `email-action.test.ts`.
+- **No interactive rendering.** UI behavior (toast messages, button disabled states, optimistic updates) is not covered. Only §3.27 renders React, as static HTML from server components. The closest proxy is the rendered HTML assertion in `email-action.test.ts`.
 - **`zip-lookup.test.ts` calls the public internet.** It will fail in offline / firewalled environments. There is a 15-second per-test timeout; if the upstream becomes unreliable, mock `global.fetch` (the existing "County lookup failure" test shows the pattern).
 - **`participants.test.ts` and `match-participant-to-filter.test.ts` are placeholders.** They contribute zero regression coverage today and exist only as a contract for future work.
 - **Secret scanning runs against full history (`fetch-depth: 0`).** A new gitleaks rule will flag historical leaks; you cannot ignore them by only sanitizing `HEAD`.

@@ -16,6 +16,7 @@ import { describeSlot } from "@/lib/requesteeTimeSlots";
 
 const mocks = vi.hoisted(() => ({
   caseRow: { current: null as Record<string, unknown> | null },
+  caseError: { current: null as { message: string } | null },
   getBookingsForCases: vi.fn(),
   getBookingsForSlots: vi.fn(),
   getOpenSlots: vi.fn(),
@@ -27,7 +28,12 @@ vi.mock("@/lib/supabase/admin", () => ({
   supabaseAdmin: {
     from: () => ({
       select: () => ({
-        eq: () => ({ maybeSingle: async () => ({ data: mocks.caseRow.current, error: null }) }),
+        eq: () => ({
+          maybeSingle: async () =>
+            mocks.caseError.current
+              ? { data: null, error: mocks.caseError.current }
+              : { data: mocks.caseRow.current, error: null },
+        }),
       }),
     }),
   },
@@ -93,6 +99,7 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date("2026-10-14T15:00:00Z"));
   mocks.caseRow.current = UNDER_REVIEW;
+  mocks.caseError.current = null;
   for (const fn of [mocks.getBookingsForCases, mocks.getBookingsForSlots, mocks.getOpenSlots, mocks.requireAdminPage, mocks.createClient]) {
     fn.mockReset();
   }
@@ -134,6 +141,16 @@ describe("the firm's Focus group time box", () => {
     expect(await CaseTimeSlotCard({ caseId: "case-1" })).toBeNull();
     expect(errorSpy).toHaveBeenCalledWith("[CaseTimeSlotCard] couldn't read the booking:", expect.any(Error));
   });
+
+  it("doesn't point at open times below when it couldn't load any", async () => {
+    mocks.getBookingsForCases.mockResolvedValue(new Map());
+    mocks.getOpenSlots.mockRejectedValue(new Error("open times read failed"));
+
+    const page = html(await CaseTimeSlotCard({ caseId: "case-1" }));
+
+    expect(page).not.toContain("open times below");
+    expect(page).toContain("load our open times");
+  });
 });
 
 describe("the admin case page's Time slot box", () => {
@@ -174,6 +191,29 @@ describe("the admin case page's Time slot box", () => {
     mocks.getOpenSlots.mockResolvedValue([]);
 
     expect(html(await CaseBookingPanel({ caseId: "case-1" }))).toContain("time-slot migrations");
+  });
+
+  it("keeps the booking in view when only the open times fail", async () => {
+    mocks.getBookingsForCases.mockResolvedValue(held());
+    mocks.getOpenSlots.mockRejectedValue(new Error("open times read failed"));
+    mocks.getBookingsForSlots.mockResolvedValue(new Map([[SLOT.id, {}]]));
+
+    const page = html(await CaseBookingPanel({ caseId: "case-1" }));
+
+    expect(page).toContain(describeSlot(SLOT));
+    expect(page).toContain("[booking summary]");
+    expect(page).toContain("[booking controls]");
+    expect(page).toContain("load the open times");
+    expect(page).not.toContain("time-slot migrations");
+    expect(errorSpy).toHaveBeenCalledWith("[CaseBookingPanel] couldn't read the open times:", expect.any(Error));
+  });
+
+  it("says so, and logs it, when the case can't be read", async () => {
+    mocks.caseError.current = { message: "case read failed" };
+    mocks.getBookingsForCases.mockResolvedValue(new Map());
+
+    expect(html(await CaseBookingPanel({ caseId: "case-1" }))).toContain("Reload the page.");
+    expect(errorSpy).toHaveBeenCalledWith("[CaseBookingPanel] couldn't read the case:", "case read failed");
   });
 });
 

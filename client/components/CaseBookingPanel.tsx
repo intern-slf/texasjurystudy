@@ -7,7 +7,7 @@ import {
   toBookingView,
   type BookingDetail,
 } from "@/lib/slotBookingData";
-import { describeSlot } from "@/lib/requesteeTimeSlots";
+import { describeSlot, type TimeSlot } from "@/lib/requesteeTimeSlots";
 import { slotFitsHours } from "@/lib/slotBooking";
 import BookingSummary from "@/components/BookingSummary";
 import BookingAdminControls from "@/components/BookingAdminControls";
@@ -50,7 +50,6 @@ export default async function CaseBookingPanel({ caseId }: { caseId: string }) {
         .eq("id", caseId)
         .maybeSingle(),
       getBookingsForCases([caseId]),
-      getOpenSlots(new Date(nowMs).toISOString(), new Date(nowMs + SIX_MONTHS_MS).toISOString()),
     ]);
   } catch (err) {
     // On a new deploy, most likely the booking tables don't exist yet. The rest
@@ -64,11 +63,30 @@ export default async function CaseBookingPanel({ caseId }: { caseId: string }) {
       </Notice>
     );
   }
-  const [{ data: theCase }, records, openSlots] = loaded;
+  const [{ data: theCase, error: caseError }, records] = loaded;
+  if (caseError) {
+    console.error("[CaseBookingPanel] couldn't read the case:", caseError.message);
+    return <Notice>Couldn&apos;t load this case&apos;s time slot. Reload the page.</Notice>;
+  }
   if (!theCase) return null;
 
   const record = records.get(caseId);
   const slot = record?.slot ?? null;
+
+  // The open times are only somewhere to move or book to. If they can't be read,
+  // the booking still shows, with a note in place of the times.
+  let openSlots: TimeSlot[] = [];
+  let openSlotsNote: React.ReactNode = null;
+  try {
+    openSlots = await getOpenSlots(new Date(nowMs).toISOString(), new Date(nowMs + SIX_MONTHS_MS).toISOString());
+  } catch (err) {
+    console.error("[CaseBookingPanel] couldn't read the open times:", err);
+    openSlotsNote = (
+      <p className="text-sm text-amber-700">
+        Couldn&apos;t load the open times, so there&apos;s nothing to move or book to. Reload the page.
+      </p>
+    );
+  }
 
   let content: React.ReactNode;
   if (slot) {
@@ -87,6 +105,7 @@ export default async function CaseBookingPanel({ caseId }: { caseId: string }) {
         <p className="text-base font-semibold text-slate-800">{describeSlot(slot)}</p>
         <BookingSummary booking={booking} showCaseLink={false} />
         <BookingAdminControls booking={booking} openSlots={openSlots} />
+        {openSlotsNote}
       </div>
     ) : (
       <p className="text-sm text-slate-600">The booking changed while the page loaded. Refresh the page.</p>
@@ -105,10 +124,12 @@ export default async function CaseBookingPanel({ caseId }: { caseId: string }) {
         <p className="text-sm text-slate-600">
           No time held.{record?.held_since ? " The firm's payment clock is still running from an earlier hold." : ""}
         </p>
-        <AssignSlotControl
-          caseId={caseId}
-          openSlots={openSlots.filter((s) => slotFitsHours(s, theCase.hours_requested))}
-        />
+        {openSlotsNote ?? (
+          <AssignSlotControl
+            caseId={caseId}
+            openSlots={openSlots.filter((s) => slotFitsHours(s, theCase.hours_requested))}
+          />
+        )}
       </div>
     );
   }

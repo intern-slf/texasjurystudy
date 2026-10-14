@@ -92,11 +92,11 @@ export default async function CaseTimeSlotCard({ caseId }: { caseId: string }) {
         <p className="text-sm text-muted-foreground">
           For an in-person focus group, email us at {contact} to arrange a time.
         </p>
-      ) : (
+      ) : openSlots ? (
         <p className="text-sm text-muted-foreground">
           Pick one of our open times below and we&apos;ll hold it while we review your case.
         </p>
-      )}
+      ) : null}
 
       {canChange && openSlots ? (
         <CaseTimeSlotControls

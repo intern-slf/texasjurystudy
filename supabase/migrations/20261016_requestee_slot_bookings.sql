@@ -20,8 +20,9 @@
 --     racing for the same slot can't both get it (the second gets 23505).
 --   * Deleting a booked slot is refused (ON DELETE RESTRICT, 23503); the admin
 --     moves or cancels the booking first. Deleting a case deletes its row,
---     except that a firm can't delete a case whose booking is paid (the second
---     trigger at the end): paid_at is the only record of the payment.
+--     except that a firm can't delete a case whose booking is paid, not even by
+--     deleting its parent case (the second trigger at the end): paid_at is the
+--     only record of the payment.
 --
 -- Released automatically, by the trigger at the end: an unpaid hold on a slot
 -- that hasn't started, when its case is rejected, archived while still under
@@ -42,9 +43,11 @@
 
 BEGIN;
 
--- The triggers below lock cases against writes until COMMIT. If something else
--- holds a lock on it, give up after 5 seconds rather than queue every app query
--- on cases behind this one.
+-- Until COMMIT, the triggers below lock cases against writes (and, when this is
+-- re-run, against reads too), and the new foreign keys lock auth.users and
+-- requestee_time_slots the same way. It takes moments. If something else holds
+-- one of those locks, give up after 5 seconds rather than queue every app query
+-- behind this one.
 SET LOCAL lock_timeout = '5s';
 
 DO $$
@@ -159,60 +162,55 @@ CREATE TRIGGER cases_release_slot_booking
 -- A case's booking row goes with the case (the foreign key cascades), and
 -- paid_at is the only record that the firm paid. A firm can delete its own case
 -- (the cases DELETE policies, and the dashboard's Permanently Delete on archived
--- and past cases), so it can't delete one whose booking is paid: it asks us.
--- Admins on their own login, server code (service role) and the SQL Editor
--- (postgres) can, as with protect_case_admin_fields (20261005).
+-- and past cases), so no delete a firm makes may take a case whose booking is
+-- paid: it asks us. That includes a case deleted along with another one, such as
+-- a follow-up whose parent the firm deletes, should that foreign key cascade.
+--
+-- Who is deleting is the request's role (the "role" setting PostgREST makes for
+-- each request), not current_user. Inside this SECURITY DEFINER function
+-- current_user is the owner, and in a cascaded delete it is the table's owner even
+-- when a firm started it; the role setting stays 'authenticated' through both.
+-- Server code (service_role), the SQL Editor and the auth server (no role set,
+-- 'none') aren't limited, and nor is an admin on their own login. No DELETE
+-- policy lets an admin's login delete a firm's case, though, so staff remove a
+-- paid case in the SQL Editor or through server code.
+--
+-- SECURITY DEFINER so it can read this admin-only table. A trigger function can't
+-- be called on its own, and EXECUTE is revoked anyway.
 -- -----------------------------------------------------------------------------
-
--- Whether one of the caller's own cases has a paid booking. SECURITY DEFINER
--- because firms can't read this table. It answers only about the caller's own
--- cases, so calling it directly tells nobody anything about another firm's.
-CREATE OR REPLACE FUNCTION public.own_case_slot_booking_is_paid(p_case_id uuid)
-RETURNS boolean
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-  SELECT EXISTS (
-    SELECT 1
-      FROM public.requestee_slot_bookings b
-      JOIN public.cases c ON c.id = b.case_id
-     WHERE b.case_id = p_case_id
-       AND b.paid_at IS NOT NULL
-       AND (c.user_id = auth.uid() OR c.requestee_id = auth.uid())
-  );
-$$;
-
-REVOKE EXECUTE ON FUNCTION public.own_case_slot_booking_is_paid(uuid) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.own_case_slot_booking_is_paid(uuid) TO authenticated;
-
--- Runs with the caller's rights, like protect_case_admin_fields, so that
--- current_user says who is deleting.
 CREATE OR REPLACE FUNCTION public.keep_paid_slot_booking_on_case_delete()
 RETURNS trigger
 LANGUAGE plpgsql
+SECURITY DEFINER
 SET search_path = ''
 AS $$
+DECLARE
+  caller text := current_setting('role');
 BEGIN
-  IF current_user NOT IN ('authenticated', 'anon') THEN
+  IF caller NOT IN ('authenticated', 'anon') THEN
     RETURN OLD;
   END IF;
-  -- Signed out: the DELETE policies need auth.uid(), so this isn't reached
-  -- today, and anon can call neither function below. Refuse it outright.
-  IF current_user = 'anon' THEN
-    RAISE EXCEPTION 'Sign in to delete a case.' USING ERRCODE = 'insufficient_privilege';
+  IF caller = 'authenticated' THEN
+    IF public.caller_is_admin() THEN
+      RETURN OLD;
+    END IF;
   END IF;
-  IF public.caller_is_admin() THEN
-    RETURN OLD;
-  END IF;
-  IF public.own_case_slot_booking_is_paid(OLD.id) THEN
+  IF EXISTS (
+    SELECT 1 FROM public.requestee_slot_bookings b
+     WHERE b.case_id = OLD.id AND b.paid_at IS NOT NULL
+  ) THEN
     RAISE EXCEPTION 'This case has a paid focus group booking, so only staff can delete it.'
       USING ERRCODE = 'insufficient_privilege';
   END IF;
   RETURN OLD;
 END;
 $$;
+
+REVOKE ALL ON FUNCTION public.keep_paid_slot_booking_on_case_delete() FROM PUBLIC, anon, authenticated;
+
+-- An earlier draft of this file gave the guard a helper the browser could call.
+-- It was never run in production; drop it wherever it was.
+DROP FUNCTION IF EXISTS public.own_case_slot_booking_is_paid(uuid);
 
 DROP TRIGGER IF EXISTS cases_keep_paid_slot_booking ON public.cases;
 CREATE TRIGGER cases_keep_paid_slot_booking
@@ -284,12 +282,14 @@ END $$;
 -- Self-check for the delete guard, acting as the firm that owns a case (looked
 -- up first, as postgres: once acting as a user, RLS hides other rows). With a
 -- paid booking its delete is refused; with an unpaid one the guard lets it
--- through. Undone the same way. Skipped when there is no firm case without a
--- booking to try it on.
+-- through; and deleting the case's parent doesn't take a paid case with it,
+-- whatever that foreign key does. Undone the same way. Skipped when there is no
+-- firm case without a booking to try it on.
 DO $$
 DECLARE
   firm uuid;
   firm_case uuid;
+  parent_case uuid;
   changed integer;
 BEGIN
   SELECT c.id, c.user_id INTO firm_case, firm
@@ -329,7 +329,9 @@ BEGIN
     END IF;
   END;
 
-  -- 4. Unpaid: the guard lets the delete through.
+  -- 4. Unpaid: the guard lets the delete through. The firm may delete its own
+  --    case ("user can delete own cases"), so the row goes, unless another table
+  --    still points at it, which isn't this trigger's refusal.
   BEGIN
     INSERT INTO public.requestee_slot_bookings (case_id, held_since)
     VALUES (firm_case, now());
@@ -338,16 +340,57 @@ BEGIN
     PERFORM set_config('request.jwt.claim.sub', firm::text, true);
     BEGIN
       DELETE FROM public.cases WHERE id = firm_case;
+      GET DIAGNOSTICS changed = ROW_COUNT;
+      IF changed <> 1 THEN
+        RAISE EXCEPTION 'Self-check: a firm could not delete its own case with an unpaid booking (% rows); nothing changed', changed;
+      END IF;
     EXCEPTION
-      -- Another table still pointing at the case isn't this trigger's refusal.
       WHEN foreign_key_violation THEN
         NULL;
       WHEN insufficient_privilege THEN
         IF SQLERRM LIKE 'This case has a paid focus group booking%' THEN
-          RAISE EXCEPTION 'Self-check: a firm could not delete its case with an unpaid booking; nothing changed';
+          RAISE EXCEPTION 'Self-check: a firm could not delete its own case with an unpaid booking; nothing changed';
         END IF;
         RAISE;
     END;
+    RAISE EXCEPTION 'self-check: undo';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM <> 'self-check: undo' THEN
+      RAISE;
+    END IF;
+  END;
+
+  -- 5. Paid, and its parent deleted by the firm: still kept. A copy of the case
+  --    becomes its parent, as a follow-up's is. Whatever the parent foreign key
+  --    does (cascade, refuse, or set NULL), the paid booking must survive.
+  BEGIN
+    INSERT INTO public.cases (user_id, title, description, documentation_type, filters, status)
+    SELECT user_id, title, description, documentation_type, filters, 'previous'
+      FROM public.cases WHERE id = firm_case
+    RETURNING id INTO parent_case;
+    UPDATE public.cases SET parent_case_id = parent_case WHERE id = firm_case;
+    INSERT INTO public.requestee_slot_bookings (case_id, held_since, paid_at)
+    VALUES (firm_case, now(), now());
+    SET LOCAL ROLE authenticated;
+    PERFORM set_config('request.jwt.claims', json_build_object('sub', firm, 'role', 'authenticated')::text, true);
+    PERFORM set_config('request.jwt.claim.sub', firm::text, true);
+    BEGIN
+      DELETE FROM public.cases WHERE id = parent_case;
+    EXCEPTION
+      WHEN foreign_key_violation THEN
+        NULL;
+      WHEN insufficient_privilege THEN
+        IF SQLERRM NOT LIKE 'This case has a paid focus group booking%' THEN
+          RAISE;
+        END IF;
+    END;
+    RESET ROLE;
+    IF NOT EXISTS (
+      SELECT 1 FROM public.requestee_slot_bookings b
+       WHERE b.case_id = firm_case AND b.paid_at IS NOT NULL
+    ) THEN
+      RAISE EXCEPTION 'Self-check: a firm could delete a paid case by deleting its parent; nothing changed';
+    END IF;
     RAISE EXCEPTION 'self-check: undo';
   EXCEPTION WHEN raise_exception THEN
     IF SQLERRM <> 'self-check: undo' THEN
@@ -373,6 +416,7 @@ SELECT
       AND t.tgname = 'cases_keep_paid_slot_booking'
       AND t.tgenabled = 'O'
   ) AS delete_guard_enabled,
-  has_function_privilege('authenticated', 'public.own_case_slot_booking_is_paid(uuid)', 'EXECUTE') AS signed_in_can_check_own_case,
-  has_function_privilege('anon', 'public.own_case_slot_booking_is_paid(uuid)', 'EXECUTE') AS anon_can_check
+  (SELECT p.prosecdef FROM pg_proc p
+    WHERE p.oid = 'public.keep_paid_slot_booking_on_case_delete()'::regprocedure) AS guard_reads_bookings_as_owner,
+  has_function_privilege('authenticated', 'public.keep_paid_slot_booking_on_case_delete()', 'EXECUTE') AS signed_in_can_call_guard
 LIMIT 1;

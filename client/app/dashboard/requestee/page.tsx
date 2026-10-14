@@ -64,6 +64,8 @@ interface Case {
 type RequesteeDashboardProps = {
   searchParams?: Promise<{
     tab?: string;
+    /** "delete-refused": the database refused a Permanently Delete. */
+    notice?: string;
   }>;
 };
 
@@ -235,11 +237,16 @@ export default async function RequesteeDashboard({
       .eq("id", caseId)
       .eq("user_id", activeUser.id)
       .eq("status", "previous");
-    // The database refuses a case with a paid time-slot booking, whose payment
-    // record would go with it; the page offers those an email to us instead.
-    if (error) console.error("[requestee dashboard] delete refused:", error.message);
 
     revalidatePath("/dashboard/requestee");
+
+    // The database refuses some deletes: a case with a paid time-slot booking,
+    // whose payment record would go with it, or one other rows still point at.
+    // Say so, rather than leave the button looking as if it did nothing.
+    if (error) {
+      console.error("[requestee dashboard] delete refused:", error.message);
+      redirect("/dashboard/requestee?tab=previous&notice=delete-refused");
+    }
   }
 
   // Editing a requested case, answering a proposed time and Request Again are in
@@ -277,6 +284,22 @@ export default async function RequesteeDashboard({
                 </div>
             )}
           </div>
+
+          {tab === "previous" && resolvedSearchParams?.notice === "delete-refused" && (
+            <div
+              role="alert"
+              className="mb-6 flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"
+            >
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <p>
+                That case couldn&apos;t be deleted. Our team can remove it for you: email us at{" "}
+                <a href={`mailto:${SUPPORT_EMAIL}`} className="font-medium underline">
+                  {SUPPORT_EMAIL}
+                </a>
+                .
+              </p>
+            </div>
+          )}
 
           {!cases?.length && (
             <div className="flex flex-col items-center justify-center p-12 text-center border-2 border-dashed rounded-xl bg-card/50">
