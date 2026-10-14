@@ -10,8 +10,9 @@ import {
    The cutoff behind "you can no longer accept this invitation".
 
    `session_cases.start_time` is stored UTC (addCasesToSession runs the admin's
-   local input through localToUTCTime), so the session date plus the earliest
-   start time is a real instant. `now` is injected so these are not clock-flaky.
+   local input through localToUTCTime), and the session date is a Central date,
+   so a start time is a real instant on that date: an evening one falls on the
+   next UTC day. `now` is injected so these are not clock-flaky.
 --------------------------------------------------------------------------- */
 
 const at = (iso: string) => new Date(iso);
@@ -34,25 +35,52 @@ describe("sessionStartInstant", () => {
     );
   });
 
-  it("falls back to midnight UTC when the session has no case times", () => {
-    // A session with no cases cannot be run, so the day itself closes it.
+  it("falls back to the start of its Central date when the session has no case times", () => {
+    // A session with no cases cannot be run, so the day itself closes it: midnight
+    // CDT in August, midnight CST in November. Midnight UTC was 7 PM the evening before.
     expect(sessionStartInstant("2026-08-22", [])?.toISOString()).toBe(
-      "2026-08-22T00:00:00.000Z"
+      "2026-08-22T05:00:00.000Z"
     );
     expect(sessionStartInstant("2026-08-22", [null, undefined])?.toISOString()).toBe(
-      "2026-08-22T00:00:00.000Z"
+      "2026-08-22T05:00:00.000Z"
     );
+    expect(sessionStartInstant("2026-11-22", [])?.toISOString()).toBe("2026-11-22T06:00:00.000Z");
   });
 
   it("returns null when there is no usable date", () => {
     expect(sessionStartInstant(null, ["19:30:00"])).toBeNull();
     expect(sessionStartInstant("", ["19:30:00"])).toBeNull();
     expect(sessionStartInstant("not-a-date", ["19:30:00"])).toBeNull();
+    // Shaped like a date but not one: these threw rather than returning null.
+    expect(sessionStartInstant("2026-13-45", ["19:30:00"])).toBeNull();
+    expect(sessionStartInstant("2026-02-30", [])).toBeNull();
   });
 
   it("ignores unparseable times rather than throwing", () => {
     expect(sessionStartInstant("2026-08-22", ["garbage", "19:30:00"])?.toISOString()).toBe(
       "2026-08-22T19:30:00.000Z"
+    );
+  });
+
+  it("puts an evening start on the next UTC day", () => {
+    // 7:30 PM CDT on Oct 20, and 6:00 PM CST on Nov 10. Read on the session's own
+    // UTC date, both came out a day early.
+    expect(sessionStartInstant("2026-10-20", ["00:30:00"])?.toISOString()).toBe("2026-10-21T00:30:00.000Z");
+    expect(sessionStartInstant("2026-11-10", ["00:00:00"])?.toISOString()).toBe("2026-11-11T00:00:00.000Z");
+  });
+
+  it("starts an evening session whose cases cross midnight UTC at its first case", () => {
+    // 5-6 PM and 6-7 PM CST: as text, "00:00" sorted before "23:00".
+    expect(sessionStartInstant("2026-11-05", ["00:00:00", "23:00:00"])?.toISOString()).toBe(
+      "2026-11-05T23:00:00.000Z"
+    );
+  });
+
+  it("starts at the first case when a later one begins after Central midnight", () => {
+    // 10 PM and 12 AM CDT. Read on the session's date, the 12 AM start is the
+    // start of Oct 20, which would close the invitations nearly a day early.
+    expect(sessionStartInstant("2026-10-20", ["05:00:00", "03:00:00"])?.toISOString()).toBe(
+      "2026-10-21T03:00:00.000Z"
     );
   });
 });
@@ -79,10 +107,26 @@ describe("hasSessionStarted", () => {
     expect(hasSessionStarted(date, times, at("2026-08-22T08:00:00Z"))).toBe(false);
   });
 
+  it("keeps an evening session open until it really begins", () => {
+    // 7:30 PM CDT on Oct 20, stored as 00:30. It used to close at 7:30 PM on Oct 19.
+    const evening = ["00:30:00"];
+    expect(hasSessionStarted("2026-10-20", evening, at("2026-10-20T01:00:00Z"))).toBe(false); // Oct 19, 8 PM
+    expect(hasSessionStarted("2026-10-20", evening, at("2026-10-20T15:00:00Z"))).toBe(false); // Oct 20, 10 AM
+    expect(hasSessionStarted("2026-10-20", evening, at("2026-10-21T00:29:59Z"))).toBe(false);
+    expect(hasSessionStarted("2026-10-20", evening, at("2026-10-21T00:30:00Z"))).toBe(true);
+  });
+
+  it("keeps a session with no case times open until its Central date arrives", () => {
+    // Oct 19 at 7:05 PM CDT, then midnight CDT on Oct 20.
+    expect(hasSessionStarted("2026-10-20", [], at("2026-10-20T00:05:00Z"))).toBe(false);
+    expect(hasSessionStarted("2026-10-20", [], at("2026-10-20T05:00:00Z"))).toBe(true);
+  });
+
   it("does not block when the date cannot be read", () => {
     // Better to let the response through than to reject on an unreadable row.
     expect(hasSessionStarted(null, times, at("2030-01-01T00:00:00Z"))).toBe(false);
     expect(hasSessionStarted("not-a-date", times, at("2030-01-01T00:00:00Z"))).toBe(false);
+    expect(hasSessionStarted("2026-13-45", times, at("2030-01-01T00:00:00Z"))).toBe(false);
   });
 });
 
@@ -93,11 +137,25 @@ describe("sessionEndInstant", () => {
     ).toBe("2026-08-22T22:30:00.000Z");
   });
 
-  it("rolls an end past midnight onto the next day", () => {
+  it("takes an end after midnight UTC on the next UTC day", () => {
     // The plain maximum would pick 22:30 over 00:30 and end the session early.
     expect(
       sessionEndInstant("2026-08-22", ["19:30:00", "22:30:00"], ["22:30:00", "00:30:00"])?.toISOString()
     ).toBe("2026-08-23T00:30:00.000Z");
+  });
+
+  it("rolls an end after Central midnight onto the next day", () => {
+    // 10 PM to 1 AM CDT: read on the session's date, the 1 AM end is before the start.
+    expect(sessionEndInstant("2026-10-20", ["03:00:00"], ["06:00:00"])?.toISOString()).toBe(
+      "2026-10-21T06:00:00.000Z"
+    );
+  });
+
+  it("ends an evening session whose cases cross midnight UTC at its last case", () => {
+    // 5-6 PM and 6-7 PM CST, stored 23:00-00:00 and 00:00-01:00.
+    expect(
+      sessionEndInstant("2026-11-05", ["00:00:00", "23:00:00"], ["01:00:00", "00:00:00"])?.toISOString()
+    ).toBe("2026-11-06T01:00:00.000Z");
   });
 
   it("falls back to the start when there are no end times", () => {
@@ -120,10 +178,23 @@ describe("cooldownAfterSession", () => {
     );
   });
 
-  it("counts from the real end of a session that runs past midnight", () => {
+  it("counts from the real end of a session that runs past midnight UTC", () => {
     expect(
       cooldownAfterSession("2026-08-22", ["19:30:00", "22:30:00"], ["22:30:00", "00:30:00"])
     ).toBe("2026-08-24T00:30:00.000Z");
+  });
+
+  it("counts from the real end of a session that runs past Central midnight", () => {
+    // 10-11:30 PM and 12-1 AM CDT on Oct 20: it ends at 1 AM on Oct 21.
+    expect(
+      cooldownAfterSession("2026-10-20", ["03:00:00", "05:00:00"], ["04:30:00", "06:00:00"])
+    ).toBe("2026-10-22T06:00:00.000Z");
+  });
+
+  it("counts from the real end of an evening session", () => {
+    // 7:30-9:00 PM CDT on Oct 20 ends at 02:00 UTC on Oct 21. Read on Oct 20 UTC,
+    // the cooldown ran out when the session ended instead of a day later.
+    expect(cooldownAfterSession("2026-10-20", ["00:30:00"], ["02:00:00"])).toBe("2026-10-22T02:00:00.000Z");
   });
 
   it("crosses a month boundary without drifting", () => {
@@ -142,5 +213,6 @@ describe("cooldownAfterSession", () => {
   it("returns null when the session times cannot be read, so the cooldown is left alone", () => {
     expect(cooldownAfterSession(null, ["19:30:00"], ["22:30:00"])).toBeNull();
     expect(cooldownAfterSession("not-a-date", ["19:30:00"], ["22:30:00"])).toBeNull();
+    expect(cooldownAfterSession("2026-13-45", ["19:30:00"], ["22:30:00"])).toBeNull();
   });
 });

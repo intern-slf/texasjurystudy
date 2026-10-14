@@ -3,6 +3,7 @@ import {
   it,
   expect,
   vi,
+  afterEach,
   beforeAll,
   beforeEach,
 } from "vitest";
@@ -586,6 +587,42 @@ describe("Sessions", () => {
       expect(deleted).toBeDefined();
     });
 
+    /** admin_scheduled_at as written to `cases`: the outgoing case's reset, then the incoming case's. */
+    const scheduledAtWrites = () =>
+      state.captured
+        .filter((x) => x.table === "cases")
+        .flatMap((x) => x.ops)
+        .filter((o): o is { op: "update"; payload: Record<string, unknown> } => o.op === "update")
+        .map((o) => o.payload.admin_scheduled_at);
+
+    it("Dates the incoming case by when it really ends, even in the evening", async () => {
+      state.responses = [
+        ...replaceGuard("online", ["online"]),
+        { error: null }, // delete old session_cases row
+        { error: null }, // reset old case
+        { error: null }, // insert new session_cases row
+        { error: null }, // set admin_scheduled_at
+        { data: { user_id: "requestee-1" }, error: null },
+      ];
+
+      // 7:30-9:00 PM CDT on Oct 20, stored as 00:30-02:00 on Oct 21 UTC. Putting
+      // the end on Oct 20 UTC dated it Oct 19, 9 PM: the firm saw the evening
+      // before, and the case moved to Previous a day early.
+      await replaceCaseInSession(
+        "session-1", "case-old", "case-new", "00:30:00", "02:00:00", "2026-10-20",
+      );
+
+      expect(scheduledAtWrites()).toEqual([null, "2026-10-21T02:00:00.000Z"]);
+    });
+
+    it("Refuses times it cannot read before touching the session", async () => {
+      await expect(
+        replaceCaseInSession("session-1", "case-old", "case-new", "", "", "2026-10-20")
+      ).rejects.toThrow(/could not be read/);
+
+      expect(state.captured.filter((c) => c.table !== "roles")).toEqual([]);
+    });
+
     it("Refuses a replacement of the other format", async () => {
       state.responses = [...replaceGuard("online", ["offline", "offline"])];
 
@@ -676,6 +713,9 @@ describe("Sessions", () => {
       insertedIds: string[],
       deliveryMode: "online" | "offline" = "online",
       venue: string | null = VENUE,
+      times: Array<{ start_time: string; end_time: string }> = [
+        { start_time: "14:00:00", end_time: "15:00:00" },
+      ],
     ) {
       state.responses = [
         // 1. the session's format
@@ -706,10 +746,7 @@ describe("Sessions", () => {
           error: null,
         },
         // 6. .from("session_cases").select(...).eq() — used to format email time
-        {
-          data: [{ start_time: "14:00:00", end_time: "15:00:00" }],
-          error: null,
-        },
+        { data: times, error: null },
       ];
     }
 
@@ -817,6 +854,21 @@ describe("Sessions", () => {
       } finally {
         vi.useRealTimers();
       }
+    });
+
+    it("An invite spans an evening session from its first case, across midnight UTC", async () => {
+      // 5-6 PM and 6-7 PM CST on Nov 5, stored 23:00-00:00 and 00:00-01:00 UTC.
+      // Sorted as text, "00:00" came first and the invite said 6:00 PM.
+      queueInviteResponses(["p-1"], "online", VENUE, [
+        { start_time: "00:00:00", end_time: "01:00:00" },
+        { start_time: "23:00:00", end_time: "00:00:00" },
+      ]);
+      state.participantEmails.set("p-1", "p-1@example.com");
+
+      await inviteParticipants("session-1", ["p-1"], "2026-11-05");
+
+      const { html } = sendEmailSpy.mock.calls[0][0];
+      expect(html.replace(/\s/g, " ")).toContain("5:00 PM – 7:00 PM CT");
     });
 
     it("An in-person invite quotes $40/hr and the in-person waitlist terms", async () => {
@@ -1870,6 +1922,120 @@ describe("Sessions", () => {
       );
       expect(update).toBeUndefined();
     });
+
+    /* The tests above stop at the main update. These go on to the emails, so
+       the main update hands the row back. The session's own date and times are
+       used throughout: they decide whether it has started, the length and so
+       the payout, the cooldown and the time in the email. */
+    describe("the session time in the acceptance emails", () => {
+      afterEach(() => vi.useRealTimers());
+
+      const acceptedThroughToEmails = (
+        sessionDate: string,
+        times: Array<{ start_time: string; end_time: string }>,
+        opts: { waitlist?: boolean } = {},
+      ) => [
+        { data: { session_id: "s-1", participant_id: "p-1" }, error: null },
+        // the session-start gate
+        { data: { session_date: sessionDate }, error: null },
+        { data: times, error: null },
+        ...occupancy(opts.waitlist ? { accepted: 10 } : {}),
+        {
+          data: {
+            paypal_username: "p1",
+            driver_license_number: "DL123",
+            driver_license_image_url: "http://img/dl",
+            reactivation_status: "yes",
+          },
+          error: null,
+        },
+        // the main update hands the row back, so the emails go out
+        { data: [{ session_id: "s-1", participant_id: "p-1" }], error: null },
+        { data: { session_date: sessionDate, zoom_link: null, location: null }, error: null },
+        { data: times, error: null },
+        // a seat's cooldown write; a waitlister gets none
+        ...(opts.waitlist ? [] : [{ data: null, error: null }]),
+      ];
+
+      /** One argument of the first call, with the narrow space some ICU versions put before AM/PM made plain. */
+      const sentArg = (spy: typeof sendInviteAcceptedConfirmationEmailSpy, index: number) =>
+        String((spy.mock.calls[0] as unknown as unknown[])[index]).replace(/\s/g, " ");
+
+      /** The writes this accept made, by table. */
+      const writes = (table: string) =>
+        state.captured
+          .filter((c) => c.table === table)
+          .flatMap((c) => c.ops)
+          .filter((o): o is { op: "update"; payload: Record<string, unknown> } => o.op === "update")
+          .map((o) => o.payload);
+
+      // 5-6 PM and 6-7 PM CST on Nov 5, stored 23:00-00:00 and 00:00-01:00 UTC.
+      const EVENING = [
+        { start_time: "00:00:00", end_time: "01:00:00" },
+        { start_time: "23:00:00", end_time: "00:00:00" },
+      ];
+
+      it("reads a November session in Central Standard Time while it is still October", async () => {
+        vi.useFakeTimers({ toFake: ["Date"] });
+        vi.setSystemTime(new Date("2026-10-14T15:00:00Z"));
+        state.participantEmails.set("p-1", "p-1@example.com");
+        state.responses = acceptedThroughToEmails("2026-11-05", [
+          { start_time: "16:00:00", end_time: "18:00:00" },
+        ]);
+
+        await updateInviteStatus("invite-t1", "accepted");
+
+        expect(sendInviteAcceptedConfirmationEmailSpy).toHaveBeenCalledTimes(1);
+        expect(sentArg(sendInviteAcceptedConfirmationEmailSpy, 0)).toBe("p-1@example.com");
+        expect(sentArg(sendInviteAcceptedConfirmationEmailSpy, 1)).toBe("2026-11-05");
+        // Read on today's October date, 16:00 UTC came out as 11:00 AM.
+        expect(sentArg(sendInviteAcceptedConfirmationEmailSpy, 2)).toBe("10:00 AM – 12:00 PM CT");
+      });
+
+      it("reads a March session in Central Daylight Time while it is still November", async () => {
+        vi.useFakeTimers({ toFake: ["Date"] });
+        vi.setSystemTime(new Date("2026-11-10T15:00:00Z"));
+        state.participantEmails.set("p-1", "p-1@example.com");
+        state.responses = acceptedThroughToEmails("2027-03-20", [
+          { start_time: "15:00:00", end_time: "17:00:00" },
+        ]);
+
+        await updateInviteStatus("invite-t2", "accepted");
+
+        expect(sentArg(sendInviteAcceptedConfirmationEmailSpy, 2)).toBe("10:00 AM – 12:00 PM CT");
+      });
+
+      it("spans an evening session from its first case, and pays and cools down by its real end", async () => {
+        vi.useFakeTimers({ toFake: ["Date"] });
+        vi.setSystemTime(new Date("2026-10-14T15:00:00Z"));
+        state.participantEmails.set("p-1", "p-1@example.com");
+        state.responses = acceptedThroughToEmails("2026-11-05", EVENING);
+
+        await updateInviteStatus("invite-t3", "accepted");
+
+        // Sorted as text, "00:00" came first, so the span started at the second case.
+        expect(sentArg(sendInviteAcceptedConfirmationEmailSpy, 2)).toBe("5:00 PM – 7:00 PM CT");
+        // Two hours at the online rate. Measured as one, it paid $30.
+        expect(writes("session_participants")[0].payout_cents).toBe(6000);
+        // A day after it ends at 7 PM CST on Nov 5.
+        expect(writes("jury_participants")).toEqual([{ eligible_after_at: "2026-11-07T01:00:00.000Z" }]);
+      });
+
+      it("puts the same span in the waitlist confirmation", async () => {
+        vi.useFakeTimers({ toFake: ["Date"] });
+        vi.setSystemTime(new Date("2026-10-14T15:00:00Z"));
+        state.participantEmails.set("p-1", "p-1@example.com");
+        state.responses = acceptedThroughToEmails("2026-11-05", EVENING, { waitlist: true });
+
+        const result = await updateInviteStatus("invite-t4", "accepted", { confirmWaitlist: true });
+
+        expect(result).toEqual({ waitlisted: true, position: 1, deliveryMode: "online" });
+        expect(sendInviteAcceptedConfirmationEmailSpy).not.toHaveBeenCalled();
+        expect(sentArg(sendWaitlistConfirmationEmailSpy, 6)).toBe("5:00 PM – 7:00 PM CT");
+        // A waitlister keeps their eligibility, so there is no cooldown write.
+        expect(writes("jury_participants")).toEqual([]);
+      });
+    });
   });
 
   // -------------------------------------------------------------------------
@@ -2359,8 +2525,15 @@ describe("Sessions", () => {
     beforeAll(async () => {
       ({ notifyRequesteesSessionCreated } = await import("@/lib/actions/session"));
     });
-    // An admin action since F28.
-    beforeEach(() => asAdmin());
+    // An admin action since F28. The clock is held in October (CDT) while the
+    // sessions below are in November (CST), so a time read on today's date
+    // instead of the session's comes out an hour off whenever the suite runs.
+    beforeEach(() => {
+      asAdmin();
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-10-14T15:00:00Z"));
+    });
+    afterEach(() => vi.useRealTimers());
 
     // session_cases times are stored in UTC and shown in Central time. Built
     // the same way as the action so the test doesn't depend on whether today
@@ -2445,6 +2618,35 @@ describe("Sessions", () => {
         `${ct("14:00")} – ${ct("16:00")} CT`,
         `${ct("19:00")} – ${ct("21:00")} CT`,
       ]);
+    });
+
+    it("spans an evening session from its first case, across midnight UTC", async () => {
+      // 5-6 PM CST for one firm and 6-7 PM CST for the other, stored 23:00-00:00
+      // and 00:00-01:00. Sorted as text, the session started at 6:00 PM.
+      state.participantEmails = new Map([
+        ["firm-1", "one@firm.test"],
+        ["firm-2", "two@firm.test"],
+      ]);
+      state.responses = queue(
+        [
+          { id: "case-A", title: "Smith v. Jones", user_id: "firm-1" },
+          { id: "case-B", title: "Doe v. Roe", user_id: "firm-2" },
+        ],
+        [
+          { case_id: "case-B", start_time: "00:00:00", end_time: "01:00:00" },
+          { case_id: "case-A", start_time: "23:00:00", end_time: "00:00:00" },
+        ],
+      );
+
+      await notifyRequesteesSessionCreated("s-1", ["case-A", "case-B"], "2026-11-20");
+
+      const plain = (value: unknown) => String(value).replace(/\s/g, " ");
+      const sent = new Map(sendSessionCreatedEmailSpy.mock.calls.map((c) => [c[0], c]));
+      const [, , , sessionTime, timesOne] = sent.get("one@firm.test")!;
+      const [, , , , timesTwo] = sent.get("two@firm.test")!;
+      expect(plain(sessionTime)).toBe("5:00 PM – 7:00 PM CT");
+      expect(timesOne.map(plain)).toEqual(["5:00 PM – 6:00 PM CT"]);
+      expect(timesTwo.map(plain)).toEqual(["6:00 PM – 7:00 PM CT"]);
     });
   });
 
@@ -2562,6 +2764,53 @@ describe("Sessions", () => {
         .flatMap((c) => c.ops)
         .find((o) => o.op === "update") as { op: "update"; payload: Record<string, unknown> };
       expect(saved.payload).toEqual({ zoom_link: "https://zoom.us/j/1" });
+    });
+
+    it("adminRespondOnBehalf emails the whole session in Central Time, as the Zoom email after it does", async () => {
+      asAdmin();
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-10-14T15:00:00Z"));
+      // 5-6 PM and 6-7 PM CST on Nov 5, stored 23:00-00:00 and 00:00-01:00 UTC.
+      const times = [
+        { start_time: "00:00:00", end_time: "01:00:00" },
+        { start_time: "23:00:00", end_time: "00:00:00" },
+      ];
+      state.responses = [
+        { data: [{ user_id: "p-1", reactivation_status: "yes" }], error: null }, // active
+        { data: [{ cases: { delivery_mode: "online" } }], error: null }, // session mode
+        { data: times.map((t) => ({ ...t, sessions: { session_date: "2026-11-05" } })), error: null },
+        { data: { participant_cap: 10, waitlist_cap: 2 }, error: null }, // occupancy: caps
+        { data: [{ cases: { delivery_mode: "online" } }], error: null }, // occupancy: mode
+        { count: 0, error: null }, // seated
+        { count: 0, error: null }, // waitlisted
+        { error: null }, // the seat is written
+        { data: { email: "p1@example.com", first_name: "Pat" }, error: null },
+        { data: { session_date: "2026-11-05", zoom_link: "https://zoom.us/j/1", location: null }, error: null },
+        // sessionTimeString: maybeSingle() is answered as it is called, so the date first
+        { data: { session_date: "2026-11-05" }, error: null },
+        { data: times, error: null },
+      ];
+
+      try {
+        await actions.adminRespondOnBehalf("s-1", "p-1", "accepted");
+      } finally {
+        vi.useRealTimers();
+      }
+
+      const plain = (value: unknown) => String(value).replace(/\s/g, " ");
+      // It printed one case's stored UTC times, "00:00:00 – 01:00:00".
+      expect(plain((sendPresenceConfirmedEmailSpy.mock.calls[0] as unknown as unknown[])[3])).toBe(
+        "5:00 PM – 7:00 PM CT"
+      );
+      expect(plain((sendZoomLinkEmailSpy.mock.calls[0] as unknown as unknown[])[4])).toBe(
+        "5:00 PM – 7:00 PM CT"
+      );
+      // Two hours at the online rate.
+      const seat = state.captured
+        .filter((c) => c.table === "session_participants")
+        .flatMap((c) => c.ops)
+        .find((o) => o.op === "update") as { op: "update"; payload: Record<string, unknown> };
+      expect(seat.payload.payout_cents).toBe(6000);
     });
 
     it("notifyPresenterByEmail still mails an admin's presenter and marks the cases submitted", async () => {

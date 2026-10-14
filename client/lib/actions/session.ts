@@ -31,7 +31,7 @@ import { assertCasesShareDeliveryMode, isOffline } from "@/lib/case/deliveryMode
 import { getSessionDeliveryModeOrDefault } from "@/lib/case/getSessionDeliveryMode";
 import { getAllIdsWithoutLogin } from "@/lib/participant/loginAccount";
 import { revalidatePath } from "next/cache";
-import { formatSessionTime, localToUTC, localToUTCTime } from "@/lib/timezone";
+import { formatSessionSpan, localToUTC, localToUTCTime, sessionSpan } from "@/lib/timezone";
 
 /* =========================
    CREATE SESSION
@@ -256,16 +256,14 @@ export async function notifyRequesteesSessionCreated(
     .select("case_id, start_time, end_time")
     .eq("session_id", sessionId);
 
-  const formatCentralTime = (t: string) => formatSessionTime(sessionDate, t, "America/Chicago");
-
-  let timeStr = "TBD";
-  if (sessionCaseRows?.length) {
-    const starts = sessionCaseRows.map((r) => r.start_time).filter(Boolean).sort();
-    const ends   = sessionCaseRows.map((r) => r.end_time).filter(Boolean).sort();
-    if (starts.length && ends.length) {
-      timeStr = `${formatCentralTime(starts[0])} – ${formatCentralTime(ends[ends.length - 1])} CT`;
-    }
-  }
+  // Read on the session's date as instants, so an evening session crossing
+  // midnight UTC keeps its first case (sorting the stored times as text didn't).
+  const sessionSpanText = formatSessionSpan(
+    sessionDate,
+    (sessionCaseRows ?? []).map((r) => r.start_time),
+    (sessionCaseRows ?? []).map((r) => r.end_time),
+  );
+  const timeStr = sessionSpanText ? `${sessionSpanText} CT` : "TBD";
 
   const dateStr = new Date(sessionDate).toLocaleDateString("en-US", {
     weekday: "long", year: "numeric", month: "long", day: "numeric",
@@ -275,9 +273,8 @@ export async function notifyRequesteesSessionCreated(
   // its own case runs, not just the span of the whole session.
   const caseTimeById = new Map<string, string>();
   for (const r of sessionCaseRows ?? []) {
-    if (r.case_id && r.start_time && r.end_time) {
-      caseTimeById.set(r.case_id, `${formatCentralTime(r.start_time)} – ${formatCentralTime(r.end_time)} CT`);
-    }
+    const caseSpan = formatSessionSpan(sessionDate, [r.start_time], [r.end_time]);
+    if (r.case_id && caseSpan) caseTimeById.set(r.case_id, `${caseSpan} CT`);
   }
 
   // Group cases by requestee (one email per requestee)
@@ -364,7 +361,7 @@ async function resyncScheduleDerivedValues(
 
   const starts = caseRows.map((r) => r.start_time as string | null);
   const ends = caseRows.map((r) => r.end_time as string | null);
-  const hours = sessionLengthHours(starts, ends);
+  const hours = sessionLengthHours(starts, ends, newDate);
 
   // Everyone holding a seat. Called-in waitlisters are 'accepted' too, which is
   // exactly right — their payout is hours-derived like any other seat.
@@ -571,17 +568,25 @@ export async function adminRespondOnBehalf(
   let onBehalfHours = 0;
   let deliveryMode = await getSessionDeliveryModeOrDefault(sessionId);
 
+  // Every case's times, read on the session's date: they price the seat here and
+  // go into the email below.
+  type CaseTimes = { start_time: string | null; end_time: string | null; sessions?: unknown };
+  let caseTimes: CaseTimes[] = [];
+  let caseTimesDate: string | null = null;
+
   if (action === "accepted") {
     const { data: caseTimeRows } = await supabase
       .from("session_cases")
-      .select("start_time, end_time")
+      .select("start_time, end_time, sessions(session_date)")
       .eq("session_id", sessionId);
 
-    type CaseTimes = { start_time: string | null; end_time: string | null };
-    const times = (caseTimeRows ?? []) as CaseTimes[];
+    caseTimes = (caseTimeRows ?? []) as CaseTimes[];
+    const embedded = caseTimes[0]?.sessions as { session_date?: string | null } | { session_date?: string | null }[] | null | undefined;
+    caseTimesDate = (Array.isArray(embedded) ? embedded[0]?.session_date : embedded?.session_date) ?? null;
     onBehalfHours = sessionLengthHours(
-      times.map((r) => r.start_time),
-      times.map((r) => r.end_time),
+      caseTimes.map((r) => r.start_time),
+      caseTimes.map((r) => r.end_time),
+      caseTimesDate,
     );
 
     const occupancy = await getSessionOccupancy(sessionId);
@@ -660,16 +665,14 @@ export async function adminRespondOnBehalf(
   try {
   if (email && session) {
     if (action === "accepted") {
-      const { data: sc } = await supabase
-        .from("session_cases")
-        .select("start_time, end_time")
-        .eq("session_id", sessionId)
-        .limit(1)
-        .maybeSingle();
-
-      const timeStr = sc
-        ? `${sc.start_time} – ${sc.end_time}`
-        : "See your dashboard for details";
+      // The whole session in Central Time, like every other session email. It
+      // used to print one case's stored UTC times ("16:00:00 – 17:00:00").
+      const span = formatSessionSpan(
+        session.session_date ?? caseTimesDate,
+        caseTimes.map((r) => r.start_time),
+        caseTimes.map((r) => r.end_time),
+      );
+      const timeStr = span ? `${span} CT` : "See your dashboard for details";
 
       // Someone put on the waitlist must never receive a plain "you're confirmed"
       // email — the hold rules and the two payment outcomes are the whole point.
@@ -826,6 +829,7 @@ async function loadWaitlistContext(
     hours: sessionLengthHours(
       times.map((r) => r.start_time),
       times.map((r) => r.end_time),
+      sessionDate,
     ),
     /** Day after the session ends, for the post-seat cooldown. Null if unreadable. */
     cooldownAfterAt: cooldownAfterSession(
@@ -1088,14 +1092,12 @@ async function sessionTimeString(
 
   if (!rows?.length) return undefined;
 
-  const formatCentralTime = (t: string) =>
-    formatSessionTime(session?.session_date as string | null | undefined, t, "America/Chicago");
-
-  const starts = rows.map((r) => r.start_time).filter(Boolean).sort();
-  const ends = rows.map((r) => r.end_time).filter(Boolean).sort();
-  if (!starts.length || !ends.length) return undefined;
-
-  return `${formatCentralTime(starts[0])} – ${formatCentralTime(ends[ends.length - 1])} CT`;
+  const span = formatSessionSpan(
+    session?.session_date as string | null | undefined,
+    rows.map((r) => r.start_time),
+    rows.map((r) => r.end_time),
+  );
+  return span ? `${span} CT` : undefined;
 }
 
 export async function sendZoomLink(formData: FormData) {
@@ -1279,6 +1281,13 @@ export async function replaceCaseInSession(
   await requireAdmin();
   const supabase = await createClient();
 
+  // When the incoming case ends, for its admin_scheduled_at. The times come from
+  // session_cases, so they are UTC: read on the session's Central date, an evening
+  // end falls on the next UTC day, where "session date + end Z" put it a day early.
+  // Worked out before anything is written, so unreadable times change nothing.
+  const caseEnd = sessionSpan(sessionDate, [startTime], [endTime])?.end;
+  if (!caseEnd) throw new Error("This case's start and end times could not be read.");
+
   // The replacement has to be the same format as the session it is joining —
   // including when it is replacing the only case there, which is exactly the
   // swap that would otherwise re-price a session out from under participants who
@@ -1304,12 +1313,10 @@ export async function replaceCaseInSession(
     .from("session_cases")
     .insert({ session_id: sessionId, case_id: newCaseId, start_time: startTime, end_time: endTime });
 
-  // 4. Set admin_scheduled_at — endTime is already UTC (from session_cases)
-  const endHHMM = endTime?.slice(0, 5);
-  const adminScheduledAt = new Date(`${sessionDate}T${endHHMM}:00Z`).toISOString();
+  // 4. Set admin_scheduled_at to when the case ends
   await supabase
     .from("cases")
-    .update({ admin_scheduled_at: adminScheduledAt, schedule_status: null })
+    .update({ admin_scheduled_at: caseEnd.toISOString(), schedule_status: null })
     .eq("id", newCaseId);
 
   // 5. Notify new requestee — same as rescheduleSession

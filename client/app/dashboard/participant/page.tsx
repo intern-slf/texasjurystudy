@@ -6,7 +6,7 @@ import { centralToday } from "@/lib/centralToday";
 import { updateInviteStatus } from "@/lib/participant/updateInviteStatus";
 import { hasSessionStarted } from "@/lib/participant/sessionStart";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { formatSessionTime } from "@/lib/timezone";
+import { formatSessionSpan } from "@/lib/timezone";
 import {
   WAITLISTED_STATUS,
   OFFLINE_ARRIVE_EARLY_MINUTES,
@@ -274,22 +274,20 @@ export default async function ParticipantDashboard({
                 | null
                 | undefined;
               const cases = session?.session_cases ?? [];
-              const startTimes = cases.map((c) => c.start_time).filter((v): v is string => Boolean(v)).sort();
-              const endTimes = cases.map((c) => c.end_time).filter((v): v is string => Boolean(v)).sort();
+              const startTimes = cases.map((c) => c.start_time).filter((v): v is string => Boolean(v));
+              const endTimes = cases.map((c) => c.end_time).filter((v): v is string => Boolean(v));
 
-              const fmtCt = (t: string) => formatSessionTime(session?.session_date, t, "America/Chicago");
-
-              const timeLabel =
-                startTimes.length && endTimes.length
-                  ? `${fmtCt(startTimes[0])} – ${fmtCt(endTimes[endTimes.length - 1])} (CT)`
-                  : "TBD";
+              // Read on the session's date as instants, so an evening session
+              // crossing midnight UTC keeps its first case.
+              const span = formatSessionSpan(session?.session_date, startTimes, endTimes);
+              const timeLabel = span ? `${span} (CT)` : "TBD";
 
               // Invitations close when the first case begins. Declining stays
               // open; the server enforces the same rule in updateInviteStatus.
               const started = hasSessionStarted(session?.session_date, startTimes);
               // Drives the concrete "about $90 for this session" figure on the
               // waitlist offer, so the rate is not left as arithmetic.
-              const offerHours = sessionLengthHours(startTimes, endTimes);
+              const offerHours = sessionLengthHours(startTimes, endTimes, session?.session_date);
               const offerMode = inviteDeliveryMode(session);
 
               return (

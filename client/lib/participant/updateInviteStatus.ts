@@ -26,6 +26,7 @@ import {
 } from "@/lib/participant/waitlist";
 import { isOffline, type DeliveryMode } from "@/lib/case/deliveryMode";
 import { getSessionDeliveryModeOrDefault } from "@/lib/case/getSessionDeliveryMode";
+import { formatSessionSpan } from "@/lib/timezone";
 
 /* =========================
    CHECK IF SESSION HAS REACHED ITS PARTICIPANT CAP
@@ -162,6 +163,7 @@ export async function updateInviteStatus(
       sessionHours = sessionLengthHours(
         times.map((r) => r.start_time),
         times.map((r) => r.end_time),
+        sessionRow?.session_date,
       );
 
       const occupancy = await getSessionOccupancy(inviteRow.session_id);
@@ -322,22 +324,16 @@ export async function updateInviteStatus(
         const { data: userData } = await supabaseAdmin.auth.admin.getUserById(participant_id);
         const email = userData?.user?.email;
         if (email) {
-          const formatCentralTime = (t: string) => {
-            const [h, m] = t.split(":");
-            const d = new Date();
-            d.setUTCHours(parseInt(h), parseInt(m), 0, 0);
-            return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Chicago" });
-          };
-
-          // Span the FULL session: earliest start time -> latest end time across
-          // every case. Using only sessionCases[0] dropped later cases, so a
-          // 9–10 + 10–11 session showed "9 – 10" instead of "9 – 11".
-          const starts = sessionCases.map((r) => r.start_time as string).filter(Boolean).sort();
-          const ends = sessionCases.map((r) => r.end_time as string).filter(Boolean).sort();
-          const timeStr =
-            starts.length && ends.length
-              ? `${formatCentralTime(starts[0])} – ${formatCentralTime(ends[ends.length - 1])} CT`
-              : "See your dashboard for details";
+          // The FULL session, earliest start to latest end across every case,
+          // read on the session's date as instants: a clock change between now
+          // and then moves a time by an hour, and an evening session crossing
+          // midnight UTC must keep its first case.
+          const span = formatSessionSpan(
+            session?.session_date,
+            sessionCases.map((r) => r.start_time as string | null),
+            sessionCases.map((r) => r.end_time as string | null),
+          );
+          const timeStr = span ? `${span} CT` : "See your dashboard for details";
 
           const firstName =
             userData?.user?.user_metadata?.first_name ||
