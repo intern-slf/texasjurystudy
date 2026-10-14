@@ -53,6 +53,10 @@ import CheckboxRestorer from "@/components/CheckboxRestorer";
 import ParticipantSearch from "@/components/ParticipantSearch";
 import ParticipantCounter from "@/components/ParticipantCounter";
 import PriorInvolvementBadge from "@/components/PriorInvolvementBadge";
+import { BookingStateBadge } from "@/components/BookingSummary";
+import { getBookingsForCases } from "@/lib/slotBookingData";
+import { bookingState } from "@/lib/slotBooking";
+import { describeSlot } from "@/lib/requesteeTimeSlots";
 
 /* =========================
    PAGE
@@ -108,6 +112,16 @@ export default async function NewSessionPage({
       .in("id", selectedIds)
       .order("created_at", { ascending: false })
     : { data: [] };
+
+  // The time slot each case's firm booked, shown next to its times so the
+  // session can be built around it.
+  const nowMs = Date.now();
+  let bookingByCase: Awaited<ReturnType<typeof getBookingsForCases>> = new Map();
+  try {
+    bookingByCase = await getBookingsForCases((cases ?? []).map((c) => c.id));
+  } catch (err) {
+    console.error("[new session] bookings failed:", err);
+  }
 
   // Calculate combined filters
   type CaseRow = {
@@ -581,6 +595,19 @@ export default async function NewSessionPage({
                 <div className="flex justify-between items-start w-full">
                   <div className="font-medium text-base">{c.title}</div>
                   <div className="text-xs text-right space-y-1">
+                    {(() => {
+                      const booking = bookingByCase.get(c.id);
+                      if (!booking?.slot) return null;
+                      return (
+                        <div className="space-y-1">
+                          <div>
+                            <span className="text-slate-400 text-[10px]">Booked slot: </span>
+                            <span className="text-slate-700 font-medium">{describeSlot(booking.slot)}</span>
+                          </div>
+                          <BookingStateBadge state={bookingState(booking.slot, booking, nowMs)} />
+                        </div>
+                      );
+                    })()}
                     {c.admin_scheduled_at && (
                       <div>
                         <span className="text-slate-400 text-[10px]">Admin proposed: </span>

@@ -419,6 +419,45 @@ Confirmed unused (0 code references, 0 rows, no FKs/functions/views depending on
 
 ---
 
+### 🟩 `requestee_time_slots` — RLS enabled (2026-10-14)
+
+Times an admin opens for law firms to book an online focus group (`20261014_requestee_time_slots.sql`).
+
+**Code access:**
+- Admin: the Time Slots page (`client/app/dashboard/Admin/requestees/time-slots/page.tsx`) reads one month. The sidebar count in `client/app/dashboard/Admin/layout.tsx` reads too. `client/lib/actions/requesteeTimeSlots.ts` inserts and deletes. All three use the signed-in admin's client, so the policy below applies, and the actions call `requireAdmin()` first.
+- Requestees: never this table. They get open slots from `listOpenTimeSlots` in `client/lib/actions/requesteeSlotBooking.ts`, which reads with the service role and returns only each slot's own fields, so one firm can't see which slots another firm took.
+
+**Policies (created by the migration):**
+
+| Policy | Cmd | Role | USING | WITH CHECK |
+|---|---|---|---|---|
+| admin can manage requestee_time_slots | ALL | authenticated | `(SELECT public.is_admin())` | `(SELECT public.is_admin())` |
+
+**Grants:** written out in the migration, because Supabase stops granting new `public` tables to `anon`, `authenticated` and `service_role` automatically on 2026-10-30. `authenticated` and `service_role` have SELECT, INSERT, UPDATE and DELETE. `anon` has nothing.
+
+---
+
+### 🟩 `requestee_slot_bookings` — RLS enabled (2026-10-16)
+
+Which case holds which time slot, and whether the firm has paid (`20261016_requestee_slot_bookings.sql`). One row per case.
+
+**Code access:**
+- Admin: `client/lib/actions/adminSlotBooking.ts` (mark paid / unpaid, release, move, book for a firm) writes through the admin's own client, after `requireAdmin()`. Every write names the slot the admin saw, so a booking changed in the meantime is never overwritten.
+- Admin reads with the service role, in `client/lib/slotBookingData.ts` (it joins the firm's name from `confidentiality_agreements_requestee`, which admins can't read under RLS). The Time Slots page and the case page's Time slot box check for an admin themselves before calling it; the case lists and Build Session only ask about cases the admin's own client already returned.
+- Firms: never this table. `client/lib/actions/requesteeSlotBooking.ts` (`listOpenTimeSlots`, `chooseTimeSlot`, `cancelMyTimeSlot`) reads and writes it with the service role after `requireRequestee()` (`client/lib/requireRequestee.ts`, which reads `roles`, not `user_metadata`) and after checking the case is the caller's own (`user_id` or `requestee_id`) and still under review, online and not archived. Another firm's case gets the same answer as a missing one, and the open-times list carries only each slot's own fields. The firm's case page and dashboard read the bookings of cases their own user-scoped queries returned.
+- Trigger `cases_release_slot_booking` on `cases` updates it as SECURITY DEFINER, so a firm archiving its own case frees its unpaid hold. It only ever clears `slot_id` on that case's own row; EXECUTE is revoked from PUBLIC, `anon` and `authenticated`.
+- Trigger `cases_keep_paid_slot_booking` (BEFORE DELETE on `cases`) refuses any delete a non-admin makes, directly or as a cascade from a parent case, of a case whose booking is paid. Without it, the "user can delete own cases" policy (open under F28) would let a firm delete the payment record along with its case, since the row cascades. It reads the booking as SECURITY DEFINER (EXECUTE revoked) and takes the caller from the request's role setting, which stays `authenticated` inside a cascade, where `current_user` is the table's owner.
+
+**Policies (created by the migration):**
+
+| Policy | Cmd | Role | USING | WITH CHECK |
+|---|---|---|---|---|
+| admin can manage requestee_slot_bookings | ALL | authenticated | `(SELECT public.is_admin())` | `(SELECT public.is_admin())` |
+
+**Grants:** explicit, as for `requestee_time_slots`: `authenticated` and `service_role` have SELECT, INSERT, UPDATE and DELETE; `anon` has nothing.
+
+---
+
 ## Storage buckets (added 2026-06-09)
 
 The original audit covered **tables only**. Storage was first dumped 2026-06-09 — see F23. RLS lives on `storage.objects` (single table backing all buckets); per-bucket scoping is done inside each policy via `bucket_id = '<name>'`. Policies are **permissive/OR'd**, so a broad `bucket_id`-only policy shadows any narrower owner/role policy on the same bucket.

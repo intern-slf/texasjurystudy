@@ -62,6 +62,14 @@ function eligibilityIsSet(value?: string): boolean {
   return !!value && value !== "Any";
 }
 
+/**
+ * The hours a case is priced for, and the length of time slot it needs: what the
+ * firm asked for, or 1 hour when that is empty or 0.
+ */
+export function billableHours(hoursRequested?: number | null): number {
+  return hoursRequested && hoursRequested > 0 ? hoursRequested : 1;
+}
+
 export function calculateReceiptPrice(
   filters: CaseFilters | null | undefined,
   hoursRequested?: number | null,
@@ -70,7 +78,7 @@ export function calculateReceiptPrice(
 ): ReceiptPriceBreakdown {
   const mode = deliveryMode ? normalizeDeliveryMode(deliveryMode) : DEFAULT_DELIVERY_MODE;
   const ratePerHour = baseRatePerHourCents(mode);
-  const hours = hoursRequested && hoursRequested > 0 ? hoursRequested : 1;
+  const hours = billableHours(hoursRequested);
   const baseCostCents = ratePerHour * hours;
   const filterItems: FilterLineItem[] = [];
 

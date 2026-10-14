@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 import CaseActions from "@/components/CaseActions";
 import CaseVideoGuide from "@/components/CaseVideoGuide";
 import Link from "next/link";
-import { redirect } from "next/navigation";
+import { redirect, RedirectType } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import RequesteeSidebar from "@/components/RequesteeSidebar";
 import {
@@ -22,6 +22,9 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Calendar, Clock, AlertCircle, FileText, Upload, ArrowRight } from "lucide-react";
 import LocalDateTime from "@/components/LocalDateTime";
+import { getBookingsForCases } from "@/lib/slotBookingData";
+import { describeSlot, type TimeSlot } from "@/lib/requesteeTimeSlots";
+import { SUPPORT_EMAIL } from "@/lib/legal-constants";
 import { TEXAS_COUNTIES } from "@/lib/constants/texas-counties";
 import {
   deliveryModeLabel,
@@ -61,6 +64,8 @@ interface Case {
 type RequesteeDashboardProps = {
   searchParams?: Promise<{
     tab?: string;
+    /** "delete-refused": the database refused a Permanently Delete. */
+    notice?: string;
   }>;
 };
 
@@ -117,6 +122,9 @@ export default async function RequesteeDashboard({
       : resolvedSearchParams?.tab === "previous"
       ? "previous"
       : "current";
+  // Shown on the Past tab after a refused delete. The Past tab's forms carry it,
+  // so their actions know there is a notice to clear.
+  const deleteRefused = tab === "previous" && resolvedSearchParams?.notice === "delete-refused";
 
   /* ===========================
       FETCH CASES (UPDATED QUERY)
@@ -148,6 +156,21 @@ export default async function RequesteeDashboard({
   }
 
   const { data: cases } = await caseQuery;
+
+  // The time slot each case holds, and which cases have paid for one. Read with
+  // the service role, but only for the cases above, which the query already
+  // limits to this firm's own.
+  const heldSlotByCase = new Map<string, TimeSlot>();
+  const paidCaseIds = new Set<string>();
+  try {
+    const bookings = await getBookingsForCases((cases ?? []).map((c) => c.id as string));
+    for (const [bookedCaseId, booking] of bookings) {
+      if (booking.slot) heldSlotByCase.set(bookedCaseId, booking.slot);
+      if (booking.paid_at) paidCaseIds.add(bookedCaseId);
+    }
+  } catch (err) {
+    console.error("[requestee dashboard] bookings failed:", err);
+  }
 
 
   /* ===========================
@@ -201,6 +224,9 @@ export default async function RequesteeDashboard({
       .or(`scheduled_at.is.null,scheduled_at.gt."${new Date().toISOString()}"`);
 
     revalidatePath("/dashboard/requestee");
+    // Clear a notice from an earlier refused delete. Otherwise stay put: a
+    // redirect remounts the page, and every card would load its data again.
+    if (formData.get("notice")) redirect("/dashboard/requestee?tab=previous", RedirectType.replace);
   }
 
   async function permanentDeleteCase(formData: FormData) {
@@ -211,7 +237,7 @@ export default async function RequesteeDashboard({
     const { data: { user: activeUser } } = await supabase.auth.getUser();
     if (!activeUser) return;
 
-    await supabase
+    const { error } = await supabase
       .from("cases")
       .delete()
       .eq("id", caseId)
@@ -219,6 +245,17 @@ export default async function RequesteeDashboard({
       .eq("status", "previous");
 
     revalidatePath("/dashboard/requestee");
+
+    // The database refuses some deletes: a case with a paid time-slot booking,
+    // whose payment record would go with it, or one other rows still point at.
+    // Say so, rather than leave the button looking as if it did nothing.
+    if (error) {
+      console.error("[requestee dashboard] delete refused:", error.message);
+      redirect("/dashboard/requestee?tab=previous&notice=delete-refused", RedirectType.replace);
+    }
+    // A delete that works clears an earlier notice. Otherwise stay put: a
+    // redirect remounts the page, and every card would load its data again.
+    if (formData.get("notice")) redirect("/dashboard/requestee?tab=previous", RedirectType.replace);
   }
 
   // Editing a requested case, answering a proposed time and Request Again are in
@@ -256,6 +293,22 @@ export default async function RequesteeDashboard({
                 </div>
             )}
           </div>
+
+          {deleteRefused && (
+            <div
+              role="alert"
+              className="mb-6 flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"
+            >
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <p>
+                That case couldn&apos;t be deleted. Our team can remove it for you: email us at{" "}
+                <a href={`mailto:${SUPPORT_EMAIL}`} className="font-medium underline">
+                  {SUPPORT_EMAIL}
+                </a>
+                .
+              </p>
+            </div>
+          )}
 
           {!cases?.length && (
             <div className="flex flex-col items-center justify-center p-12 text-center border-2 border-dashed rounded-xl bg-card/50">
@@ -311,6 +364,11 @@ export default async function RequesteeDashboard({
                                 <LocalDateTime iso={(c.admin_scheduled_at || c.scheduled_at) as string} mode="date" />
                             </Badge>
                           ) : null}
+                          {heldSlotByCase.has(c.id) && (
+                            <Badge variant="outline" className="font-medium">
+                              Time held: {describeSlot(heldSlotByCase.get(c.id)!)}
+                            </Badge>
+                          )}
                         </div>
                     </div>
                 </CardHeader>
@@ -701,18 +759,30 @@ export default async function RequesteeDashboard({
                         new Date(c.scheduled_at).getTime() > Date.now()) && (
                         <form action={restoreCase}>
                           <input type="hidden" name="case_id" value={c.id} />
+                          {deleteRefused && <input type="hidden" name="notice" value="delete-refused" />}
                           <Button size="sm" variant="outline" className="text-blue-600 hover:text-blue-700 hover:bg-blue-50">
                             Restore Case
                           </Button>
                         </form>
                       )}
 
-                      <form action={permanentDeleteCase}>
-                        <input type="hidden" name="case_id" value={c.id} />
-                        <Button size="sm" variant="outline" className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200">
-                            Permanently Delete
-                        </Button>
-                      </form>
+                      {paidCaseIds.has(c.id) ? (
+                        <p className="text-sm text-muted-foreground">
+                          This case has a paid focus group booking. To delete it, email us at{" "}
+                          <a href={`mailto:${SUPPORT_EMAIL}`} className="font-medium text-primary hover:underline">
+                            {SUPPORT_EMAIL}
+                          </a>
+                          .
+                        </p>
+                      ) : (
+                        <form action={permanentDeleteCase}>
+                          <input type="hidden" name="case_id" value={c.id} />
+                          {deleteRefused && <input type="hidden" name="notice" value="delete-refused" />}
+                          <Button size="sm" variant="outline" className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200">
+                              Permanently Delete
+                          </Button>
+                        </form>
+                      )}
                       </div>
 
                       <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg border">

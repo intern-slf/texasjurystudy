@@ -11,6 +11,7 @@ type Counts = {
   newParticipants: number;
   blacklistedParticipants: number;
   requestees: number;
+  timeSlots: number;
 };
 
 const caseItems = [
@@ -27,6 +28,7 @@ const participantItems = [
 
 const requesteeItems = [
   { id: "requestees", label: "All Requestees", countKey: "requestees" },
+  { id: "time_slots", label: "Time Slots", countKey: "timeSlots" },
 ] as const;
 
 const modes = [
@@ -47,6 +49,8 @@ function getHref(id: string) {
       return "/dashboard/Admin/participants?tab=blacklisted";
     case "requestees":
       return "/dashboard/Admin/requestees";
+    case "time_slots":
+      return "/dashboard/Admin/requestees/time-slots";
     default:
       return `/dashboard/Admin?tab=${id}`;
   }
@@ -62,8 +66,11 @@ function isActive(id: string, pathname: string, currentTab: string) {
       return pathname.startsWith("/dashboard/Admin/participants") && currentTab !== "new" && currentTab !== "blacklisted";
     case "blacklisted":
       return pathname.startsWith("/dashboard/Admin/participants") && currentTab === "blacklisted";
+    // Exact match: Time Slots lives under /requestees too.
     case "requestees":
-      return pathname.startsWith("/dashboard/Admin/requestees");
+      return pathname === "/dashboard/Admin/requestees";
+    case "time_slots":
+      return pathname.startsWith("/dashboard/Admin/requestees/time-slots");
     default:
       return pathname === "/dashboard/Admin" && currentTab === id;
   }
