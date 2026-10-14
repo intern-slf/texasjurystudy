@@ -274,8 +274,21 @@ Uses a **table-keyed** fake client rather than the FIFO response queue of 4.1: t
 
 | `describe` | Coverage |
 |---|---|
-| `case-lineage involvement classification` | Only two states spend a participant: `accepted`, and an unanswered invite to a session that has not happened (`pending-upcoming`, which stops one person accepting two sessions in the same chain). Accepted-then-**struck** classifies as `struck` and does **not** block — they backed out or never showed, so they never sat on the case. `declined` (and the legacy `rejected` spelling) and a past unanswered invite (`no-response`) do not block either. A **waitlisted** row does not block even on an upcoming session — the reserve slot is not participation, and a call-in flips the row to `accepted`, which blocks on its own. A session dated **today** counts as upcoming. When someone appears on several cases in one chain the blocking classification wins. A case with no sessions yields an empty map. |
+| `case-lineage involvement classification` | Only two states spend a participant: `accepted`, and an unanswered invite to a session that has not happened (`pending-upcoming`, which stops one person accepting two sessions in the same chain). Accepted-then-**struck** classifies as `struck` and does **not** block — they backed out or never showed, so they never sat on the case. `declined` (and the legacy `rejected` spelling) and a past unanswered invite (`no-response`) do not block either. A **waitlisted** row does not block even on an upcoming session — the reserve slot is not participation, and a call-in flips the row to `accepted`, which blocks on its own. A session dated **today** counts as upcoming, today being the Central date: at 7:05 PM CDT, when the UTC date has already turned over, that evening's session is still upcoming. When someone appears on several cases in one chain the blocking classification wins. A case with no sessions yields an empty map. |
 | `splitLineageInvolvement` | Partitions an involvement map into blocked ids and the non-blocking history the UI shows as "Previously invited — …" next to a still-selectable name; asserts nobody lands in both halves, and that the split agrees with `isLineageBlocking`. |
+
+### 3.13b [central-today.test.ts](../client/__tests__/central-today.test.ts) — which day it is, for sessions
+
+**Subject:** `centralToday()` from [lib/centralToday](../client/lib/centralToday.ts), and two readers that use it, `getCaseSessions` and `getParticipantSessionHistory`, over a table-keyed fake client (as in §3.13) with the clock faked.
+
+**Why this exists:** `sessions.session_date` is a Central calendar date, but "today" used to come from the server's UTC clock, whose date turns over at 7 PM CDT / 6 PM CST. So each day's evening sessions counted as past while they were starting: My Sessions said "Completed" and hid the Zoom link and address, the admin lists moved them to Past, and the admin case page badged them Completed. Every page and helper that asks whether a session date has passed now compares it with `centralToday()`.
+
+| `describe` | Coverage |
+|---|---|
+| `centralToday` | The Central date at 7:05 PM CDT (UTC already the next day), at 11:59:59 PM and at midnight; the same turnover on standard time (Nov 5); reads the clock by default. |
+| an evening session stays upcoming until Central midnight | A 7-9 PM CDT session is not past at 7:05 PM on the admin case page (`getCaseSessions`) or in a participant's session history, where it isn't counted as attended yet; at Central midnight it is past in both. |
+
+Also, in [sessions.test.ts](../client/__tests__/sessions.test.ts), a session rescheduled at 7:05 PM CDT to 8 PM that evening has its payouts repriced, since it isn't dated in the past.
 
 ### 3.14 [roster-order.test.ts](../client/__tests__/roster-order.test.ts) — participant list order
 

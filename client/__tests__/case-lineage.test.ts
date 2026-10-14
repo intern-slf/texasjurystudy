@@ -18,6 +18,7 @@ import {
   isLineageBlocking,
   type LineageInvolvement,
 } from "@/lib/case-lineage";
+import { centralToday } from "@/lib/centralToday";
 
 /* ---------------------------------------------------------------------------
    Table-keyed fake client.
@@ -60,7 +61,8 @@ function fakeClient(tables: Record<string, Row[]>): Client {
 const dateOffsetDays = (days: number) =>
   new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
 
-const TODAY = new Date().toISOString().slice(0, 10);
+// Session dates are Central dates, so "today" is the Central one.
+const TODAY = centralToday();
 const FUTURE = dateOffsetDays(14);
 const PAST = dateOffsetDays(-14);
 
@@ -160,6 +162,25 @@ describe("case-lineage involvement classification", () => {
     expect((await getLineageParticipantInvolvement(["c-1"], client)).get("p-1")).toBe(
       "pending-upcoming"
     );
+  });
+
+  it("keeps an evening session upcoming once the UTC date has turned over", async () => {
+    // 7:05 PM CDT on Oct 20, when the UTC date is already Oct 21. Compared with
+    // the UTC date, that evening's session had already passed.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-21T00:05:00Z"));
+    try {
+      const client = lineage(
+        [{ id: "s-evening", session_date: "2026-10-20" }],
+        [{ participant_id: "p-1", session_id: "s-evening", invite_status: null }]
+      );
+
+      expect((await getLineageParticipantInvolvement(["c-1"], client)).get("p-1")).toBe(
+        "pending-upcoming"
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("lets the blocking involvement win when someone appears twice in the chain", async () => {

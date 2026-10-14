@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import ParticipantForm from "@/components/ParticipantForm";
 import Link from "next/link";
 import { getPendingInvites } from "@/lib/participant/getPendingInvites";
+import { centralToday } from "@/lib/centralToday";
 import { updateInviteStatus } from "@/lib/participant/updateInviteStatus";
 import { hasSessionStarted } from "@/lib/participant/sessionStart";
 import { supabaseAdmin } from "@/lib/supabase/admin";
@@ -136,7 +137,7 @@ export default async function ParticipantDashboard({
     .eq("participant_id", participant.user_id)
     .eq("invite_status", WAITLISTED_STATUS);
 
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = centralToday();
   const waitlistedSessions = (waitlistRows ?? [])
     .map((row) => {
       const session = (Array.isArray(row.sessions) ? row.sessions[0] : row.sessions) as

@@ -15,6 +15,7 @@ import {
 } from "@/lib/case-lineage";
 import { ACTIVE_STATUS, isParticipantActive } from "@/lib/participant/activeStatus";
 import { cooldownAfterSession } from "@/lib/participant/sessionStart";
+import { centralToday } from "@/lib/centralToday";
 import {
   WAITLISTED_STATUS,
   isWaitlisted,
@@ -376,7 +377,7 @@ async function resyncScheduleDerivedValues(
   if (!seated?.length) return;
 
   // --- money ---
-  const isPast = newDate < new Date().toISOString().slice(0, 10);
+  const isPast = newDate < centralToday();
   const repriceIds = seated
     .filter((r) => typeof r.payout_cents === "number")
     .map((r) => r.participant_id);

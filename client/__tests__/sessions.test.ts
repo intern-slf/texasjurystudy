@@ -2256,6 +2256,40 @@ describe("Sessions", () => {
       expect(seatedRead).toBe(true);
     });
 
+    it("Reprices a session moved to this evening, which isn't in the past yet", async () => {
+      // 7:05 PM CDT on Oct 20, when the UTC date is already Oct 21. Compared
+      // with the UTC date, a session moved to 8 PM tonight counted as past, so
+      // its payouts were left at the old length.
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-10-21T00:05:00Z"));
+      try {
+        state.responses = [
+          ...preamble(),
+          ...resyncReads(
+            [{ participant_id: "p-1", payout_cents: 9000 }], // was 3h x $30
+            [{ start_time: "01:00:00", end_time: "03:00:00" }], // 8-10 PM CDT
+          ),
+          ...repriceWrites("online"),
+          ...tail(),
+        ];
+
+        await rescheduleSession(
+          "s-1",
+          "2026-10-20",
+          [{ caseId: "case-A", start: "20:00", end: "22:00" }],
+          "America/Chicago",
+        );
+
+        const upd = payoutUpdate()!.ops.find((o) => o.op === "update") as {
+          op: "update";
+          payload: Record<string, unknown>;
+        };
+        expect(upd.payload.payout_cents).toBe(6000); // 2h x $30
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it("Leaves a past-dated session's payouts alone", async () => {
       // There is no paid flag anywhere in the schema and Reschedule is
       // reachable from the Past tab, so rewriting the amount could contradict

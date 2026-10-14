@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { WAITLISTED_STATUS } from "@/lib/participant/waitlist";
+import { centralToday } from "@/lib/centralToday";
 
 /**
  * Represents a single node in the follow-up case linked list.
@@ -412,7 +413,8 @@ export async function getLineageParticipantInvolvement(
 
   // `session_date` is a plain date column, so comparing it lexically against
   // today's YYYY-MM-DD is enough — the same test the admin sessions list uses.
-  const todayStr = new Date().toISOString().slice(0, 10);
+  // Today in Central Time, the calendar session dates are on.
+  const todayStr = centralToday();
   const upcomingSessionIds = new Set(
     ((sessions ?? []) as { id: string; session_date: string | null }[])
       .filter((s) => (s.session_date ?? "") >= todayStr)

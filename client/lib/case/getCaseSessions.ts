@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { normalizeDeliveryMode, type DeliveryMode } from "@/lib/case/deliveryMode";
+import { centralToday } from "@/lib/centralToday";
 
 /**
  * Every session scheduled for a case, with the participant roster attached.
@@ -148,8 +149,7 @@ export async function getCaseSessions(caseId: string): Promise<CaseSessionRow[]>
     });
   }
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const today = centralToday();
 
   // Times live on session_cases (per case), so pull this case's slot for each session.
   const timesBySession = new Map<string, { start: string | null; end: string | null }>();
@@ -180,7 +180,7 @@ export async function getCaseSessions(caseId: string): Promise<CaseSessionRow[]>
         zoomLink: s.zoom_link ?? null,
         location: s.location ?? null,
         participantCap: s.participant_cap ?? 10,
-        isPast: new Date(s.session_date) < today,
+        isPast: (s.session_date ?? "").slice(0, 10) < today,
         participants: roster,
         // Counted off invite_status, matching `isSessionFull` — a strike does not
         // free up a seat, so display and capacity logic stay in agreement.

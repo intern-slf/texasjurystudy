@@ -5,6 +5,7 @@ import Link from "next/link";
 import BackButton from "@/components/BackButton";
 import { unstable_noStore as noStore, revalidatePath } from "next/cache";
 import { getPendingInvites } from "@/lib/participant/getPendingInvites";
+import { centralToday } from "@/lib/centralToday";
 import { updateInviteStatus } from "@/lib/participant/updateInviteStatus";
 import { hasSessionStarted } from "@/lib/participant/sessionStart";
 import { formatSessionTime } from "@/lib/timezone";
@@ -68,8 +69,7 @@ export default async function ParticipantSessionsPage({
 
   const fmtCt = (date: string, t: string) => formatSessionTime(date, t, "America/Chicago");
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const today = centralToday();
 
   type SessionCaseRow = {
     start_time?: string | null;
@@ -130,7 +130,7 @@ export default async function ParticipantSessionsPage({
         zoomLink,
         location,
         waitlisted: isWaitlisted(inv.invite_status),
-        isPast: new Date(date) < today,
+        isPast: date.slice(0, 10) < today,
       }];
     })
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
