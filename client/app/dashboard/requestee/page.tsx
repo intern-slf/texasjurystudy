@@ -21,7 +21,8 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Calendar, Clock, AlertCircle, FileText, Upload, ArrowRight } from "lucide-react";
-import LocalDateTime from "@/components/LocalDateTime";
+import { caseSessionTime, type CaseSessionRow } from "@/lib/case/caseSessionTime";
+import { centralDateTimeInput, formatCentralDate, formatCentralDateTime, formatSessionDate } from "@/lib/timezone";
 import { getBookingsForCases } from "@/lib/slotBookingData";
 import { describeSlot, type TimeSlot } from "@/lib/requesteeTimeSlots";
 import { SUPPORT_EMAIL } from "@/lib/legal-constants";
@@ -40,11 +41,20 @@ import {
 
 /**
  * Whether this case is already attached to a session, which freezes its format.
- * Reads the `session_cases (session_id)` rows joined onto the case query.
+ * Reads the `session_cases` rows joined onto the case query.
  */
 function isCaseScheduled(c: Case): boolean {
   const rows = c.session_cases as { session_id?: string | null }[] | null | undefined;
   return Array.isArray(rows) && rows.length > 0;
+}
+
+/**
+ * When the case runs, once it is in a session, from the same joined rows. Its
+ * admin_scheduled_at is then the time the case ENDS, which this page showed as
+ * the session date and time.
+ */
+function sessionTimeOf(c: Case) {
+  return caseSessionTime(c.session_cases as CaseSessionRow[] | null | undefined);
 }
 
 // Define a proper interface for your case object to replace 'any'
@@ -132,10 +142,11 @@ export default async function RequesteeDashboard({
   // `session_cases` rides along so the edit form knows whether the format is
   // still changeable — once a case is scheduled its mode is frozen (a database
   // trigger enforces it), because flipping it would move an in-flight session
-  // between price and payout regimes.
+  // between price and payout regimes. Its times and session date say when the
+  // case runs.
   let caseQuery = supabase
     .from("cases")
-    .select(`*, case_documents (id), session_cases (session_id)`)
+    .select(`*, case_documents (id), session_cases (session_id, start_time, end_time, sessions (session_date))`)
     .eq("user_id", user.id)
     .order("created_at", { ascending: false });
 
@@ -361,7 +372,12 @@ export default async function RequesteeDashboard({
                           ) : (c.admin_scheduled_at || c.scheduled_at) ? (
                             <Badge variant="secondary" className="flex items-center gap-1.5 font-medium">
                                 <Calendar className="h-3 w-3" />
-                                <LocalDateTime iso={(c.admin_scheduled_at || c.scheduled_at) as string} mode="date" />
+                                {(() => {
+                                  const sessionTime = sessionTimeOf(c);
+                                  return sessionTime
+                                    ? formatSessionDate(sessionTime.sessionDate, "short")
+                                    : formatCentralDate(c.admin_scheduled_at || c.scheduled_at);
+                                })()}
                             </Badge>
                           ) : null}
                           {heldSlotByCase.has(c.id) && (
@@ -428,17 +444,24 @@ export default async function RequesteeDashboard({
                           </div>
                         )}
 
-                      {/* Admin scheduled date */}
-                      {c.admin_scheduled_at && (
+                      {/* Admin scheduled date: when the case runs once it is in a
+                          session, and the admin's proposed time before that */}
+                      {c.admin_scheduled_at && (() => {
+                        const sessionTime = sessionTimeOf(c);
+                        return (
                         <div className="flex items-center justify-between p-4 border rounded-lg bg-card">
                             <div className="flex items-center gap-3">
                                 <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
                                     <Calendar className="h-5 w-5" />
                                 </div>
                                 <div>
-                                    <p className="text-sm font-medium">Scheduled Session Date</p>
+                                    <p className="text-sm font-medium">
+                                        {sessionTime ? "Scheduled Session" : "Proposed Session Time"}
+                                    </p>
                                     <p className="text-xs text-muted-foreground">
-                                        <LocalDateTime iso={c.admin_scheduled_at} />
+                                        {sessionTime
+                                          ? `${formatSessionDate(sessionTime.sessionDate)}${sessionTime.time ? `, ${sessionTime.time}` : ""}`
+                                          : formatCentralDateTime(c.admin_scheduled_at)}
                                     </p>
                                 </div>
                             </div>
@@ -450,7 +473,8 @@ export default async function RequesteeDashboard({
                                   : "Awaiting Your Response"}
                             </Badge>
                         </div>
-                      )}
+                        );
+                      })()}
 
                       {(c.schedule_status === null ||
                         c.schedule_status === "pending") &&
@@ -691,20 +715,14 @@ export default async function RequesteeDashboard({
                                 </div>
 
                                 <div className="space-y-2">
-                                    <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Schedule</label>
+                                    <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Schedule (Central Time)</label>
+                                    {/* Central Time both ways: updateCase reads it as Central. This
+                                        renders on the server, whose zone is UTC, so the old prefill
+                                        showed UTC and saving stored the typed time as UTC. */}
                                     <Input
                                         type="datetime-local"
                                         name="scheduled_at"
-                                        defaultValue={
-                                        c.scheduled_at
-                                            ? new Date(
-                                                new Date(c.scheduled_at).getTime() -
-                                                new Date().getTimezoneOffset() * 60000
-                                            )
-                                                .toISOString()
-                                                .slice(0, 16)
-                                            : ""
-                                        }
+                                        defaultValue={centralDateTimeInput(c.scheduled_at)}
                                     />
                                 </div>
 

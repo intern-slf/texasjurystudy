@@ -10,7 +10,7 @@ import {
    The cutoff behind "you can no longer accept this invitation".
 
    `session_cases.start_time` is stored UTC (addCasesToSession runs the admin's
-   local input through localToUTCTime), and the session date is a Central date,
+   Central Time input through localToUTCTime), and the session date is a Central date,
    so a start time is a real instant on that date: an evening one falls on the
    next UTC day. `now` is injected so these are not clock-flaky.
 --------------------------------------------------------------------------- */

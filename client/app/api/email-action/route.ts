@@ -11,6 +11,7 @@ import {
 import { isOffline } from "@/lib/case/deliveryMode";
 import { getSessionDeliveryModeOrDefault } from "@/lib/case/getSessionDeliveryMode";
 import { escHtml } from "@/lib/mail";
+import { formatSessionDate } from "@/lib/timezone";
 
 export const runtime = "nodejs";
 
@@ -276,9 +277,7 @@ function waitlistOfferPage(
   const declineLink = `${appUrl}/api/email-action?token=${encodeURIComponent(token)}&confirm=decline`;
 
   const dateStr = offer.sessionDate
-    ? new Date(offer.sessionDate).toLocaleDateString("en-US", {
-        weekday: "long", year: "numeric", month: "long", day: "numeric",
-      })
+    ? formatSessionDate(offer.sessionDate)
     : "this session";
 
   const hourly = formatCents(offer.hourlyRateCents);

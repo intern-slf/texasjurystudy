@@ -24,6 +24,8 @@ import { chooseTimeSlot, listOpenTimeSlots } from "@/lib/actions/requesteeSlotBo
 import { SUPPORT_EMAIL } from "@/lib/legal-constants";
 import { describeSlot, type TimeSlot } from "@/lib/requesteeTimeSlots";
 import { formatDeadline, slotFitsHours } from "@/lib/slotBooking";
+import { deadlineForTimeframe } from "@/lib/case/deadline";
+import { centralDateTimeToISO } from "@/lib/timezone";
 
 function VideoPlayer({ url, className = "" }: { url: string; className?: string }) {
   if (!url) {
@@ -315,23 +317,11 @@ export default function NewCasePage() {
 
         documentation_type: form.documentation_type, // Now explicitly handled
         status: "current",
-        scheduled_at: !usingSlot && form.scheduled_at ? new Date(form.scheduled_at).toISOString() : null,
+        // The date and hour are Central Time, the zone the firm is shown them in
+        // everywhere else. new Date() read them in the browser's own zone.
+        scheduled_at: usingSlot ? null : centralDateTimeToISO(form.scheduled_at),
         session_completion_timeframe: (!usingSlot && form.session_completion_timeframe) || null,
-        deadline_date: (() => {
-          if (usingSlot) return null;
-          const daysMap: Record<string, number> = {
-            "Within a Week": 7,
-            "Within 2 Weeks": 14,
-            "Within a Month": 30,
-            "Within 3 Months": 90,
-          };
-          const days = daysMap[form.session_completion_timeframe];
-          if (!days) return null;
-          const d = new Date();
-          d.setDate(d.getDate() + days);
-          d.setHours(23, 59, 0, 0);
-          return d.toISOString();
-        })(),
+        deadline_date: usingSlot ? null : deadlineForTimeframe(form.session_completion_timeframe),
         preferred_day: (!usingSlot && form.preferred_day) || null,
         filters: softFilterPayload,
         parent_case_id: parentId || null,
@@ -693,7 +683,7 @@ export default function NewCasePage() {
                       </p>
                     ) : (
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">Preferable Date</label>
+                      <label className="text-sm font-medium">Preferable Date (Central Time)</label>
                       <div className="flex gap-2">
                         <input
                           type="date"

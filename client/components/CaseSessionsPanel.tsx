@@ -1,5 +1,5 @@
 import Link from "next/link";
-import LocalTimeRange from "@/components/LocalTimeRange";
+import CentralTimeRange from "@/components/CentralTimeRange";
 import { getCaseSessions } from "@/lib/case/getCaseSessions";
 import { deliveryModeLabel, isOffline } from "@/lib/case/deliveryMode";
 import ParticipantRoster from "@/components/ParticipantRoster";
@@ -38,7 +38,7 @@ export default async function CaseSessionsPanel({ caseId }: { caseId: string }) 
                 <p className="font-semibold text-slate-800">{s.displayDate}</p>
                 <p className="text-sm mt-0.5">
                   {s.startTime && s.endTime ? (
-                    <LocalTimeRange
+                    <CentralTimeRange
                       sessionDate={s.date}
                       startUtc={s.startTime}
                       endUtc={s.endTime}

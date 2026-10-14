@@ -5,7 +5,7 @@ import { CENTRAL_TIME_ZONE, calendarDate, localToUTC, sessionSpan } from "@/lib/
 
    A session begins when its first case does and ends when its last one does.
    `session_cases.start_time` / `end_time` are stored UTC — `addCasesToSession`
-   runs the admin's local input through `localToUTCTime` — so the session date
+   runs the admin's Central Time input through `localToUTCTime` — so the session date
    plus a case time is a real instant, not a floating wall-clock time.
 
    Two things depend on that:

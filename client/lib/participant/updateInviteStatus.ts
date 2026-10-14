@@ -26,7 +26,7 @@ import {
 } from "@/lib/participant/waitlist";
 import { isOffline, type DeliveryMode } from "@/lib/case/deliveryMode";
 import { getSessionDeliveryModeOrDefault } from "@/lib/case/getSessionDeliveryMode";
-import { formatSessionSpan } from "@/lib/timezone";
+import { formatSessionDate, formatSessionSpan } from "@/lib/timezone";
 
 /* =========================
    CHECK IF SESSION HAS REACHED ITS PARTICIPANT CAP
@@ -489,12 +489,7 @@ export async function checkAndNotifySessionFull(sessionId: string) {
     return;
   }
 
-  const sessionDateStr = new Date(session.session_date).toLocaleDateString("en-US", {
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
+  const sessionDateStr = formatSessionDate(session.session_date);
 
   // 4. Send session full email to each pending participant
   for (const row of pendingRows) {

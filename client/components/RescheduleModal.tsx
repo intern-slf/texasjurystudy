@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { rescheduleSession } from "@/lib/actions/session";
-import { utcTimeToLocal } from "@/lib/timezone";
+import { CENTRAL_TIME_ZONE, utcTimeToLocal } from "@/lib/timezone";
 
 interface CaseEntry {
   case_id: string;
@@ -19,15 +19,16 @@ interface Props {
 }
 
 export default function RescheduleModal({ sessionId, sessionDate, cases }: Props) {
-  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-
-  const toLocal = (utcTime: string) => utcTimeToLocal(sessionDate, utcTime, tz);
+  // The inputs are Central Time, which rescheduleSession saves them as: in the
+  // admin's own zone, moving a session across a clock change without touching
+  // the times kept the admin's clock, not Texas's, and everyone was emailed it.
+  const toCentral = (utcTime: string) => utcTimeToLocal(sessionDate, utcTime, CENTRAL_TIME_ZONE);
 
   const [isOpen, setIsOpen] = useState(false);
   const [date, setDate] = useState(sessionDate);
   const [times, setTimes] = useState<Record<string, { start: string; end: string }>>(
     Object.fromEntries(
-      cases.map((c) => [c.case_id, { start: toLocal(c.start_time), end: toLocal(c.end_time) }])
+      cases.map((c) => [c.case_id, { start: toCentral(c.start_time), end: toCentral(c.end_time) }])
     )
   );
   const [isPending, startTransition] = useTransition();
@@ -39,7 +40,7 @@ export default function RescheduleModal({ sessionId, sessionDate, cases }: Props
     setDate(sessionDate);
     setTimes(
       Object.fromEntries(
-        cases.map((c) => [c.case_id, { start: toLocal(c.start_time), end: toLocal(c.end_time) }])
+        cases.map((c) => [c.case_id, { start: toCentral(c.start_time), end: toCentral(c.end_time) }])
       )
     );
     setDone(false);
@@ -56,10 +57,8 @@ export default function RescheduleModal({ sessionId, sessionDate, cases }: Props
       start: times[c.case_id]?.start ?? c.start_time,
       end: times[c.case_id]?.end ?? c.end_time,
     }));
-    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-
     startTransition(async () => {
-      await rescheduleSession(sessionId, date, caseUpdates, tz);
+      await rescheduleSession(sessionId, date, caseUpdates);
       setDone(true);
       router.refresh();
       setTimeout(() => {
@@ -100,14 +99,14 @@ export default function RescheduleModal({ sessionId, sessionDate, cases }: Props
             {cases.length > 0 && (
               <div className="space-y-3">
                 <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                  Case Times
+                  Case Times (Central Time)
                 </label>
                 {cases.map((c) => (
                   <div key={c.case_id} className="border rounded px-3 py-3 space-y-2">
                     <p className="text-sm font-medium text-slate-700 truncate">{c.title}</p>
                     <div className="flex gap-3 items-center">
                       <div className="flex-1">
-                        <label className="text-xs text-slate-400">Start</label>
+                        <label className="text-xs text-slate-400">Start (CT)</label>
                         <input
                           type="time"
                           value={times[c.case_id]?.start ?? c.start_time}
@@ -117,7 +116,7 @@ export default function RescheduleModal({ sessionId, sessionDate, cases }: Props
                       </div>
                       <span className="text-slate-400 mt-4">→</span>
                       <div className="flex-1">
-                        <label className="text-xs text-slate-400">End</label>
+                        <label className="text-xs text-slate-400">End (CT)</label>
                         <input
                           type="time"
                           value={times[c.case_id]?.end ?? c.end_time}

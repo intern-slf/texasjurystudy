@@ -11,7 +11,6 @@ import { ACTIVE_STATUS } from "@/lib/participant/activeStatus";
 import { getAllIdsWithoutLogin } from "@/lib/participant/loginAccount";
 import CreateSessionButton from "@/components/CreateSessionButton";
 import CaseTimeInputs from "@/components/CaseTimeInputs";
-import TimezoneInput from "@/components/TimezoneInput";
 import {
   combineCaseFilters,
   applyCaseFilters,
@@ -57,6 +56,7 @@ import { BookingStateBadge } from "@/components/BookingSummary";
 import { getBookingsForCases } from "@/lib/slotBookingData";
 import { bookingState } from "@/lib/slotBooking";
 import { describeSlot } from "@/lib/requesteeTimeSlots";
+import { formatCentralDateTime } from "@/lib/timezone";
 
 /* =========================
    PAGE
@@ -341,7 +341,6 @@ export default async function NewSessionPage({
     await requireAdmin();
 
     const date = formData.get("session_date") as string;
-    const tz = formData.get("tz") as string || "UTC";
     if (!date) throw new Error("Session date required");
 
     const selectedCases = caseRows
@@ -380,7 +379,6 @@ export default async function NewSessionPage({
         sessionId,
         selectedCases.map(({ caseId, start, end }) => ({ caseId, start, end })),
         date,
-        tz,
       );
     }
 
@@ -483,7 +481,6 @@ export default async function NewSessionPage({
 
   return (
     <form action={handleCreate} className="space-y-8">
-      <TimezoneInput />
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Create Session</h1>
         <BackButton href="/dashboard/Admin" label="Back to Cases" />
@@ -612,7 +609,7 @@ export default async function NewSessionPage({
                       <div>
                         <span className="text-slate-400 text-[10px]">Admin proposed: </span>
                         <span className="text-slate-600 font-medium">
-                          {new Date(c.admin_scheduled_at).toLocaleString()}
+                          {formatCentralDateTime(c.admin_scheduled_at)}
                         </span>
                       </div>
                     )}
@@ -620,7 +617,7 @@ export default async function NewSessionPage({
                       <div>
                         <span className="text-slate-400 text-[10px]">Requestee preferred: </span>
                         <span className="text-slate-600">
-                          {new Date(c.scheduled_at).toLocaleString()}
+                          {formatCentralDateTime(c.scheduled_at)}
                         </span>
                         <div className="mt-0.5">
                           {(!c.schedule_status || c.schedule_status === "pending") && (

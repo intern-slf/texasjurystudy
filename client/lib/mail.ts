@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import { getMailerAuthToken } from '@/lib/mailerAuth';
 import { MAILING_ADDRESS } from '@/lib/legal-constants';
 import { isHttpUrl } from '@/lib/httpUrl';
+import { formatSessionDate } from '@/lib/timezone';
 
 // ---------------------------------------------------------------------------
 // Shared email wrapper – provides consistent branded header and footer
@@ -239,28 +240,46 @@ export async function sendEmail({
 export async function sendRescheduleEmail(
   to: string,
   newDateStr: string,
-  role: "participant" | "requestee"
+  role: "participant" | "requestee",
+  /** The session's new time, "10:00 AM – 12:00 PM CT", when it could be read. */
+  timeStr?: string | null,
+  /** A firm's own cases and when each now runs. */
+  caseTimes: { title: string; time: string }[] = [],
 ) {
   const dashboardPath =
     role === "requestee" ? "/dashboard/requestee" : "/dashboard/participant";
+  const dateText = formatSessionDate(newDateStr);
+
+  const detailRow = (label: string, value: string) => `
+      <tr>
+        <td style="padding:12px 20px;">
+          <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:0.08em;">${label}</p>
+          <p style="margin:0;font-size:18px;font-weight:700;color:#78350f;">${value}</p>
+        </td>
+      </tr>`;
+
+  // One case: just its time. Several: each time beside its case's title.
+  const caseTimesHtml =
+    caseTimes.length === 1
+      ? escHtml(caseTimes[0].time)
+      : caseTimes.map((c) => `${escHtml(c.title)}: ${escHtml(c.time)}`).join("<br>");
 
   const html = emailWrapper(`
     <h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#d97706;">Session Rescheduled</h2>
     <p style="margin:0 0 20px;font-size:15px;color:#475569;">
-      Your Texas Jury Study session has been moved to a new date. Please review the updated information below.
+      Your Texas Jury Study session has been rescheduled. Please review the new date and time below.
     </p>
 
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#fffbeb;border-left:4px solid #d97706;border-radius:6px;margin:0 0 24px;">
-      <tr>
-        <td style="padding:16px 20px;">
-          <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:0.08em;">New Session Date</p>
-          <p style="margin:0;font-size:20px;font-weight:700;color:#78350f;">${newDateStr}</p>
-        </td>
-      </tr>
+      ${detailRow("New Session Date", escHtml(dateText))}
+      ${timeStr ? detailRow("New Session Time", escHtml(timeStr)) : ""}
+      ${caseTimes.length ? detailRow(`Your Case Time${caseTimes.length > 1 ? "s" : ""}`, caseTimesHtml) : ""}
     </table>
 
     <p style="margin:0 0 28px;font-size:14px;color:#64748b;">
-      No action is required — your ${role === "participant" ? "acceptance remains valid" : "session details have been updated automatically"}.
+      ${role === "participant"
+        ? "No action is required — your acceptance remains valid."
+        : "Please confirm the new time on your dashboard."}
     </p>
 
     <table role="presentation" cellpadding="0" cellspacing="0">
@@ -277,7 +296,7 @@ export async function sendRescheduleEmail(
 
   await sendEmail({
     to,
-    subject: `Session Rescheduled – New Date: ${newDateStr} | Texas Jury Study`,
+    subject: `Session Rescheduled – ${dateText}${timeStr ? `, ${timeStr}` : ""} | Texas Jury Study`,
     html,
   });
 }
@@ -294,6 +313,7 @@ export async function sendSessionCreatedEmail(
   /** The venue of an in-person session, when one is saved. */
   location?: string | null,
 ) {
+  const sessionDateText = formatSessionDate(sessionDate);
   const caseListHtml = caseTitles
     .map((t) => `<li style="margin:4px 0;font-size:15px;font-weight:600;color:#1e3a8a;">${t}</li>`)
     .join("");
@@ -323,7 +343,7 @@ export async function sendSessionCreatedEmail(
       <tr>
         <td style="padding:12px 20px;border-bottom:1px solid #e2e8f0;">
           <p style="margin:0 0 2px;font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.08em;">Session Date</p>
-          <p style="margin:0;font-size:15px;font-weight:600;color:#1e293b;">${sessionDate}</p>
+          <p style="margin:0;font-size:15px;font-weight:600;color:#1e293b;">${sessionDateText}</p>
         </td>
       </tr>
       <tr>
@@ -385,6 +405,7 @@ export async function sendSessionCompletedEmail(
   caseTitles: string[],
   sessionDate: string,
 ) {
+  const sessionDateText = formatSessionDate(sessionDate);
   const caseListHtml = caseTitles
     .map((t) => `<li style="margin:4px 0;font-size:15px;font-weight:600;color:#1e3a8a;">${t}</li>`)
     .join("");
@@ -408,7 +429,7 @@ export async function sendSessionCompletedEmail(
       <tr>
         <td style="padding:14px 20px;">
           <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#166534;text-transform:uppercase;letter-spacing:0.08em;">Session Date</p>
-          <p style="margin:0;font-size:16px;font-weight:700;color:#15803d;">${sessionDate}</p>
+          <p style="margin:0;font-size:16px;font-weight:700;color:#15803d;">${sessionDateText}</p>
         </td>
       </tr>
     </table>
@@ -490,6 +511,7 @@ export async function sendPresenceConfirmedEmail(
   /** The venue of an in-person session, when one is saved. */
   location?: string | null,
 ) {
+  const sessionDateText = formatSessionDate(sessionDate);
   const html = emailWrapper(`
     <h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#15803d;">Presence Confirmed</h2>
     <p style="margin:0 0 20px;font-size:15px;color:#475569;">
@@ -500,7 +522,7 @@ export async function sendPresenceConfirmedEmail(
       <tr>
         <td style="padding:16px 20px;">
           <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#166534;text-transform:uppercase;letter-spacing:0.08em;">Session Date</p>
-          <p style="margin:0;font-size:20px;font-weight:700;color:#15803d;">${sessionDate}</p>
+          <p style="margin:0;font-size:20px;font-weight:700;color:#15803d;">${sessionDateText}</p>
         </td>
       </tr>
     </table>
@@ -547,7 +569,7 @@ export async function sendPresenceConfirmedEmail(
 
   await sendEmail({
     to,
-    subject: `Your Presence Has Been Confirmed – ${sessionDate} | Texas Jury Study`,
+    subject: `Your Presence Has Been Confirmed – ${sessionDateText} | Texas Jury Study`,
     html,
   });
 }
@@ -557,6 +579,7 @@ export async function sendPresenceDeclinedEmail(
   firstName: string,
   sessionDate: string,
 ) {
+  const sessionDateText = formatSessionDate(sessionDate);
   const html = emailWrapper(`
     <h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#dc2626;">Session Invitation Declined</h2>
     <p style="margin:0 0 20px;font-size:15px;color:#475569;">
@@ -567,7 +590,7 @@ export async function sendPresenceDeclinedEmail(
       <tr>
         <td style="padding:16px 20px;">
           <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#991b1b;text-transform:uppercase;letter-spacing:0.08em;">Session Date</p>
-          <p style="margin:0;font-size:20px;font-weight:700;color:#dc2626;">${sessionDate}</p>
+          <p style="margin:0;font-size:20px;font-weight:700;color:#dc2626;">${sessionDateText}</p>
         </td>
       </tr>
     </table>
@@ -590,7 +613,7 @@ export async function sendPresenceDeclinedEmail(
 
   await sendEmail({
     to,
-    subject: `Session Invitation Declined – ${sessionDate} | Texas Jury Study`,
+    subject: `Session Invitation Declined – ${sessionDateText} | Texas Jury Study`,
     html,
   });
 }
@@ -649,6 +672,7 @@ export async function sendInviteAcceptedConfirmationEmail(
   /** The venue of an in-person session, when one is saved. */
   location?: string | null,
 ) {
+  const sessionDateText = formatSessionDate(sessionDate);
   const html = emailWrapper(`
     <h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#15803d;">Thank You for Accepting!</h2>
     <p style="margin:0 0 20px;font-size:15px;color:#475569;">
@@ -659,7 +683,7 @@ export async function sendInviteAcceptedConfirmationEmail(
       <tr>
         <td style="padding:16px 20px;">
           <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#166534;text-transform:uppercase;letter-spacing:0.08em;">Scheduled Date</p>
-          <p style="margin:0;font-size:20px;font-weight:700;color:#15803d;">${sessionDate}</p>
+          <p style="margin:0;font-size:20px;font-weight:700;color:#15803d;">${sessionDateText}</p>
         </td>
       </tr>
     </table>
@@ -714,7 +738,7 @@ export async function sendInviteAcceptedConfirmationEmail(
 
   await sendEmail({
     to,
-    subject: `Thank You for Accepting – ${sessionDate} | Texas Jury Study`,
+    subject: `Thank You for Accepting – ${sessionDateText} | Texas Jury Study`,
     html,
   });
 }
@@ -808,17 +832,18 @@ export async function sendSessionFullEmail(
   firstName: string,
   sessionDate: string,
 ) {
+  const sessionDateText = formatSessionDate(sessionDate);
   const html = emailWrapper(`
     <h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#1e3a8a;">Session Update</h2>
     <p style="margin:0 0 20px;font-size:15px;color:#475569;">
-      Hi ${firstName}, thank you for your interest in the Texas Jury Study. We wanted to let you know that the session scheduled for <strong>${sessionDate}</strong> has reached its participant capacity and is now full.
+      Hi ${firstName}, thank you for your interest in the Texas Jury Study. We wanted to let you know that the session scheduled for <strong>${sessionDateText}</strong> has reached its participant capacity and is now full.
     </p>
 
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#eff6ff;border-left:4px solid #2563eb;border-radius:6px;margin:0 0 24px;">
       <tr>
         <td style="padding:16px 20px;">
           <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#1e40af;text-transform:uppercase;letter-spacing:0.08em;">Session Date</p>
-          <p style="margin:0;font-size:20px;font-weight:700;color:#1e3a8a;">${sessionDate}</p>
+          <p style="margin:0;font-size:20px;font-weight:700;color:#1e3a8a;">${sessionDateText}</p>
         </td>
       </tr>
     </table>
@@ -859,17 +884,18 @@ export async function sendZoomLinkEmail(
   zoomLink: string,
   timeStr?: string,
 ) {
+  const sessionDateText = formatSessionDate(sessionDate);
   const html = emailWrapper(`
     <h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#1e3a8a;">Your Zoom Link is Ready</h2>
     <p style="margin:0 0 20px;font-size:15px;color:#475569;">
-      Hi ${firstName}, your session is coming up. Use the link below to join the Texas Jury Study session on <strong>${sessionDate}</strong>.
+      Hi ${firstName}, your session is coming up. Use the link below to join the Texas Jury Study session on <strong>${sessionDateText}</strong>.
     </p>
 
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#eff6ff;border-left:4px solid #2563eb;border-radius:6px;margin:0 0 24px;">
       <tr>
         <td style="padding:16px 20px;border-bottom:1px solid #bfdbfe;">
           <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#1e40af;text-transform:uppercase;letter-spacing:0.08em;">Session Date</p>
-          <p style="margin:0;font-size:16px;font-weight:700;color:#1e3a8a;">${sessionDate}</p>
+          <p style="margin:0;font-size:16px;font-weight:700;color:#1e3a8a;">${sessionDateText}</p>
         </td>
       </tr>
       ${timeStr ? `
@@ -920,7 +946,7 @@ export async function sendZoomLinkEmail(
 
   await sendEmail({
     to,
-    subject: `Zoom Link for Your Session on ${sessionDate} | Texas Jury Study`,
+    subject: `Zoom Link for Your Session on ${sessionDateText} | Texas Jury Study`,
     html,
   });
 }
@@ -1000,13 +1026,14 @@ export async function sendSessionLocationEmail(
   timeStr?: string,
   hourlyRate?: string,
 ) {
+  const sessionDateText = formatSessionDate(sessionDate);
   const html = emailWrapper(`
     <h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#15803d;">Your Session Location</h2>
     <p style="margin:0 0 20px;font-size:15px;color:#475569;">
-      Hi ${escHtml(firstName)}, your Texas Jury Study session on <strong>${sessionDate}</strong> is being held <strong>in person</strong>. The address is below — please plan your travel now.
+      Hi ${escHtml(firstName)}, your Texas Jury Study session on <strong>${sessionDateText}</strong> is being held <strong>in person</strong>. The address is below — please plan your travel now.
     </p>
 
-    ${locationCard(location, sessionDate, timeStr)}
+    ${locationCard(location, sessionDateText, timeStr)}
 
     <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 24px;">
       <tr>
@@ -1044,7 +1071,7 @@ export async function sendSessionLocationEmail(
 
   await sendEmail({
     to,
-    subject: `Location for Your In-Person Session on ${sessionDate} | Texas Jury Study`,
+    subject: `Location for Your In-Person Session on ${sessionDateText} | Texas Jury Study`,
     html,
   });
 }
@@ -1073,17 +1100,18 @@ export async function sendWaitlistConfirmationEmail(
   /** In-person reserve slots are held at the venue, not in a Zoom waiting room. */
   offline = false,
 ) {
+  const sessionDateText = formatSessionDate(sessionDate);
   const html = emailWrapper(`
     <h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#1e3a8a;">You're on the Waitlist</h2>
     <p style="margin:0 0 20px;font-size:15px;color:#475569;">
-      Hi ${escHtml(firstName)}, thank you for accepting. This session had already reached its participant capacity, so you have been placed on the <strong>waitlist</strong> for <strong>${sessionDate}</strong>. Waitlist spots are paid — please read how it works below.
+      Hi ${escHtml(firstName)}, thank you for accepting. This session had already reached its participant capacity, so you have been placed on the <strong>waitlist</strong> for <strong>${sessionDateText}</strong>. Waitlist spots are paid — please read how it works below.
     </p>
 
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#eff6ff;border-left:4px solid #2563eb;border-radius:6px;margin:0 0 24px;">
       <tr>
         <td style="padding:16px 20px;${timeStr ? "border-bottom:1px solid #bfdbfe;" : ""}">
           <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#1e40af;text-transform:uppercase;letter-spacing:0.08em;">Session Date</p>
-          <p style="margin:0;font-size:16px;font-weight:700;color:#1e3a8a;">${sessionDate}</p>
+          <p style="margin:0;font-size:16px;font-weight:700;color:#1e3a8a;">${sessionDateText}</p>
         </td>
       </tr>
       ${timeStr ? `
@@ -1140,7 +1168,7 @@ export async function sendWaitlistConfirmationEmail(
 
   await sendEmail({
     to,
-    subject: `You're on the Waitlist for ${sessionDate} | Texas Jury Study`,
+    subject: `You're on the Waitlist for ${sessionDateText} | Texas Jury Study`,
     html,
   });
 }
@@ -1155,17 +1183,18 @@ export async function sendWaitlistZoomLinkEmail(
   waitFee: string,
   timeStr?: string,
 ) {
+  const sessionDateText = formatSessionDate(sessionDate);
   const html = emailWrapper(`
     <h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#1e3a8a;">Your Waitlist Zoom Link</h2>
     <p style="margin:0 0 20px;font-size:15px;color:#475569;">
-      Hi ${escHtml(firstName)}, you are on the <strong>waitlist</strong> for the session on <strong>${sessionDate}</strong>. Use the link below to join at the start time and wait to be admitted.
+      Hi ${escHtml(firstName)}, you are on the <strong>waitlist</strong> for the session on <strong>${sessionDateText}</strong>. Use the link below to join at the start time and wait to be admitted.
     </p>
 
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#eff6ff;border-left:4px solid #2563eb;border-radius:6px;margin:0 0 24px;">
       <tr>
         <td style="padding:16px 20px;${timeStr ? "border-bottom:1px solid #bfdbfe;" : ""}">
           <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#1e40af;text-transform:uppercase;letter-spacing:0.08em;">Session Date</p>
-          <p style="margin:0;font-size:16px;font-weight:700;color:#1e3a8a;">${sessionDate}</p>
+          <p style="margin:0;font-size:16px;font-weight:700;color:#1e3a8a;">${sessionDateText}</p>
         </td>
       </tr>
       ${timeStr ? `
@@ -1213,7 +1242,7 @@ export async function sendWaitlistZoomLinkEmail(
 
   await sendEmail({
     to,
-    subject: `Waitlist Zoom Link for ${sessionDate} | Texas Jury Study`,
+    subject: `Waitlist Zoom Link for ${sessionDateText} | Texas Jury Study`,
     html,
   });
 }
@@ -1235,13 +1264,14 @@ export async function sendWaitlistLocationEmail(
   waitFee: string,
   timeStr?: string,
 ) {
+  const sessionDateText = formatSessionDate(sessionDate);
   const html = emailWrapper(`
     <h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#15803d;">Your Waitlist Details &amp; Location</h2>
     <p style="margin:0 0 20px;font-size:15px;color:#475569;">
-      Hi ${escHtml(firstName)}, you are holding a <strong>waitlist spot</strong> for the in-person session on <strong>${sessionDate}</strong>. The address is below &mdash; please read the hold rules before you travel.
+      Hi ${escHtml(firstName)}, you are holding a <strong>waitlist spot</strong> for the in-person session on <strong>${sessionDateText}</strong>. The address is below &mdash; please read the hold rules before you travel.
     </p>
 
-    ${locationCard(location, sessionDate, timeStr)}
+    ${locationCard(location, sessionDateText, timeStr)}
 
     <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 24px;">
       <tr>
@@ -1277,7 +1307,7 @@ export async function sendWaitlistLocationEmail(
 
   await sendEmail({
     to,
-    subject: `Waitlist Details for Your In-Person Session on ${sessionDate} | Texas Jury Study`,
+    subject: `Waitlist Details for Your In-Person Session on ${sessionDateText} | Texas Jury Study`,
     html,
   });
 }
@@ -1289,10 +1319,11 @@ export async function sendWaitlistCalledInEmail(
   payoutAmount: string,
   hourlyRate: string,
 ) {
+  const sessionDateText = formatSessionDate(sessionDate);
   const html = emailWrapper(`
     <h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#15803d;">You're In — Thank You for Waiting</h2>
     <p style="margin:0 0 20px;font-size:15px;color:#475569;">
-      Hi ${escHtml(firstName)}, a spot opened in the session on <strong>${sessionDate}</strong> and you were called in from the waitlist. You are now a full participant in that session.
+      Hi ${escHtml(firstName)}, a spot opened in the session on <strong>${sessionDateText}</strong> and you were called in from the waitlist. You are now a full participant in that session.
     </p>
 
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f0fdf4;border-left:4px solid #16a34a;border-radius:6px;margin:0 0 24px;">
@@ -1331,7 +1362,7 @@ export async function sendWaitlistCalledInEmail(
 
   await sendEmail({
     to,
-    subject: `You Were Called Into the Session on ${sessionDate} | Texas Jury Study`,
+    subject: `You Were Called Into the Session on ${sessionDateText} | Texas Jury Study`,
     html,
   });
 }
@@ -1345,10 +1376,11 @@ export async function sendWaitlistWaitedOutEmail(
   /** They held at the venue rather than in a Zoom waiting room. */
   offline = false,
 ) {
+  const sessionDateText = formatSessionDate(sessionDate);
   const html = emailWrapper(`
     <h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#1e3a8a;">Thank You for Waiting</h2>
     <p style="margin:0 0 20px;font-size:15px;color:#475569;">
-      Hi ${escHtml(firstName)}, every confirmed participant showed up for the session on <strong>${sessionDate}</strong>, so no spot opened and you were not called in. Thank you for holding your waitlist slot — that reliability is exactly what makes the waitlist work.
+      Hi ${escHtml(firstName)}, every confirmed participant showed up for the session on <strong>${sessionDateText}</strong>, so no spot opened and you were not called in. Thank you for holding your waitlist slot — that reliability is exactly what makes the waitlist work.
     </p>
 
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f0fdf4;border-left:4px solid #16a34a;border-radius:6px;margin:0 0 24px;">
@@ -1387,7 +1419,7 @@ export async function sendWaitlistWaitedOutEmail(
 
   await sendEmail({
     to,
-    subject: `Thank You for Waiting — Session on ${sessionDate} | Texas Jury Study`,
+    subject: `Thank You for Waiting — Session on ${sessionDateText} | Texas Jury Study`,
     html,
   });
 }
@@ -1452,6 +1484,7 @@ export async function sendPresenterInfoEmail(
    */
   offline?: { location: string | null },
 ) {
+  const sessionDateText = formatSessionDate(sessionDate);
   // How the requestee gets to their own session: a Zoom link, or an address.
   const zoomHtml = offline
     ? offline.location
@@ -1616,7 +1649,7 @@ export async function sendPresenterInfoEmail(
   const html = emailWrapper(`
     <h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#1e3a8a;">Session Information for Presenter</h2>
     <p style="margin:0 0 20px;font-size:15px;color:#475569;">
-      You have been notified about the Texas Jury Study session on <strong>${sessionDate}</strong>. Below you will find all the details you need.
+      You have been notified about the Texas Jury Study session on <strong>${sessionDateText}</strong>. Below you will find all the details you need.
     </p>
 
     ${zoomHtml}
@@ -1626,7 +1659,7 @@ export async function sendPresenterInfoEmail(
 
   await sendEmail({
     to,
-    subject: `Session Details: ${sessionDate} | Texas Jury Study`,
+    subject: `Session Details: ${sessionDateText} | Texas Jury Study`,
     html,
   });
 }

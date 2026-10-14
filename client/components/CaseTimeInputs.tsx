@@ -142,7 +142,7 @@ export default function CaseTimeInputs({ caseId, hoursRequested }: Props) {
   return (
     <div className="flex items-center gap-3 mt-2 bg-slate-50 px-3 py-2 rounded-lg border border-slate-100">
       <span className="text-[11px] font-semibold uppercase text-slate-400 tracking-wide mr-auto">
-        Time
+        Time (CT)
       </span>
       <TimePicker name={`start_${caseId}`} value={start} onChange={handleStart} />
       <span className="text-slate-300">→</span>

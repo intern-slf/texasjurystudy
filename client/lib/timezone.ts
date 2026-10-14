@@ -132,6 +132,107 @@ export function formatSessionSpan(
   return `${clock(span.start)} – ${clock(span.end)}`;
 }
 
+/**
+ * "Thursday, November 5, 2026" (or "Nov 5, 2026" for "short"): a session's date.
+ * sessions.session_date has no time, and `new Date("2026-11-05")` is midnight
+ * UTC, which is the evening before anywhere in the US, so formatting it in a
+ * browser's zone showed Texans the day before. Read as the calendar date it is,
+ * it comes out the same wherever the code runs. Anything that isn't a date is
+ * returned as given, so text a caller has already formatted passes through.
+ */
+export function formatSessionDate(
+  value: string | null | undefined,
+  style: "long" | "short" = "long"
+): string {
+  const day = calendarDate(value);
+  if (!day) return value ?? "";
+  return new Date(`${day}T00:00:00Z`).toLocaleDateString("en-US", {
+    ...(style === "long" ? ({ weekday: "long", month: "long" } as const) : ({ month: "short" } as const)),
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+/** A stored instant (timestamptz) as a Date, or null when it can't be read. */
+function readInstant(iso: string | null | undefined): Date | null {
+  const ms = Date.parse(iso ?? "");
+  return Number.isNaN(ms) ? null : new Date(ms);
+}
+
+/**
+ * "Nov 5, 2026, 10:00 AM CT": a stored instant on the Central clock, or null when
+ * it can't be read. Server components render in UTC and client ones in the
+ * viewer's zone, and neither said which, so a 10 AM time read 4:00 PM to admins
+ * and anything else to a firm outside Texas.
+ */
+export function formatCentralDateTime(iso: string | null | undefined): string | null {
+  const instant = readInstant(iso);
+  if (!instant) return null;
+  const text = instant.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: CENTRAL_TIME_ZONE,
+  });
+  return `${text} CT`;
+}
+
+/** "Nov 5, 2026": the Central date of a stored instant, or null when it can't be read. */
+export function formatCentralDate(iso: string | null | undefined): string | null {
+  const instant = readInstant(iso);
+  if (!instant) return null;
+  return instant.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: CENTRAL_TIME_ZONE,
+  });
+}
+
+/** "10:00 AM CT": the Central clock time of a stored instant, or null when it can't be read. */
+export function formatCentralClock(iso: string | null | undefined): string | null {
+  const instant = readInstant(iso);
+  if (!instant) return null;
+  const text = instant.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: CENTRAL_TIME_ZONE,
+  });
+  return `${text} CT`;
+}
+
+/** "2026-11-05T10:00": a stored instant as a datetime-local value on the Central clock; "" when it can't be read. */
+export function centralDateTimeInput(iso: string | null | undefined): string {
+  const instant = readInstant(iso);
+  if (!instant) return "";
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: CENTRAL_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(instant);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")}T${get("hour")}:${get("minute")}`;
+}
+
+/**
+ * The instant a datetime-local value ("2026-11-05T10:00") means on the Central
+ * clock, as an ISO string, or null when it isn't one. `new Date(value)` reads it
+ * in the zone the code runs in: UTC in a server action, so 10:00 was stored as
+ * 4:00 AM CST.
+ */
+export function centralDateTimeToISO(value: string | null | undefined): string | null {
+  const m = /^(\d{4}-\d{2}-\d{2})T(([01]\d|2[0-3]):[0-5]\d)(:\d{2}(\.\d+)?)?$/.exec((value ?? "").trim());
+  if (!m || !calendarDate(m[1])) return null;
+  return localToUTC(m[1], m[2], CENTRAL_TIME_ZONE);
+}
+
 /** Convert local date+time to a UTC time string "HH:MM:SS" (for storing in a time column). */
 export function localToUTCTime(dateStr: string, timeStr: string, ianaTimezone: string): string {
   return localToUTC(dateStr, timeStr, ianaTimezone).split("T")[1].slice(0, 8);
@@ -139,7 +240,7 @@ export function localToUTCTime(dateStr: string, timeStr: string, ianaTimezone: s
 
 /**
  * Convert a UTC time string "HH:MM" stored in the DB back to local "HH:MM", for the
- * admin's session times and the Reschedule form's inputs. rescheduleSession saves
+ * Reschedule form's inputs, which are Central Time. rescheduleSession saves
  * those inputs back onto the session's date in the same zone, so the time is read as
  * the instant on the session's date in that zone, and saving the form unchanged
  * stores the same time. In Central Time that is the session's real instant: an

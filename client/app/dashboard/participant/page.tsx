@@ -6,7 +6,7 @@ import { centralToday } from "@/lib/centralToday";
 import { updateInviteStatus } from "@/lib/participant/updateInviteStatus";
 import { hasSessionStarted } from "@/lib/participant/sessionStart";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { formatSessionSpan } from "@/lib/timezone";
+import { formatSessionDate, formatSessionSpan } from "@/lib/timezone";
 import {
   WAITLISTED_STATUS,
   OFFLINE_ARRIVE_EARLY_MINUTES,
@@ -297,7 +297,7 @@ export default async function ParticipantDashboard({
                 >
                   <div>
                     <p className="font-medium">Session Invite</p>
-                    <p className="text-sm text-slate-500">Date: {session?.session_date}</p>
+                    <p className="text-sm text-slate-500">Date: {formatSessionDate(session?.session_date)}</p>
                     <p className="text-sm text-slate-500">Time: {timeLabel}</p>
                     {/* Accepting an in-person session commits them to a
                         journey, so say so before they click, not only in the
@@ -443,9 +443,7 @@ export default async function ParticipantDashboard({
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="font-medium text-amber-900">
-                      {new Date(s.date).toLocaleDateString("en-US", {
-                        weekday: "long", year: "numeric", month: "long", day: "numeric",
-                      })}
+                      {formatSessionDate(s.date)}
                     </p>
                     <p className="mt-1 text-xs leading-relaxed text-amber-800">
                       You are on the waitlist.{" "}
