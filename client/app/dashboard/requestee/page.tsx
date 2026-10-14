@@ -122,6 +122,9 @@ export default async function RequesteeDashboard({
       : resolvedSearchParams?.tab === "previous"
       ? "previous"
       : "current";
+  // Shown on the Past tab after a refused delete. The Past tab's forms carry it,
+  // so their actions know there is a notice to clear.
+  const deleteRefused = tab === "previous" && resolvedSearchParams?.notice === "delete-refused";
 
   /* ===========================
       FETCH CASES (UPDATED QUERY)
@@ -221,6 +224,9 @@ export default async function RequesteeDashboard({
       .or(`scheduled_at.is.null,scheduled_at.gt."${new Date().toISOString()}"`);
 
     revalidatePath("/dashboard/requestee");
+    // Clear a notice from an earlier refused delete. Otherwise stay put: a
+    // redirect remounts the page, and every card would load its data again.
+    if (formData.get("notice")) redirect("/dashboard/requestee?tab=previous", RedirectType.replace);
   }
 
   async function permanentDeleteCase(formData: FormData) {
@@ -242,13 +248,14 @@ export default async function RequesteeDashboard({
 
     // The database refuses some deletes: a case with a paid time-slot booking,
     // whose payment record would go with it, or one other rows still point at.
-    // Say so, rather than leave the button looking as if it did nothing. A delete
-    // that works lands on the plain Past tab, so an earlier notice doesn't linger.
+    // Say so, rather than leave the button looking as if it did nothing.
     if (error) {
       console.error("[requestee dashboard] delete refused:", error.message);
       redirect("/dashboard/requestee?tab=previous&notice=delete-refused", RedirectType.replace);
     }
-    redirect("/dashboard/requestee?tab=previous", RedirectType.replace);
+    // A delete that works clears an earlier notice. Otherwise stay put: a
+    // redirect remounts the page, and every card would load its data again.
+    if (formData.get("notice")) redirect("/dashboard/requestee?tab=previous", RedirectType.replace);
   }
 
   // Editing a requested case, answering a proposed time and Request Again are in
@@ -287,7 +294,7 @@ export default async function RequesteeDashboard({
             )}
           </div>
 
-          {tab === "previous" && resolvedSearchParams?.notice === "delete-refused" && (
+          {deleteRefused && (
             <div
               role="alert"
               className="mb-6 flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"
@@ -752,6 +759,7 @@ export default async function RequesteeDashboard({
                         new Date(c.scheduled_at).getTime() > Date.now()) && (
                         <form action={restoreCase}>
                           <input type="hidden" name="case_id" value={c.id} />
+                          {deleteRefused && <input type="hidden" name="notice" value="delete-refused" />}
                           <Button size="sm" variant="outline" className="text-blue-600 hover:text-blue-700 hover:bg-blue-50">
                             Restore Case
                           </Button>
@@ -769,6 +777,7 @@ export default async function RequesteeDashboard({
                       ) : (
                         <form action={permanentDeleteCase}>
                           <input type="hidden" name="case_id" value={c.id} />
+                          {deleteRefused && <input type="hidden" name="notice" value="delete-refused" />}
                           <Button size="sm" variant="outline" className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200">
                               Permanently Delete
                           </Button>

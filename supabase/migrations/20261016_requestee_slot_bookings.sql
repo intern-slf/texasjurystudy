@@ -286,9 +286,10 @@ END $$;
 -- Self-check for the delete guard. It works on fresh copies of a firm's case
 -- (made as postgres, then undone with everything else), so nothing else points
 -- at them, and acts as that firm: once acting as a user, RLS hides other rows.
--- With a paid booking the delete is refused; with an unpaid one the guard lets
--- it through; and deleting a paid case's parent doesn't take it along, whatever
--- the parent foreign key does. Skipped when no firm has a case to copy.
+-- With a paid booking the delete is refused; with an unpaid one, or none, the
+-- guard lets it through; and deleting a paid case's parent doesn't take it
+-- along, whatever the parent foreign key does. Skipped when no firm has a case
+-- to copy.
 DO $$
 DECLARE
   firm uuid;
@@ -296,6 +297,7 @@ DECLARE
   test_case uuid;
   parent_case uuid;
   parent_key text;
+  parent_rule "char";
   refusing_key text;
   changed integer;
 BEGIN
@@ -309,12 +311,17 @@ BEGIN
     RETURN;
   END IF;
 
-  -- The key that ties a follow-up to its parent case, whatever it is named.
-  SELECT k.conname INTO parent_key
+  -- The key that ties a follow-up to its parent case (parent_case_id), whatever
+  -- it is named, and what it does when the parent is deleted.
+  SELECT k.conname, k.confdeltype INTO parent_key, parent_rule
   FROM pg_constraint k
   WHERE k.conrelid = 'public.cases'::regclass
     AND k.confrelid = 'public.cases'::regclass
     AND k.contype = 'f'
+    AND k.conkey = ARRAY[(
+      SELECT a.attnum FROM pg_attribute a
+       WHERE a.attrelid = 'public.cases'::regclass AND a.attname = 'parent_case_id'
+    )]
   LIMIT 1;
 
   -- 3. Paid: the firm can't delete the case.
@@ -386,8 +393,9 @@ BEGIN
   -- 5. Paid, and its parent deleted by the firm: still kept. A fresh paid copy
   --    is made the follow-up of another fresh copy. The parent key may refuse
   --    the delete, take the follow-up along (then the guard must refuse), or
-  --    unlink it; the paid booking has to survive each. Only that key may refuse:
-  --    another one refusing wouldn't show what the guard did.
+  --    unlink it; the paid booking has to survive each. Only that key may refuse
+  --    (another one refusing wouldn't show what the guard did), and the guard
+  --    only when the key takes the follow-up along: the parent itself is unpaid.
   BEGIN
     INSERT INTO public.cases (user_id, title, description, documentation_type, filters, status)
     SELECT user_id, title, description, documentation_type, filters, 'previous'
@@ -414,6 +422,9 @@ BEGIN
         IF SQLERRM NOT LIKE 'This case has a paid focus group booking%' THEN
           RAISE;
         END IF;
+        IF parent_rule IS DISTINCT FROM 'c' THEN
+          RAISE EXCEPTION 'Self-check: the guard refused a firm deleting a case with no booking; nothing changed';
+        END IF;
     END;
     RESET ROLE;
     IF NOT EXISTS (
@@ -428,6 +439,38 @@ BEGIN
       RAISE;
     END IF;
   END;
+
+  -- 6. No booking at all, the commonest delete: the guard lets it through, and
+  --    the row goes (a foreign key refusing it would come after the guard).
+  BEGIN
+    INSERT INTO public.cases (user_id, title, description, documentation_type, filters, status)
+    SELECT user_id, title, description, documentation_type, filters, 'previous'
+      FROM public.cases WHERE id = template_case
+    RETURNING id INTO test_case;
+    SET LOCAL ROLE authenticated;
+    PERFORM set_config('request.jwt.claims', json_build_object('sub', firm, 'role', 'authenticated')::text, true);
+    PERFORM set_config('request.jwt.claim.sub', firm::text, true);
+    BEGIN
+      DELETE FROM public.cases WHERE id = test_case;
+      GET DIAGNOSTICS changed = ROW_COUNT;
+      IF changed <> 1 THEN
+        RAISE EXCEPTION 'Self-check: a firm could not delete its own case with no booking (% rows); nothing changed', changed;
+      END IF;
+    EXCEPTION
+      WHEN foreign_key_violation THEN
+        NULL;
+      WHEN insufficient_privilege THEN
+        IF SQLERRM LIKE 'This case has a paid focus group booking%' THEN
+          RAISE EXCEPTION 'Self-check: the guard refused a firm deleting a case with no booking; nothing changed';
+        END IF;
+        RAISE;
+    END;
+    RAISE EXCEPTION 'self-check: undo';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM <> 'self-check: undo' THEN
+      RAISE;
+    END IF;
+  END;
 END $$;
 
 COMMIT;
@@ -435,8 +478,10 @@ COMMIT;
 -- Verify: one row, reading true, true, true, false, and then what deleting a
 -- parent case does to its follow-ups in this database, which the schema export
 -- doesn't show: a (no action) or r (restrict) refuses while it has any, c
--- deletes them too, n unlinks them. The guard covers each. Ends in LIMIT because
--- the SQL Editor adds "limit 100" to a SELECT that has none.
+-- deletes them too, n or d unlinks them (parent_case_id has no default), and
+-- empty means there is no such key, so they keep a parent id that no longer
+-- exists. The guard covers each. Ends in LIMIT because the SQL Editor adds
+-- "limit 100" to a SELECT that has none.
 SELECT
   EXISTS (
     SELECT 1 FROM pg_trigger t
@@ -457,5 +502,9 @@ SELECT
     WHERE k.conrelid = 'public.cases'::regclass
       AND k.confrelid = 'public.cases'::regclass
       AND k.contype = 'f'
+      AND k.conkey = ARRAY[(
+        SELECT a.attnum FROM pg_attribute a
+         WHERE a.attrelid = 'public.cases'::regclass AND a.attname = 'parent_case_id'
+      )]
     LIMIT 1) AS deleting_a_parent_case
 LIMIT 1;

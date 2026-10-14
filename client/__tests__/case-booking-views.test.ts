@@ -178,6 +178,7 @@ describe("the time picker", () => {
 
   it("says nothing fits, and asks about preferred timing only where the form does", () => {
     expect(empty()).toContain("No open time fits 2 hours right now");
+    expect(empty()).toContain('href="mailto:info@texasjurystudy.com"');
     expect(empty()).not.toContain("preferred timing below");
     expect(empty(true)).toContain("preferred timing below");
   });
