@@ -13,9 +13,12 @@ import {
   // CardDescription, CardHeader, CardTitle removed - unused in Table layout
 } from "@/components/ui/card";
 import Link from "next/link";
-import { revalidatePath } from "next/cache";
-import { approveCaseAction } from "@/lib/actions/adminCase";
-import { localToUTC } from "@/lib/timezone";
+import {
+  approveCaseAction,
+  proposeScheduleAction,
+  unapproveCaseAction,
+} from "@/lib/actions/adminCase";
+import { requireAdmin, requireAdminPage } from "@/lib/requireAdmin";
 import { AdminActionButton } from "@/components/AdminActionButton";
 import { RejectCaseButton } from "@/components/RejectCaseButton";
 import TimezoneInput from "@/components/TimezoneInput";
@@ -58,47 +61,14 @@ type AdminTab = "requested" | "approved";
 
 /* =========================
    SERVER ACTIONS
+   The Approved tab's Send and Unapprove are proposeScheduleAction and
+   unapproveCaseAction in lib/actions/adminCase.ts.
    ========================= */
-
-async function proposeSchedule(formData: FormData) {
-  "use server";
-
-  const caseId = formData.get("caseId") as string;
-  const raw = formData.get("scheduled_at") as string; // "YYYY-MM-DDTHH:MM"
-  const tz = formData.get("tz") as string || "UTC";
-
-  const [datePart, timePart] = raw.split("T");
-  const adminScheduledAt = localToUTC(datePart, timePart, tz);
-
-  const supabase = await createClient();
-
-  await supabase
-    .from("cases")
-    .update({
-      admin_scheduled_at: adminScheduledAt,
-      schedule_status: "pending",
-    })
-    .eq("id", caseId);
-
-  revalidatePath("/dashboard/Admin");
-}
-
-async function unapproveCase(formData: FormData) {
-  "use server";
-
-  const caseId = formData.get("caseId") as string;
-  const supabase = await createClient();
-
-  await supabase
-    .from("cases")
-    .update({ admin_status: "all" })
-    .eq("id", caseId);
-
-  revalidatePath("/dashboard/Admin");
-}
 
 async function approveCase(formData: FormData) {
   "use server";
+  // An inline action is an endpoint of its own, so it checks too.
+  await requireAdmin();
   const caseId = formData.get("caseId") as string;
   await approveCaseAction(caseId);
 }
@@ -112,6 +82,7 @@ export default async function AdminDashboardPage({
 }: {
   searchParams: Promise<{ tab?: AdminTab; test_table?: string }>;
 }) {
+  await requireAdminPage();
   const supabase = await createClient();
 
   const resolvedParams = await searchParams;
@@ -505,7 +476,7 @@ export default async function AdminDashboardPage({
 
                         {tab === "approved" && (
                           <>
-                            <form action={proposeSchedule} className="flex gap-2 items-center">
+                            <form action={proposeScheduleAction} className="flex gap-2 items-center">
                               <input type="hidden" name="caseId" value={c.id} />
                               <TimezoneInput />
                               <input
@@ -521,7 +492,7 @@ export default async function AdminDashboardPage({
                               />
                             </form>
 
-                            <form action={unapproveCase}>
+                            <form action={unapproveCaseAction}>
                               <input type="hidden" name="caseId" value={c.id} />
                               <AdminActionButton
                                 label="Unapprove"

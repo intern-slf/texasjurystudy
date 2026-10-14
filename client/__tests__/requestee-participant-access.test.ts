@@ -78,6 +78,19 @@ vi.mock("@/lib/supabase/server", () => ({ createClient: async () => makeClient("
 vi.mock("@/lib/case-lineage", () => ({ getBlockedParticipantIds: async () => [] }));
 vi.mock("@/lib/participant/loginAccount", () => ({ getAllIdsWithoutLogin: async () => new Set<string>() }));
 
+// The firm's "Add participant" invites through inviteToSession, the helper behind
+// the admin's inviteParticipants. Its own guards are pinned in sessions.test.ts;
+// here it only records whether the firm's path reached it, and with what.
+const inviteToSessionMock = vi.fn(async (...args: [sessionId: string, ids: string[], sessionDate?: string]) => ({
+  ok: true,
+  invited: args[1].length,
+  skipped: { blacklisted: 0, inactive: 0, noAccount: 0 },
+}));
+vi.mock("@/lib/participant/invite", () => ({
+  inviteToSession: (sessionId: string, ids: string[], sessionDate?: string) =>
+    inviteToSessionMock(sessionId, ids, sessionDate),
+}));
+
 // Every column a firm must never receive, across both participant tables.
 const PRIVATE_FIELDS = [
   "email",
@@ -133,6 +146,7 @@ beforeEach(() => {
   reads.admin = [];
   reads.user = [];
   orCalls.length = 0;
+  inviteToSessionMock.mockClear();
   session.userId = "req-1";
   Object.assign(db, {
     roles: [
@@ -346,6 +360,24 @@ describe("requestee participant access", () => {
       db.cases.push({ id: "case-mine", user_id: "p-1", requestee_id: null });
       await expect(requesteeAddParticipants("case-mine", ["p-elsewhere"])).rejects.toThrow(/No session/);
       expect(reads.user).not.toContain("session_participants");
+      expect(inviteToSessionMock).not.toHaveBeenCalled();
+    });
+
+    it("refuses a case the firm doesn't own, before inviting anyone", async () => {
+      await expect(requesteeAddParticipants("case-other", ["p-elsewhere"])).rejects.toThrow(/not owned/);
+      expect(inviteToSessionMock).not.toHaveBeenCalled();
+    });
+
+    it("invites through inviteToSession after its own checks, not the admin-only inviteParticipants", async () => {
+      // inviteParticipants now refuses anyone but an admin, so the firm's path
+      // calls the helper behind it directly, once its own case check has passed.
+      db.sessions = [{ id: "s-1", session_date: "2999-01-15" }];
+
+      await expect(requesteeAddParticipants("case-1", ["p-1"])).resolves.toEqual({
+        invited: 1,
+        warning: undefined,
+      });
+      expect(inviteToSessionMock).toHaveBeenCalledWith("s-1", ["p-1"], "2999-01-15");
     });
   });
 });

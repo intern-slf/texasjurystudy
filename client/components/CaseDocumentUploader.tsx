@@ -67,12 +67,12 @@ export default function CaseDocumentUploader({ caseId }: Props) {
   async function remove(doc: CaseDocument) {
     if (!confirm("Delete this file?")) return;
 
-    await deleteCaseDocument(doc.id, doc.storage_path);
+    await deleteCaseDocument(doc.id);
     await fetchDocuments();
   }
 
   async function open(doc: CaseDocument) {
-    const url = await getCaseDocumentUrl(doc.storage_path);
+    const url = await getCaseDocumentUrl(doc.id);
     window.open(url, "_blank");
   }
 

@@ -5,6 +5,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getBlockedParticipantIds } from "@/lib/case-lineage";
 import { ACTIVE_STATUS } from "@/lib/participant/activeStatus";
 import { getAllIdsWithoutLogin } from "@/lib/participant/loginAccount";
+import { inviteToSession } from "@/lib/participant/invite";
 import {
   ownsAllCases,
   participantNamesForCases,
@@ -197,17 +198,16 @@ export async function requesteeAddParticipants(
     throw new Error("All selected participants are blocked from this case's follow-up chain");
   }
 
-  // 4. Insert into session_participants (delegate to inviteParticipants action)
-  const { inviteParticipants } = await import("@/lib/actions/session");
-
-  // Get session date for the email
+  // 4. Insert into session_participants, with the session date for the email.
+  //    Through inviteToSession, not the inviteParticipants action: that one is the
+  //    admin's and refuses a firm, and the checks above are this path's own.
   const { data: session } = await supabase
     .from("sessions")
     .select("session_date")
     .eq("id", sessionId)
     .single();
 
-  const result = await inviteParticipants(sessionId, safeIds, session?.session_date ?? undefined);
+  const result = await inviteToSession(sessionId, safeIds, session?.session_date ?? undefined);
 
   // Report what actually happened. Returning safeIds.length unconditionally told
   // the requestee "N added" even when every one of them had been dropped by the
@@ -217,36 +217,4 @@ export async function requesteeAddParticipants(
   }
 
   return { invited: result.invited, warning: result.ok ? undefined : result.error };
-}
-
-/**
- * Get session info for a case (used to check if "Add Participant" is available).
- */
-export async function getCaseSessionInfo(caseId: string) {
-  const supabase = await createClient();
-
-  const { data: sessionCaseRow } = await supabase
-    .from("session_cases")
-    .select("session_id")
-    .eq("case_id", caseId)
-    .limit(1)
-    .maybeSingle();
-
-  if (!sessionCaseRow?.session_id) return null;
-
-  const { data: session } = await supabase
-    .from("sessions")
-    .select("id, session_date")
-    .eq("id", sessionCaseRow.session_id)
-    .single();
-
-  // Get current participant count
-  const { count } = await supabase
-    .from("session_participants")
-    .select("*", { count: "exact", head: true })
-    .eq("session_id", sessionCaseRow.session_id);
-
-  return session
-    ? { sessionId: session.id, sessionDate: session.session_date, participantCount: count ?? 0 }
-    : null;
 }

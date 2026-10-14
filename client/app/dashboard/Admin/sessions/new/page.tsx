@@ -5,6 +5,7 @@ import {
   inviteParticipants,
   notifyRequesteesSessionCreated,
 } from "@/lib/actions/session";
+import { requireAdmin, requireAdminPage } from "@/lib/requireAdmin";
 import { redirect } from "next/navigation";
 import { ACTIVE_STATUS } from "@/lib/participant/activeStatus";
 import { getAllIdsWithoutLogin } from "@/lib/participant/loginAccount";
@@ -66,6 +67,7 @@ export default async function NewSessionPage({
     limit?: string;
   }>;
 }) {
+  await requireAdminPage();
   const supabase = await createClient();
 
   /* =========================
@@ -320,6 +322,9 @@ export default async function NewSessionPage({
 
   async function handleCreate(formData: FormData) {
     "use server";
+    // An inline action is an endpoint of its own, so it checks before the first
+    // write, as each action it calls does too.
+    await requireAdmin();
 
     const date = formData.get("session_date") as string;
     const tz = formData.get("tz") as string || "UTC";
