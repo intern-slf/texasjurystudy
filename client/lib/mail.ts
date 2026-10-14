@@ -241,10 +241,22 @@ export async function sendRescheduleEmail(
   to: string,
   newDateStr: string,
   role: "participant" | "requestee",
-  /** The session's new time, "10:00 AM – 12:00 PM CT", when it could be read. */
-  timeStr?: string | null,
-  /** A firm's own cases and when each now runs. */
-  caseTimes: { title: string; time: string }[] = [],
+  {
+    timeStr,
+    caseTimes = [],
+    askToConfirm = false,
+  }: {
+    /** The session's new time, "10:00 AM – 12:00 PM CT", when it could be read. */
+    timeStr?: string | null;
+    /** A firm's own cases and when each now runs. */
+    caseTimes?: { title: string; time: string }[];
+    /**
+     * Whether the firm's dashboard now asks it to confirm the time. A reschedule
+     * clears its answer, but the Confirm button is only on the Approved tab, which
+     * leaves out a case already moved to Past and one whose new time has gone by.
+     */
+    askToConfirm?: boolean;
+  } = {},
 ) {
   const dashboardPath =
     role === "requestee" ? "/dashboard/requestee" : "/dashboard/participant";
@@ -279,7 +291,9 @@ export async function sendRescheduleEmail(
     <p style="margin:0 0 28px;font-size:14px;color:#64748b;">
       ${role === "participant"
         ? "No action is required — your acceptance remains valid."
-        : "Please confirm the new time on your dashboard."}
+        : askToConfirm
+          ? "Please confirm the new time on your dashboard."
+          : "No action is required — your session details have been updated automatically."}
     </p>
 
     <table role="presentation" cellpadding="0" cellspacing="0">
@@ -315,7 +329,7 @@ export async function sendSessionCreatedEmail(
 ) {
   const sessionDateText = formatSessionDate(sessionDate);
   const caseListHtml = caseTitles
-    .map((t) => `<li style="margin:4px 0;font-size:15px;font-weight:600;color:#1e3a8a;">${t}</li>`)
+    .map((t) => `<li style="margin:4px 0;font-size:15px;font-weight:600;color:#1e3a8a;">${escHtml(t)}</li>`)
     .join("");
 
   // One case: just its time. Several: each time beside its case's title.
@@ -407,7 +421,7 @@ export async function sendSessionCompletedEmail(
 ) {
   const sessionDateText = formatSessionDate(sessionDate);
   const caseListHtml = caseTitles
-    .map((t) => `<li style="margin:4px 0;font-size:15px;font-weight:600;color:#1e3a8a;">${t}</li>`)
+    .map((t) => `<li style="margin:4px 0;font-size:15px;font-weight:600;color:#1e3a8a;">${escHtml(t)}</li>`)
     .join("");
 
   const html = emailWrapper(`

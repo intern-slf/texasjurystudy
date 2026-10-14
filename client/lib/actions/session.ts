@@ -427,6 +427,25 @@ async function resyncScheduleDerivedValues(
 /** A session's case times as read back after a reschedule: the stored UTC times. */
 type SessionCaseTimes = { case_id?: string | null; start_time: string | null; end_time: string | null };
 
+/**
+ * Whether the firm's dashboard will ask it to confirm a case's new time. Moving
+ * a case clears the firm's answer, but Confirm Attendance is only on the Approved
+ * tab: current, approved cases. A case already moved to Past isn't there, and the
+ * dashboard moves a case to Past once its end has gone by, which a session
+ * rescheduled from the Past tab can still be.
+ */
+function firmWillBeAskedToConfirm(
+  c: { status?: string | null; admin_status?: string | null },
+  endsAt: string | null | undefined,
+): boolean {
+  return (
+    c.status === "current" &&
+    (c.admin_status === "approved" || c.admin_status === "submitted") &&
+    !!endsAt &&
+    Date.parse(endsAt) > Date.now()
+  );
+}
+
 /* =========================
    RESCHEDULE SESSION
 ========================= */
@@ -453,6 +472,7 @@ export async function rescheduleSession(
   //    be sent instead.
   const tz = CENTRAL_TIME_ZONE;
   const written: SessionCaseTimes[] = [];
+  const endsAt = new Map<string, string>();
   for (const cu of caseUpdates) {
     const startUtc = localToUTCTime(newDate, cu.start.slice(0, 5), tz);
     const endUtc   = localToUTCTime(newDate, cu.end.slice(0, 5),   tz);
@@ -466,6 +486,7 @@ export async function rescheduleSession(
 
     if (endUtc && newDate) {
       const adminScheduledAt = localToUTC(newDate, cu.end.slice(0, 5), tz);
+      endsAt.set(cu.caseId, adminScheduledAt);
       await supabase
         .from("cases")
         .update({ admin_scheduled_at: adminScheduledAt })
@@ -512,7 +533,7 @@ export async function rescheduleSession(
         row.participant_id
       );
       if (userData?.user?.email) {
-        await sendRescheduleEmail(userData.user.email, newDateStr, "participant", sessionTimeStr);
+        await sendRescheduleEmail(userData.user.email, newDateStr, "participant", { timeStr: sessionTimeStr });
       }
     } catch (e) {
       console.error(`Reschedule email failed for participant ${row.participant_id}:`, e);
@@ -525,7 +546,7 @@ export async function rescheduleSession(
   if (caseIds.length) {
     const { data: caseRows } = await supabase
       .from("cases")
-      .select("id, title, user_id")
+      .select("id, title, user_id, status, admin_status")
       .in("id", caseIds);
 
     const caseTimeById = new Map<string, string>();
@@ -534,19 +555,24 @@ export async function rescheduleSession(
       if (r.case_id && caseSpan) caseTimeById.set(r.case_id, `${caseSpan} CT`);
     }
 
-    const casesByRequestee = new Map<string, { title: string; time: string }[]>();
+    const byRequestee = new Map<string, { cases: { title: string; time: string }[]; askToConfirm: boolean }>();
     for (const c of caseRows ?? []) {
       if (!c.user_id) continue;
-      const list = casesByRequestee.get(c.user_id) ?? [];
-      list.push({ title: c.title ?? "", time: caseTimeById.get(c.id) ?? "TBD" });
-      casesByRequestee.set(c.user_id, list);
+      const entry = byRequestee.get(c.user_id) ?? { cases: [], askToConfirm: false };
+      entry.cases.push({ title: c.title ?? "", time: caseTimeById.get(c.id) ?? "TBD" });
+      entry.askToConfirm ||= firmWillBeAskedToConfirm(c, endsAt.get(c.id));
+      byRequestee.set(c.user_id, entry);
     }
 
-    for (const [requesteeId, firmCases] of casesByRequestee) {
+    for (const [requesteeId, { cases: firmCases, askToConfirm }] of byRequestee) {
       try {
         const { data: userData } = await supabaseAdmin.auth.admin.getUserById(requesteeId);
         if (userData?.user?.email) {
-          await sendRescheduleEmail(userData.user.email, newDateStr, "requestee", sessionTimeStr, firmCases);
+          await sendRescheduleEmail(userData.user.email, newDateStr, "requestee", {
+            timeStr: sessionTimeStr,
+            caseTimes: firmCases,
+            askToConfirm,
+          });
         }
       } catch (e) {
         console.error(`Reschedule email failed for requestee ${requesteeId}:`, e);
@@ -1338,7 +1364,7 @@ export async function replaceCaseInSession(
 
   const { data: caseRow } = await supabase
     .from("cases")
-    .select("user_id, title")
+    .select("user_id, title, status, admin_status")
     .eq("id", newCaseId)
     .single();
 
@@ -1346,9 +1372,10 @@ export async function replaceCaseInSession(
     try {
       const { data: userData } = await supabaseAdmin.auth.admin.getUserById(caseRow.user_id);
       if (userData?.user?.email) {
-        await sendRescheduleEmail(userData.user.email, newDateStr, "requestee", null, [
-          { title: caseRow.title ?? "", time: caseSpan ? `${caseSpan} CT` : "TBD" },
-        ]);
+        await sendRescheduleEmail(userData.user.email, newDateStr, "requestee", {
+          caseTimes: [{ title: caseRow.title ?? "", time: caseSpan ? `${caseSpan} CT` : "TBD" }],
+          askToConfirm: firmWillBeAskedToConfirm(caseRow, caseEnd.toISOString()),
+        });
       }
     } catch (e) {
       console.error(`Notification email failed for new requestee ${caseRow.user_id}:`, e);

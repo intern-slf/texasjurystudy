@@ -796,6 +796,10 @@ describe("Cases", () => {
       // UTC, 4 AM CST. The deadline was 11:59 PM UTC, 6:59 PM CDT.
       vi.useFakeTimers({ toFake: ["Date"] });
       vi.setSystemTime(new Date("2026-10-15T01:00:00Z")); // 8 PM CDT on Oct 14
+      // In UTC, as the server runs. On a machine set to Central Time the old code
+      // happened to give the right answers.
+      const zone = process.env.TZ;
+      process.env.TZ = "UTC";
       try {
         serverState.responses = [{ data: null, error: null }];
 
@@ -809,6 +813,8 @@ describe("Cases", () => {
         });
       } finally {
         vi.useRealTimers();
+        if (zone === undefined) delete process.env.TZ;
+        else process.env.TZ = zone;
       }
     });
 

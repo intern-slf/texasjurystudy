@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, beforeEach } from "vitest";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -31,6 +31,9 @@ const originalTz = process.env.TZ;
 const inZone = (zone: string) => {
   process.env.TZ = zone;
 };
+// UTC unless a test says otherwise, as the server runs: on a machine set to
+// Central Time, a formatter that lost its Central zone would still pass.
+beforeEach(() => inZone("UTC"));
 afterEach(() => {
   if (originalTz === undefined) delete process.env.TZ;
   else process.env.TZ = originalTz;

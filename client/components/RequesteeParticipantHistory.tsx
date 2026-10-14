@@ -6,6 +6,7 @@ import { getCaseParticipantNames } from "@/lib/actions/requesteeParticipant";
 import Link from "next/link";
 import { sortRoster, rosterGroup, rosterStatusLabel } from "@/lib/participant/rosterOrder";
 import { isWaitlisted } from "@/lib/participant/waitlist";
+import { formatCentralDate } from "@/lib/timezone";
 
 interface ChainParticipant {
   id: string;
@@ -321,7 +322,7 @@ export default function RequesteeParticipantHistory({ caseId, currentCaseId }: P
                   </div>
 
                   <p className="text-[11px] text-muted-foreground mt-0.5">
-                    {new Date(node.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                    {formatCentralDate(node.created_at) ?? "—"}
                   </p>
                 </button>
 

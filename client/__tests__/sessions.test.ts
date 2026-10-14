@@ -624,7 +624,8 @@ describe("Sessions", () => {
       expect(scheduledAtWrites()).toEqual([null, "2026-10-21T02:00:00.000Z"]);
     });
 
-    it("Tells the incoming firm when its case runs", async () => {
+    /** A replacement that goes through to its email, with the clock before the session. */
+    const replaceAndEmail = async (incoming: { status: string; admin_status: string }) => {
       state.participantEmails.set("requestee-1", "firm@example.com");
       state.responses = [
         ...replaceGuard("online", ["online"]),
@@ -632,25 +633,37 @@ describe("Sessions", () => {
         { error: null }, // reset old case
         { error: null }, // insert new session_cases row
         { error: null }, // set admin_scheduled_at
-        { data: { user_id: "requestee-1", title: "Doe v. Roe" }, error: null },
+        { data: { user_id: "requestee-1", title: "Doe v. Roe", ...incoming }, error: null },
       ];
-
-      await replaceCaseInSession(
-        "session-1", "case-old", "case-new", "00:30:00", "02:00:00", "2026-10-20",
-      );
-
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-10-15T12:00:00Z"));
+      try {
+        await replaceCaseInSession(
+          "session-1", "case-old", "case-new", "00:30:00", "02:00:00", "2026-10-20",
+        );
+      } finally {
+        vi.useRealTimers();
+      }
       const calls = (sendRescheduleEmailSpy.mock.calls as unknown as unknown[][]).map((args) =>
         JSON.parse(JSON.stringify(args).replace(/\u202f/g, " ")),
       );
-      expect(calls).toEqual([
+      return calls;
+    };
+
+    it("Tells the incoming firm when its case runs, and to confirm it", async () => {
+      expect(await replaceAndEmail({ status: "current", admin_status: "approved" })).toEqual([
         [
           "firm@example.com",
           "Tuesday, October 20, 2026",
           "requestee",
-          null,
-          [{ title: "Doe v. Roe", time: "7:30 PM – 9:00 PM CT" }],
+          { caseTimes: [{ title: "Doe v. Roe", time: "7:30 PM – 9:00 PM CT" }], askToConfirm: true },
         ],
       ]);
+    });
+
+    it("Doesn't tell a firm to confirm a case on its Past tab, which has no Confirm button", async () => {
+      const [[, , , details]] = await replaceAndEmail({ status: "previous", admin_status: "approved" });
+      expect(details).toMatchObject({ askToConfirm: false });
     });
 
     it("Refuses times it cannot read before touching the session", async () => {
@@ -2538,7 +2551,10 @@ describe("Sessions", () => {
         ...repriceWrites(),
         { error: null }, // cooldown
         { data: [{ participant_id: "p-1" }], error: null }, // who to email
-        { data: [{ id: "case-A", title: "Smith v. Jones", user_id: "firm-1" }], error: null },
+        {
+          data: [{ id: "case-A", title: "Smith v. Jones", user_id: "firm-1", status: "current", admin_status: "approved" }],
+          error: null,
+        },
       ];
 
       await rescheduleSession("s-1", FUTURE, [{ caseId: "case-A", start: "14:00", end: "15:00" }]);
@@ -2547,13 +2563,17 @@ describe("Sessions", () => {
         JSON.parse(JSON.stringify(args).replace(/\u202f/g, " ")),
       );
       expect(calls).toEqual([
-        ["p-1@example.com", "Saturday, June 15, 2999", "participant", "2:00 PM – 4:00 PM CT"],
+        ["p-1@example.com", "Saturday, June 15, 2999", "participant", { timeStr: "2:00 PM – 4:00 PM CT" }],
         [
           "firm@example.com",
           "Saturday, June 15, 2999",
           "requestee",
-          "2:00 PM – 4:00 PM CT",
-          [{ title: "Smith v. Jones", time: "2:00 PM – 3:00 PM CT" }],
+          {
+            timeStr: "2:00 PM – 4:00 PM CT",
+            caseTimes: [{ title: "Smith v. Jones", time: "2:00 PM – 3:00 PM CT" }],
+            // On its Approved tab and still ahead, so the firm gets the buttons.
+            askToConfirm: true,
+          },
         ],
       ]);
 
@@ -2573,7 +2593,10 @@ describe("Sessions", () => {
         ...preamble(),
         { data: null, error: { message: "read failed" } }, // the resync's re-read
         { data: [], error: null }, // who to email
-        { data: [{ id: "case-A", title: "Smith v. Jones", user_id: "firm-1" }], error: null },
+        {
+          data: [{ id: "case-A", title: "Smith v. Jones", user_id: "firm-1", status: "current", admin_status: "approved" }],
+          error: null,
+        },
       ];
 
       await rescheduleSession("s-1", FUTURE, [{ caseId: "case-A", start: "14:00", end: "15:00" }]);
@@ -2586,10 +2609,42 @@ describe("Sessions", () => {
           "firm@example.com",
           "Saturday, June 15, 2999",
           "requestee",
-          "2:00 PM – 3:00 PM CT",
-          [{ title: "Smith v. Jones", time: "2:00 PM – 3:00 PM CT" }],
+          {
+            timeStr: "2:00 PM – 3:00 PM CT",
+            caseTimes: [{ title: "Smith v. Jones", time: "2:00 PM – 3:00 PM CT" }],
+            askToConfirm: true,
+          },
         ],
       ]);
+    });
+
+    /**
+     * The firm's email after a reschedule whose re-read fails (so nothing but the
+     * emails follows the writes), for a case in the given state.
+     */
+    const firmEmailAfterReschedule = async (date: string, theCase: { status: string; admin_status: string }) => {
+      state.participantEmails.set("firm-1", "firm@example.com");
+      state.responses = [
+        ...preamble(),
+        { data: null, error: { message: "read failed" } }, // the resync's re-read
+        { data: [], error: null }, // who to email
+        { data: [{ id: "case-A", title: "Smith v. Jones", user_id: "firm-1", ...theCase }], error: null },
+      ];
+      await rescheduleSession("s-1", date, [{ caseId: "case-A", start: "14:00", end: "15:00" }]);
+      const [[, , , details]] = sendRescheduleEmailSpy.mock.calls as unknown as unknown[][];
+      return details;
+    };
+
+    it("Doesn't tell a firm to confirm when its dashboard won't ask", async () => {
+      // A case already on the Past tab (Reschedule is on the admin's Past tab too).
+      expect(await firmEmailAfterReschedule(FUTURE, { status: "previous", admin_status: "approved" })).toMatchObject({
+        askToConfirm: false,
+      });
+      sendRescheduleEmailSpy.mockClear();
+      // A case moved to a time that has gone by: the dashboard files it under Past.
+      expect(await firmEmailAfterReschedule(PAST, { status: "current", admin_status: "approved" })).toMatchObject({
+        askToConfirm: false,
+      });
     });
 
     it("Moves the cooldown with the session", async () => {

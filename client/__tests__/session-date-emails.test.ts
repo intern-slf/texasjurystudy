@@ -37,7 +37,7 @@ beforeEach(() => {
 
 describe("reschedule email", () => {
   it("gives a participant the new date and time, and needs nothing from them", async () => {
-    await mail.sendRescheduleEmail("p@example.com", "2026-11-05", "participant", "2:00 PM – 3:00 PM CT");
+    await mail.sendRescheduleEmail("p@example.com", "2026-11-05", "participant", { timeStr: "2:00 PM – 3:00 PM CT" });
 
     const [email] = sent;
     expect(email.subject.replace(/\s/g, " ")).toBe(
@@ -51,16 +51,14 @@ describe("reschedule email", () => {
   });
 
   it("gives a firm each of its cases' times, escaped, and asks it to confirm", async () => {
-    await mail.sendRescheduleEmail(
-      "firm@example.com",
-      "Thursday, November 5, 2026",
-      "requestee",
-      "2:00 PM – 4:00 PM CT",
-      [
+    await mail.sendRescheduleEmail("firm@example.com", "Thursday, November 5, 2026", "requestee", {
+      timeStr: "2:00 PM – 4:00 PM CT",
+      caseTimes: [
         { title: "Smith v. Jones", time: "2:00 PM – 3:00 PM CT" },
         { title: "<script>alert(1)</script>", time: "3:00 PM – 4:00 PM CT" },
       ],
-    );
+      askToConfirm: true,
+    });
 
     const [email] = sent;
     expect(email.html).not.toContain("<script>");
@@ -73,10 +71,12 @@ describe("reschedule email", () => {
     expect(body).not.toContain("No action is required");
   });
 
-  it("gives one case's time on its own", async () => {
-    await mail.sendRescheduleEmail("firm@example.com", "2026-11-05", "requestee", null, [
-      { title: "Smith v. Jones", time: "2:00 PM – 3:00 PM CT" },
-    ]);
+  it("gives one case's time on its own, and asks for nothing when there is nothing to confirm", async () => {
+    // A case already on the Past tab, or whose new time has gone by, has no
+    // Confirm button, so the firm isn't told to use one.
+    await mail.sendRescheduleEmail("firm@example.com", "2026-11-05", "requestee", {
+      caseTimes: [{ title: "Smith v. Jones", time: "2:00 PM – 3:00 PM CT" }],
+    });
 
     const [email] = sent;
     expect(email.subject).toBe("Session Rescheduled – Thursday, November 5, 2026 | Texas Jury Study");
@@ -84,6 +84,21 @@ describe("reschedule email", () => {
     expect(body).toContain("Your Case Time 2:00 PM – 3:00 PM CT");
     expect(body).not.toContain("Smith v. Jones:");
     expect(body).not.toContain("New Session Time");
+    expect(body).toContain("No action is required — your session details have been updated automatically.");
+    expect(body).not.toContain("Please confirm");
+  });
+});
+
+describe("case titles in the firm's session emails", () => {
+  it("are escaped in Session Scheduled and Session Completed", async () => {
+    const title = "<b>Smith</b> v. Jones";
+    await mail.sendSessionCreatedEmail("firm@example.com", [title], "2026-11-05", "10:00 AM – 11:00 AM CT", ["10:00 AM – 11:00 AM CT"]);
+    await mail.sendSessionCompletedEmail("firm@example.com", [title], "2026-11-05");
+
+    for (const email of sent) {
+      expect(email.html).not.toContain("<b>Smith</b>");
+      expect(email.html).toContain("&lt;b&gt;Smith&lt;/b&gt; v. Jones");
+    }
   });
 });
 
