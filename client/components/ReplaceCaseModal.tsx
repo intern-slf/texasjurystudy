@@ -5,11 +5,14 @@ import { useRouter } from "next/navigation";
 import { replaceCaseInSession } from "@/lib/actions/session";
 import { deliveryModeLabel, type DeliveryMode } from "@/lib/case/deliveryMode";
 import { formatSessionDate, formatSessionSpan } from "@/lib/timezone";
+import { formatMinutes, storedCaseMinutes } from "@/lib/case/paidTime";
 
 export interface ReplacementCandidate {
   id: string;
   title: string;
   deliveryMode: DeliveryMode;
+  /** How long the case is paid for (lib/case/paidTime.ts). */
+  paidMinutes: number;
 }
 
 interface ReplaceCaseModalProps {
@@ -42,6 +45,10 @@ export default function ReplaceCaseModal({
   const router = useRouter();
   // The stored UTC times as Central clocks, like the rest of the row.
   const span = formatSessionSpan(sessionDate, [startTime], [endTime]);
+  // The incoming case takes over this time, so a case paid for less can't be
+  // picked. replaceCaseInSession refuses it too.
+  const slotMinutes = storedCaseMinutes(sessionDate, startTime, endTime);
+  const tooShort = (c: ReplacementCandidate) => slotMinutes !== null && c.paidMinutes < slotMinutes;
 
   const handleReplace = async () => {
     if (!selectedId) return;
@@ -92,8 +99,9 @@ export default function ReplaceCaseModal({
                 >
                   <option value="">-- Choose a case --</option>
                   {candidates.map((c) => (
-                    <option key={c.id} value={c.id}>
+                    <option key={c.id} value={c.id} disabled={tooShort(c)}>
                       {c.title}
+                      {tooShort(c) ? ` (paid for ${formatMinutes(c.paidMinutes)})` : ""}
                     </option>
                   ))}
                 </select>
@@ -107,6 +115,11 @@ export default function ReplaceCaseModal({
                 Only {deliveryModeLabel(deliveryMode).toLowerCase()} cases are listed — a session
                 cannot mix in-person and online cases.
               </p>
+              {slotMinutes !== null && candidates.some(tooShort) && (
+                <p className="text-xs text-slate-400">
+                  Cases paid for less than this {formatMinutes(slotMinutes)} slot can&apos;t take it.
+                </p>
+              )}
             </div>
 
             {error && <p className="text-sm text-red-600">{error}</p>}

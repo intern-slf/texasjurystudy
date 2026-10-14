@@ -57,6 +57,7 @@ import { getBookingsForCases } from "@/lib/slotBookingData";
 import { bookingState } from "@/lib/slotBooking";
 import { describeSlot } from "@/lib/requesteeTimeSlots";
 import { formatCentralDateTime } from "@/lib/timezone";
+import { assertPaidTime, caseMinutes } from "@/lib/case/paidTime";
 
 /* =========================
    PAGE
@@ -361,6 +362,12 @@ export default async function NewSessionPage({
     // but by then the session row exists and the throw would strand an empty
     // session that still shows up on the sessions page.
     assertCasesShareDeliveryMode(selectedCases.map((c) => c.deliveryMode));
+
+    // The same goes for a case given more time than its firm paid for.
+    for (const c of selectedCases) {
+      const row = caseRows.find((r) => r.id === c.caseId);
+      assertPaidTime(row?.title ?? "This case", caseMinutes(date, c.start, c.end), row?.hours_requested);
+    }
 
     // Also before createSession: inviteParticipants refuses an in-person session
     // with no address, and by then the session would already exist, uninvited.

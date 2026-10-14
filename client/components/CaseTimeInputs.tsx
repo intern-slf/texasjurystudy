@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { endTimeChoices, formatMinutes, paidMinutes } from "@/lib/case/paidTime";
 
 // All 24 hours displayed in a 6-column grid — no scroll needed
 const HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0"));
@@ -8,13 +9,6 @@ const MINUTES = ["00", "30"];
 
 type TimeVal = { h: string; m: string };
 type Props = { caseId: string; hoursRequested?: number };
-
-function addHours({ h, m }: TimeVal, hours: number): TimeVal {
-  const totalMinutes = parseInt(h) * 60 + parseInt(m) + hours * 60;
-  const newH = Math.floor(totalMinutes / 60) % 24;
-  const newM = totalMinutes % 60;
-  return { h: String(newH).padStart(2, "0"), m: String(newM).padStart(2, "0") };
-}
 
 /* ── Reusable dropdown picker ──────────────────────────────── */
 function PickerDropdown({
@@ -129,24 +123,50 @@ function TimePicker({
 }
 
 /* ── Exported wrapper ──────────────────────────────────────── */
+/**
+ * A case's start, and an end no later than the time its firm paid for
+ * (lib/case/paidTime.ts): picking a start sets the end to the full paid length,
+ * and the end can be moved earlier, not later.
+ */
 export default function CaseTimeInputs({ caseId, hoursRequested }: Props) {
-  const hours = hoursRequested && hoursRequested > 0 ? hoursRequested : 1;
   const [start, setStart] = useState<TimeVal>({ h: "", m: "" });
-  const [end, setEnd] = useState<TimeVal>({ h: "", m: "" });
+  const [end, setEnd] = useState("");
+  const startClock = start.h && start.m ? `${start.h}:${start.m}` : "";
+  const choices = endTimeChoices(startClock, hoursRequested);
 
   function handleStart(v: TimeVal) {
     setStart(v);
-    if (v.h && v.m) setEnd(addHours(v, hours));
+    const next = v.h && v.m ? endTimeChoices(`${v.h}:${v.m}`, hoursRequested) : [];
+    setEnd(next.length ? next[next.length - 1].value : "");
   }
 
   return (
-    <div className="flex items-center gap-3 mt-2 bg-slate-50 px-3 py-2 rounded-lg border border-slate-100">
-      <span className="text-[11px] font-semibold uppercase text-slate-400 tracking-wide mr-auto">
-        Time (CT)
-      </span>
-      <TimePicker name={`start_${caseId}`} value={start} onChange={handleStart} />
-      <span className="text-slate-300">→</span>
-      <TimePicker name={`end_${caseId}`} value={end} onChange={setEnd} />
+    <div className="mt-2 bg-slate-50 px-3 py-2 rounded-lg border border-slate-100 space-y-1">
+      <div className="flex items-center gap-3">
+        <span className="text-[11px] font-semibold uppercase text-slate-400 tracking-wide mr-auto">
+          Time (CT)
+        </span>
+        <TimePicker name={`start_${caseId}`} value={start} onChange={handleStart} />
+        <span className="text-slate-300">→</span>
+        <select
+          name={`end_${caseId}`}
+          value={end}
+          onChange={(e) => setEnd(e.target.value)}
+          disabled={!choices.length}
+          aria-label="End time (CT)"
+          className="border border-slate-200 rounded bg-white px-1 py-1 text-sm font-mono text-slate-700 disabled:text-slate-300"
+        >
+          {!choices.length && <option value="">--:--</option>}
+          {choices.map((c) => (
+            <option key={c.value} value={c.value}>
+              {c.value} ({formatMinutes(c.minutes)})
+            </option>
+          ))}
+        </select>
+      </div>
+      <p className="text-[11px] text-slate-400 text-right">
+        Paid for {formatMinutes(paidMinutes(hoursRequested))}, so it can&apos;t run longer.
+      </p>
     </div>
   );
 }

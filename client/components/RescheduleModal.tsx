@@ -4,12 +4,15 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { rescheduleSession } from "@/lib/actions/session";
 import { CENTRAL_TIME_ZONE, utcTimeToLocal } from "@/lib/timezone";
+import { caseMinutes, formatMinutes, paidMinutes, paidTimeProblem, storedCaseMinutes } from "@/lib/case/paidTime";
 
 interface CaseEntry {
   case_id: string;
   title: string;
   start_time: string;
   end_time: string;
+  /** What the firm asked for, which is what it pays for (lib/case/paidTime.ts). */
+  hours_requested?: number | null;
 }
 
 interface Props {
@@ -33,7 +36,38 @@ export default function RescheduleModal({ sessionId, sessionDate, cases }: Props
   );
   const [isPending, startTransition] = useTransition();
   const [done, setDone] = useState(false);
+  const [error, setError] = useState("");
   const router = useRouter();
+
+  // Each case runs no longer than its firm paid for. One that already ran longer,
+  // from before that was checked, may keep its length but not grow.
+  // rescheduleSession checks the same before it writes anything.
+  const problems: Record<string, string | null> = Object.fromEntries(
+    cases.map((c) => {
+      const t = times[c.case_id];
+      const problem =
+        date && t
+          ? paidTimeProblem(
+              c.title,
+              caseMinutes(date, t.start, t.end),
+              c.hours_requested,
+              storedCaseMinutes(sessionDate, c.start_time, c.end_time) ?? 0,
+            )
+          : null;
+      return [c.case_id, problem];
+    }),
+  );
+  const hasProblem = Object.values(problems).some(Boolean);
+
+  /** A case still running longer than it was paid for, which it may only keep: say so. */
+  const overPaid = (c: CaseEntry): string | null => {
+    const t = times[c.case_id];
+    const minutes = date && t ? caseMinutes(date, t.start, t.end) : null;
+    const paid = paidMinutes(c.hours_requested);
+    return minutes !== null && minutes > paid && !problems[c.case_id]
+      ? `Runs ${formatMinutes(minutes)}, longer than the ${formatMinutes(paid)} paid for, as it did before. It can be shortened, not lengthened.`
+      : null;
+  };
 
   function handleOpen() {
     // Reset to current values each time modal opens
@@ -44,6 +78,7 @@ export default function RescheduleModal({ sessionId, sessionDate, cases }: Props
       )
     );
     setDone(false);
+    setError("");
     setIsOpen(true);
   }
 
@@ -57,8 +92,15 @@ export default function RescheduleModal({ sessionId, sessionDate, cases }: Props
       start: times[c.case_id]?.start ?? c.start_time,
       end: times[c.case_id]?.end ?? c.end_time,
     }));
+    setError("");
     startTransition(async () => {
-      await rescheduleSession(sessionId, date, caseUpdates);
+      try {
+        await rescheduleSession(sessionId, date, caseUpdates);
+      } catch {
+        // Production hides a server action's error text, so say what to do.
+        setError("The session couldn't be rescheduled. Refresh the page to see what was saved, then try again.");
+        return;
+      }
       setDone(true);
       router.refresh();
       setTimeout(() => {
@@ -103,7 +145,12 @@ export default function RescheduleModal({ sessionId, sessionDate, cases }: Props
                 </label>
                 {cases.map((c) => (
                   <div key={c.case_id} className="border rounded px-3 py-3 space-y-2">
-                    <p className="text-sm font-medium text-slate-700 truncate">{c.title}</p>
+                    <div className="flex items-baseline justify-between gap-2">
+                      <p className="text-sm font-medium text-slate-700 truncate">{c.title}</p>
+                      <p className="text-xs text-slate-400 shrink-0">
+                        Paid for {formatMinutes(paidMinutes(c.hours_requested))}
+                      </p>
+                    </div>
                     <div className="flex gap-3 items-center">
                       <div className="flex-1">
                         <label className="text-xs text-slate-400">Start (CT)</label>
@@ -125,6 +172,10 @@ export default function RescheduleModal({ sessionId, sessionDate, cases }: Props
                         />
                       </div>
                     </div>
+                    {problems[c.case_id] && (
+                      <p className="text-xs text-red-600">{problems[c.case_id]}</p>
+                    )}
+                    {overPaid(c) && <p className="text-xs text-amber-700">{overPaid(c)}</p>}
                   </div>
                 ))}
               </div>
@@ -135,6 +186,7 @@ export default function RescheduleModal({ sessionId, sessionDate, cases }: Props
                 Session rescheduled and notifications sent!
               </p>
             )}
+            {error && <p className="text-sm text-red-600 text-center">{error}</p>}
 
             {/* Actions */}
             <div className="flex justify-end gap-3 pt-1">
@@ -147,7 +199,7 @@ export default function RescheduleModal({ sessionId, sessionDate, cases }: Props
               </button>
               <button
                 onClick={handleSubmit}
-                disabled={isPending || !date}
+                disabled={isPending || !date || hasProblem}
                 className="px-4 py-2 rounded text-sm text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-50"
               >
                 {isPending ? "Saving…" : "Reschedule & Notify"}
