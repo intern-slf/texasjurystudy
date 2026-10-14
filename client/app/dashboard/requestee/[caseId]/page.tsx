@@ -10,6 +10,7 @@ import AddParticipantRequestee from "@/components/AddParticipantRequestee";
 import ReceiptPricingPreview from "@/components/ReceiptPricingPreview";
 import { Badge } from "@/components/ui/badge";
 import BackButton from "@/components/BackButton";
+import CaseTimeSlotCard from "@/components/CaseTimeSlotCard";
 import { CaseFilters } from "@/lib/filter-utils";
 import { deliveryModeLabel, isOffline } from "@/lib/case/deliveryMode";
 import { baseRatePerHourCents, formatCents } from "@/lib/receipt-pricing";
@@ -214,6 +215,9 @@ export default async function RequesteeCaseDetailPage({
               </div>
             )}
           </div>
+
+          {/* THE TIME SLOT THE FIRM HOLDS */}
+          <CaseTimeSlotCard caseId={c.id} />
 
           {/* ADMIN SCHEDULED DATE */}
           {c.admin_scheduled_at && (
