@@ -4,13 +4,14 @@ import RequesteeSidebar from "@/components/RequesteeSidebar";
 import CaseDocumentUploader from "@/components/CaseDocumentUploader";
 import DriveLinkEditor from "@/components/DriveLinkEditor";
 import CaseFilterEditor from "@/components/CaseFilterEditor";
-import LocalDateTime from "@/components/LocalDateTime";
 import RequesteeParticipantHistory from "@/components/RequesteeParticipantHistory";
 import AddParticipantRequestee from "@/components/AddParticipantRequestee";
 import ReceiptPricingPreview from "@/components/ReceiptPricingPreview";
 import { Badge } from "@/components/ui/badge";
 import BackButton from "@/components/BackButton";
 import CaseTimeSlotCard from "@/components/CaseTimeSlotCard";
+import { caseSessionTime, type CaseSessionRow } from "@/lib/case/caseSessionTime";
+import { formatCentralDate, formatCentralDateTime, formatSessionDate } from "@/lib/timezone";
 import { CaseFilters } from "@/lib/filter-utils";
 import { deliveryModeLabel, isOffline } from "@/lib/case/deliveryMode";
 import { baseRatePerHourCents, formatCents } from "@/lib/receipt-pricing";
@@ -50,7 +51,8 @@ export default async function RequesteeCaseDetailPage({
       id, title, description, status, admin_status, schedule_status,
       scheduled_at, admin_scheduled_at, session_completion_timeframe, preferred_day,
       documentation_type, filters, created_at, parent_case_id, hours_requested,
-      case_type, focus_group_type, county, participants_from_county, delivery_mode
+      case_type, focus_group_type, county, participants_from_county, delivery_mode,
+      session_cases (start_time, end_time, sessions (session_date))
     `)
     .eq("id", caseId)
     .eq("user_id", user.id)
@@ -127,7 +129,7 @@ export default async function RequesteeCaseDetailPage({
             </div>
             <h1 className="text-3xl font-bold tracking-tight">{c.title}</h1>
             <p className="text-sm text-muted-foreground mt-1">
-              Created <LocalDateTime iso={c.created_at} mode="date" />
+              Created {formatCentralDate(c.created_at) ?? "—"}
             </p>
           </div>
 
@@ -145,7 +147,7 @@ export default async function RequesteeCaseDetailPage({
                 <Calendar className="h-3.5 w-3.5" /> Preferred Date
               </p>
               <p className="text-sm font-semibold">
-                {c.scheduled_at ? <LocalDateTime iso={c.scheduled_at} mode="date" /> : "—"}
+                {formatCentralDate(c.scheduled_at) ?? "—"}
               </p>
             </div>
             <div className="bg-white border rounded-xl p-4 space-y-1">
@@ -219,21 +221,29 @@ export default async function RequesteeCaseDetailPage({
           {/* THE TIME SLOT THE FIRM HOLDS */}
           <CaseTimeSlotCard caseId={c.id} />
 
-          {/* ADMIN SCHEDULED DATE */}
-          {c.admin_scheduled_at && (
-            <div className="bg-white border rounded-xl p-5 flex items-center gap-4">
-              <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary shrink-0">
-                <Calendar className="h-5 w-5" />
+          {/* ADMIN SCHEDULED DATE: when the case runs once it is in a session
+              (admin_scheduled_at is then its END), the proposed time before that */}
+          {c.admin_scheduled_at && (() => {
+            const sessionTime = caseSessionTime(c.session_cases as CaseSessionRow[] | null | undefined);
+            return (
+              <div className="bg-white border rounded-xl p-5 flex items-center gap-4">
+                <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary shrink-0">
+                  <Calendar className="h-5 w-5" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-semibold">
+                    {sessionTime ? "Scheduled Session" : "Proposed Session Time"}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {sessionTime
+                      ? `${formatSessionDate(sessionTime.sessionDate)}${sessionTime.time ? `, ${sessionTime.time}` : ""}`
+                      : formatCentralDateTime(c.admin_scheduled_at)}
+                  </p>
+                </div>
+                <ScheduleBadge />
               </div>
-              <div className="flex-1">
-                <p className="text-sm font-semibold">Admin-Scheduled Session</p>
-                <p className="text-xs text-muted-foreground">
-                  <LocalDateTime iso={c.admin_scheduled_at} />
-                </p>
-              </div>
-              <ScheduleBadge />
-            </div>
-          )}
+            );
+          })()}
 
           {/* DESCRIPTION */}
           <section className="bg-white border rounded-xl p-6 space-y-2">

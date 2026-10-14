@@ -31,7 +31,7 @@ import { assertCasesShareDeliveryMode, isOffline } from "@/lib/case/deliveryMode
 import { getSessionDeliveryModeOrDefault } from "@/lib/case/getSessionDeliveryMode";
 import { getAllIdsWithoutLogin } from "@/lib/participant/loginAccount";
 import { revalidatePath } from "next/cache";
-import { formatSessionSpan, localToUTC, localToUTCTime, sessionSpan } from "@/lib/timezone";
+import { CENTRAL_TIME_ZONE, formatSessionDate, formatSessionSpan, localToUTC, localToUTCTime, sessionSpan } from "@/lib/timezone";
 
 /* =========================
    CREATE SESSION
@@ -123,7 +123,6 @@ export async function addCasesToSession(
   sessionId: string,
   cases: { caseId: string; start: string; end: string }[],
   sessionDate?: string,
-  timezone?: string
 ) {
   await requireAdmin();
   const supabase = await createClient();
@@ -134,7 +133,10 @@ export async function addCasesToSession(
     cases.map((c) => c.caseId),
   );
 
-  const tz = timezone || "UTC";
+  // The admin picks the times in Central Time, the zone participants and firms
+  // are told. The form used to send the browser's zone, so an admin outside
+  // Texas stored times everyone was then emailed hours off.
+  const tz = CENTRAL_TIME_ZONE;
   const rows = cases.map((c) => ({
     session_id: sessionId,
     case_id: c.caseId,
@@ -265,9 +267,7 @@ export async function notifyRequesteesSessionCreated(
   );
   const timeStr = sessionSpanText ? `${sessionSpanText} CT` : "TBD";
 
-  const dateStr = new Date(sessionDate).toLocaleDateString("en-US", {
-    weekday: "long", year: "numeric", month: "long", day: "numeric",
-  });
+  const dateStr = formatSessionDate(sessionDate);
 
   // Several firms' cases can share one session, so each firm is also told when
   // its own case runs, not just the span of the whole session.
@@ -344,10 +344,10 @@ async function resyncScheduleDerivedValues(
   supabase: Awaited<ReturnType<typeof createClient>>,
   sessionId: string,
   newDate: string,
-) {
+): Promise<SessionCaseTimes[]> {
   const { data: caseRows, error: caseErr } = await supabase
     .from("session_cases")
-    .select("start_time, end_time")
+    .select("case_id, start_time, end_time")
     .eq("session_id", sessionId);
 
   if (caseErr || !caseRows?.length) {
@@ -356,7 +356,7 @@ async function resyncScheduleDerivedValues(
       `payouts and cooldowns left untouched.`,
       caseErr?.message,
     );
-    return;
+    return [];
   }
 
   const starts = caseRows.map((r) => r.start_time as string | null);
@@ -371,7 +371,7 @@ async function resyncScheduleDerivedValues(
     .eq("session_id", sessionId)
     .eq("invite_status", "accepted");
 
-  if (!seated?.length) return;
+  if (!seated?.length) return caseRows;
 
   // --- money ---
   const isPast = newDate < centralToday();
@@ -421,6 +421,29 @@ async function resyncScheduleDerivedValues(
       console.error(`[resyncScheduleDerived] Cooldown update failed:`, error.message);
     }
   }
+  return caseRows;
+}
+
+/** A session's case times as read back after a reschedule: the stored UTC times. */
+type SessionCaseTimes = { case_id?: string | null; start_time: string | null; end_time: string | null };
+
+/**
+ * Whether the firm's dashboard will ask it to confirm a case's new time. Moving
+ * a case clears the firm's answer, but Confirm Attendance is only on the Approved
+ * tab: current, approved cases. A case already moved to Past isn't there, and the
+ * dashboard moves a case to Past once its end has gone by, which a session
+ * rescheduled from the Past tab can still be.
+ */
+function firmWillBeAskedToConfirm(
+  c: { status?: string | null; admin_status?: string | null },
+  endsAt: string | null | undefined,
+): boolean {
+  return (
+    c.status === "current" &&
+    (c.admin_status === "approved" || c.admin_status === "submitted") &&
+    !!endsAt &&
+    Date.parse(endsAt) > Date.now()
+  );
 }
 
 /* =========================
@@ -430,7 +453,6 @@ export async function rescheduleSession(
   sessionId: string,
   newDate: string, // "YYYY-MM-DD"
   caseUpdates: { caseId: string; start: string; end: string }[],
-  timezone?: string
 ) {
   // Emails everyone on the session a new date and rewrites their cooldowns with
   // the service role, so check for an admin before anything else.
@@ -445,11 +467,16 @@ export async function rescheduleSession(
 
   if (sessionError) throw sessionError;
 
-  // 2. Update session_cases times + cases.admin_scheduled_at
-  const tz = timezone || "UTC";
+  // 2. Update session_cases times + cases.admin_scheduled_at. The modal's times
+  //    are Central Time, as everyone is told; the admin's browser zone used to
+  //    be sent instead.
+  const tz = CENTRAL_TIME_ZONE;
+  const written: SessionCaseTimes[] = [];
+  const endsAt = new Map<string, string>();
   for (const cu of caseUpdates) {
     const startUtc = localToUTCTime(newDate, cu.start.slice(0, 5), tz);
     const endUtc   = localToUTCTime(newDate, cu.end.slice(0, 5),   tz);
+    written.push({ case_id: cu.caseId, start_time: startUtc, end_time: endUtc });
 
     await supabase
       .from("session_cases")
@@ -459,6 +486,7 @@ export async function rescheduleSession(
 
     if (endUtc && newDate) {
       const adminScheduledAt = localToUTC(newDate, cu.end.slice(0, 5), tz);
+      endsAt.set(cu.caseId, adminScheduledAt);
       await supabase
         .from("cases")
         .update({ admin_scheduled_at: adminScheduledAt })
@@ -474,16 +502,22 @@ export async function rescheduleSession(
       .in("id", caseUpdates.map((cu) => cu.caseId));
   }
 
-  // The times just changed, so anything derived from them is now stale.
-  await resyncScheduleDerivedValues(supabase, sessionId, newDate);
+  // The times just changed, so anything derived from them is now stale. The
+  // times read back cover every case in the session; if that read failed, the
+  // emails fall back on the ones just written.
+  const readBack = await resyncScheduleDerivedValues(supabase, sessionId, newDate);
+  const newTimes = readBack.length ? readBack : written;
 
-  // Human-readable date for emails
-  const newDateStr = new Date(newDate).toLocaleDateString("en-US", {
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
+  // The emails give the new time as well as the date. With the date alone, a
+  // move to another time on the same day was announced as the same date, and
+  // the time everyone had been sent before stood uncorrected.
+  const newDateStr = formatSessionDate(newDate);
+  const sessionSpanText = formatSessionSpan(
+    newDate,
+    newTimes.map((r) => r.start_time),
+    newTimes.map((r) => r.end_time),
+  );
+  const sessionTimeStr = sessionSpanText ? `${sessionSpanText} CT` : null;
 
   // 3. Notify everyone holding a place — seated participants and waitlisters
   //    alike, since a waitlister has committed to the same date and time.
@@ -499,30 +533,46 @@ export async function rescheduleSession(
         row.participant_id
       );
       if (userData?.user?.email) {
-        await sendRescheduleEmail(userData.user.email, newDateStr, "participant");
+        await sendRescheduleEmail(userData.user.email, newDateStr, "participant", { timeStr: sessionTimeStr });
       }
     } catch (e) {
       console.error(`Reschedule email failed for participant ${row.participant_id}:`, e);
     }
   }
 
-  // 4. Notify requestee(s) — deduplicated by user_id
+  // 4. Notify requestee(s) — one email per firm, with the session's time and
+  //    each of the firm's own cases' times, as the Session Scheduled email does.
   const caseIds = caseUpdates.map((cu) => cu.caseId);
   if (caseIds.length) {
     const { data: caseRows } = await supabase
       .from("cases")
-      .select("user_id")
+      .select("id, title, user_id, status, admin_status")
       .in("id", caseIds);
 
-    const uniqueRequesteeIds = Array.from(
-      new Set((caseRows ?? []).map((c) => c.user_id).filter(Boolean))
-    );
+    const caseTimeById = new Map<string, string>();
+    for (const r of newTimes) {
+      const caseSpan = formatSessionSpan(newDate, [r.start_time], [r.end_time]);
+      if (r.case_id && caseSpan) caseTimeById.set(r.case_id, `${caseSpan} CT`);
+    }
 
-    for (const requesteeId of uniqueRequesteeIds) {
+    const byRequestee = new Map<string, { cases: { title: string; time: string }[]; askToConfirm: boolean }>();
+    for (const c of caseRows ?? []) {
+      if (!c.user_id) continue;
+      const entry = byRequestee.get(c.user_id) ?? { cases: [], askToConfirm: false };
+      entry.cases.push({ title: c.title ?? "", time: caseTimeById.get(c.id) ?? "TBD" });
+      entry.askToConfirm ||= firmWillBeAskedToConfirm(c, endsAt.get(c.id));
+      byRequestee.set(c.user_id, entry);
+    }
+
+    for (const [requesteeId, { cases: firmCases, askToConfirm }] of byRequestee) {
       try {
         const { data: userData } = await supabaseAdmin.auth.admin.getUserById(requesteeId);
         if (userData?.user?.email) {
-          await sendRescheduleEmail(userData.user.email, newDateStr, "requestee");
+          await sendRescheduleEmail(userData.user.email, newDateStr, "requestee", {
+            timeStr: sessionTimeStr,
+            caseTimes: firmCases,
+            askToConfirm,
+          });
         }
       } catch (e) {
         console.error(`Reschedule email failed for requestee ${requesteeId}:`, e);
@@ -842,15 +892,6 @@ async function loadWaitlistContext(
   };
 }
 
-function longDate(date: string): string {
-  return new Date(date).toLocaleDateString("en-US", {
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
-}
-
 /**
  * Call a waitlisted participant into the meeting. Flips them to a real seat —
  * this deliberately bypasses `participant_cap`, because the seat they are
@@ -898,7 +939,7 @@ export async function callInWaitlistParticipant(sessionId: string, participantId
       await sendWaitlistCalledInEmail(
         ctx.email,
         ctx.firstName,
-        longDate(ctx.sessionDate),
+        formatSessionDate(ctx.sessionDate),
         formatCents(payoutCents),
         formatCents(hourlyRateCents(ctx.deliveryMode)),
       );
@@ -943,7 +984,7 @@ export async function markWaitlistWaitedOut(sessionId: string, participantId: st
       await sendWaitlistWaitedOutEmail(
         ctx.email,
         ctx.firstName,
-        longDate(ctx.sessionDate),
+        formatSessionDate(ctx.sessionDate),
         formatCents(waitlistWaitFeeCents(ctx.deliveryMode)),
         waitlistHoldMinutes(ctx.deliveryMode),
         isOffline(ctx.deliveryMode),
@@ -1040,9 +1081,7 @@ export async function sendCompletionNow(formData: FormData) {
     ? await supabase.from("cases").select("id, title, user_id").in("id", caseIds)
     : { data: [] };
 
-  const sessionDateStr = new Date(session.session_date).toLocaleDateString("en-US", {
-    weekday: "long", year: "numeric", month: "long", day: "numeric",
-  });
+  const sessionDateStr = formatSessionDate(session.session_date);
 
   // Group case titles by requestee
   const requesteeMap = new Map<string, string[]>();
@@ -1319,17 +1358,13 @@ export async function replaceCaseInSession(
     .update({ admin_scheduled_at: caseEnd.toISOString(), schedule_status: null })
     .eq("id", newCaseId);
 
-  // 5. Notify new requestee — same as rescheduleSession
-  const newDateStr = new Date(sessionDate).toLocaleDateString("en-US", {
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
+  // 5. Notify new requestee — same as rescheduleSession, with when its case runs
+  const newDateStr = formatSessionDate(sessionDate);
+  const caseSpan = formatSessionSpan(sessionDate, [startTime], [endTime]);
 
   const { data: caseRow } = await supabase
     .from("cases")
-    .select("user_id")
+    .select("user_id, title, status, admin_status")
     .eq("id", newCaseId)
     .single();
 
@@ -1337,7 +1372,10 @@ export async function replaceCaseInSession(
     try {
       const { data: userData } = await supabaseAdmin.auth.admin.getUserById(caseRow.user_id);
       if (userData?.user?.email) {
-        await sendRescheduleEmail(userData.user.email, newDateStr, "requestee");
+        await sendRescheduleEmail(userData.user.email, newDateStr, "requestee", {
+          caseTimes: [{ title: caseRow.title ?? "", time: caseSpan ? `${caseSpan} CT` : "TBD" }],
+          askToConfirm: firmWillBeAskedToConfirm(caseRow, caseEnd.toISOString()),
+        });
       }
     } catch (e) {
       console.error(`Notification email failed for new requestee ${caseRow.user_id}:`, e);
@@ -1637,9 +1675,7 @@ export async function notifyPresenterByEmail(
 
   const deliveryMode = await getSessionDeliveryModeOrDefault(sessionId);
 
-  const sessionDateStr = new Date(session.session_date).toLocaleDateString("en-US", {
-    weekday: "long", year: "numeric", month: "long", day: "numeric",
-  });
+  const sessionDateStr = formatSessionDate(session.session_date);
 
   // 2. Fetch case IDs for session
   const { data: sessionCases } = await supabase

@@ -10,15 +10,12 @@ import CaseLineagePanel from "@/components/CaseLineagePanel";
 import CaseSessionsPanel from "@/components/CaseSessionsPanel";
 import CaseBookingPanel from "@/components/CaseBookingPanel";
 import BackButton from "@/components/BackButton";
+import { caseSessionTime, type CaseSessionRow } from "@/lib/case/caseSessionTime";
+import { formatCentralDate, formatCentralDateTime, formatSessionDate } from "@/lib/timezone";
 
-const fmtDate = (v: string | null | undefined) =>
-  v
-    ? new Date(v).toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      })
-    : "—";
+// The Central date. Formatted on the server with no zone, which is UTC, a
+// deadline at 11:59 PM CT and anything else late in the day showed a day late.
+const fmtDate = (v: string | null | undefined) => formatCentralDate(v) ?? "—";
 
 /* =========================
    DB ROW TYPES
@@ -73,6 +70,7 @@ interface CaseInfo {
   hours_requested: number | null;
   case_documents: CaseDocument[];
   case_drive_links: DriveLinkRow[];
+  session_cases?: CaseSessionRow[] | null;
 }
 
 /* =========================
@@ -131,6 +129,13 @@ export default async function AdminCaseDetailPage({
       case_drive_links (
         id,
         url
+      ),
+      session_cases (
+        start_time,
+        end_time,
+        sessions (
+          session_date
+        )
       )
     `)
     .eq("id", caseId)
@@ -281,9 +286,22 @@ export default async function AdminCaseDetailPage({
             { label: "Approved", value: caseInfo.approved_at ? fmtDate(caseInfo.approved_at) : null },
             {
               label: "Scheduled",
-              value: caseInfo.admin_scheduled_at || caseInfo.scheduled_at
-                ? fmtDate(caseInfo.admin_scheduled_at || caseInfo.scheduled_at)
-                : null,
+              // In a session, when the case runs: admin_scheduled_at is then its
+              // END. Before that, the time an admin proposed, or the firm's own.
+              value: (() => {
+                const sessionTime = caseSessionTime(caseInfo.session_cases);
+                if (sessionTime) {
+                  const date = formatSessionDate(sessionTime.sessionDate, "short");
+                  return sessionTime.time ? `${date}, ${sessionTime.time}` : date;
+                }
+                if (caseInfo.admin_scheduled_at) {
+                  return `${formatCentralDateTime(caseInfo.admin_scheduled_at) ?? "—"} (proposed)`;
+                }
+                if (caseInfo.scheduled_at) {
+                  return `${formatCentralDateTime(caseInfo.scheduled_at) ?? "—"} (firm's preference)`;
+                }
+                return null;
+              })(),
             },
           ]
             .filter((row) => row.value)

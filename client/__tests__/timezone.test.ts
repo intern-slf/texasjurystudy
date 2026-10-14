@@ -339,8 +339,8 @@ describe("utcTimeToLocal", () => {
   });
 
   it("gives back the time it was saved from in any zone, so an unchanged Reschedule saves nothing new", () => {
-    // The Reschedule form shows these times in the admin's own zone and saves them
-    // back onto the session's date there. The first case is 9 PM CDT on Oct 24,
+    // The Reschedule form shows these times in a zone and saves them back onto
+    // the session's date there (Central Time now; the admin's own zone before). The first case is 9 PM CDT on Oct 24,
     // stored 02:00: read as its real instant, 02:00 GMT on Oct 25 after Britain's
     // clocks went back, a London admin's unchanged save stored 01:00 (8 PM CDT).
     const saved: Array<[date: string, utc: string, zone: string]> = [

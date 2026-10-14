@@ -14,6 +14,7 @@ import {
 import { Badge } from "./ui/badge";
 import { sortRoster, rosterGroup, rosterStatusLabel, type RosterGroup } from "@/lib/participant/rosterOrder";
 import { isWaitlisted } from "@/lib/participant/waitlist";
+import { formatSessionDate } from "@/lib/timezone";
 
 const BADGE_VARIANT: Record<RosterGroup, "default" | "outline" | "destructive" | "secondary"> = {
     accepted: "default",
@@ -270,7 +271,7 @@ export default function PreviousParticipantsModal({ caseId, ancestorIds }: Props
                                                         <div key={sIdx} className="bg-slate-50 rounded-xl border p-4">
                                                             <div className="flex items-center gap-2 text-sm font-semibold text-slate-600 mb-4 pb-2 border-b border-slate-200">
                                                                 <Calendar className="h-4 w-4" />
-                                                                <span>Session: {new Date(sc.sessions.session_date).toLocaleDateString()}</span>
+                                                                <span>Session: {formatSessionDate(sc.sessions.session_date, "short")}</span>
                                                                 <Badge variant="outline" className="ml-auto bg-white">
                                                                     {sc.sessions.session_participants.length} Participants
                                                                 </Badge>

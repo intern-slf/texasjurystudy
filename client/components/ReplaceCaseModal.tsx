@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { replaceCaseInSession } from "@/lib/actions/session";
 import { deliveryModeLabel, type DeliveryMode } from "@/lib/case/deliveryMode";
+import { formatSessionDate, formatSessionSpan } from "@/lib/timezone";
 
 export interface ReplacementCandidate {
   id: string;
@@ -39,6 +40,8 @@ export default function ReplaceCaseModal({
   const [isPending, setIsPending] = useState(false);
   const [error, setError] = useState("");
   const router = useRouter();
+  // The stored UTC times as Central clocks, like the rest of the row.
+  const span = formatSessionSpan(sessionDate, [startTime], [endTime]);
 
   const handleReplace = async () => {
     if (!selectedId) return;
@@ -74,7 +77,7 @@ export default function ReplaceCaseModal({
               Replacing: <span className="font-medium text-slate-700">{oldCaseTitle}</span>
             </p>
             <p className="text-xs text-slate-400">
-              Time slot: {startTime} → {endTime} on {sessionDate}
+              Time slot: {span ? `${span} CT` : "time unreadable"} on {formatSessionDate(sessionDate)}
             </p>
 
             <div className="space-y-1">

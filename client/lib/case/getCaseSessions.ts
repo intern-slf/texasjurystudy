@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { normalizeDeliveryMode, type DeliveryMode } from "@/lib/case/deliveryMode";
 import { centralToday } from "@/lib/centralToday";
+import { formatSessionDate } from "@/lib/timezone";
 
 /**
  * Every session scheduled for a case, with the participant roster attached.
@@ -168,12 +169,7 @@ export async function getCaseSessions(caseId: string): Promise<CaseSessionRow[]>
       return {
         sessionId: s.id,
         date: s.session_date,
-        displayDate: new Date(s.session_date).toLocaleDateString("en-US", {
-          weekday: "long",
-          year: "numeric",
-          month: "long",
-          day: "numeric",
-        }),
+        displayDate: formatSessionDate(s.session_date),
         startTime: times?.start ?? null,
         endTime: times?.end ?? null,
         deliveryMode,

@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { sendApprovalEmail, sendRejectionEmail } from "@/lib/mail";
 import { requireAdmin } from "@/lib/requireAdmin";
-import { localToUTC } from "@/lib/timezone";
+import { centralDateTimeToISO } from "@/lib/timezone";
 import { revalidatePath } from "next/cache";
 
 // Every export here is an admin action, and starts with requireAdmin(): as server
@@ -115,11 +115,10 @@ export async function proposeScheduleAction(formData: FormData) {
   await requireAdmin();
 
   const caseId = formData.get("caseId") as string;
-  const raw = formData.get("scheduled_at") as string; // "YYYY-MM-DDTHH:MM"
-  const tz = formData.get("tz") as string || "UTC";
-
-  const [datePart, timePart] = raw.split("T");
-  const adminScheduledAt = localToUTC(datePart, timePart, tz);
+  // "YYYY-MM-DDTHH:MM" in Central Time, the zone the firm is shown it in. The
+  // admin's browser zone used to be sent with it instead.
+  const adminScheduledAt = centralDateTimeToISO(formData.get("scheduled_at") as string | null);
+  if (!adminScheduledAt) throw new Error("Pick a date and time for the session.");
 
   const supabase = await createClient();
 

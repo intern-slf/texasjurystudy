@@ -1,6 +1,7 @@
 import Link from "next/link";
 import ParticipantRoster from "@/components/ParticipantRoster";
 import { getFullCaseChain } from "@/lib/case-lineage";
+import { formatCentralDate } from "@/lib/timezone";
 
 /**
  * The follow-up chain a case belongs to: root case → follow-ups, with the
@@ -99,11 +100,7 @@ export default async function CaseLineagePanel({ caseId }: { caseId: string }) {
                     </div>
 
                     <span className="text-xs text-slate-500 shrink-0">
-                      {new Date(node.created_at).toLocaleDateString("en-US", {
-                        month: "short",
-                        day: "numeric",
-                        year: "numeric",
-                      })}
+                      {formatCentralDate(node.created_at) ?? "—"}
                       {" · "}
                       {node.participants.length} participant
                       {node.participants.length === 1 ? "" : "s"}

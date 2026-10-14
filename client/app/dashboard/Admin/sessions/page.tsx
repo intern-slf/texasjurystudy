@@ -37,7 +37,7 @@ import { getAllIdsWithoutLogin } from "@/lib/participant/loginAccount";
 import InviteMoreModal, { type Candidate } from "@/components/InviteMoreModal";
 import RescheduleModal from "@/components/RescheduleModal";
 import ReplaceCaseModal, { type ReplacementCandidate } from "@/components/ReplaceCaseModal";
-import LocalTimeRange from "@/components/LocalTimeRange";
+import CentralTimeRange from "@/components/CentralTimeRange";
 import ParticipantActionsMenu from "@/components/ParticipantActionsMenu";
 import { sendCompletionNow } from "@/lib/actions/session";
 import ZoomLinkSender from "@/components/ZoomLinkSender";
@@ -680,7 +680,7 @@ export default async function SessionsPage({
                                   deliveryMode={deliveryMode}
                                 />
                               )}
-                              <LocalTimeRange
+                              <CentralTimeRange
                                 sessionDate={s.session_date}
                                 startUtc={c.start_time}
                                 endUtc={c.end_time}

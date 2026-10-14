@@ -2,6 +2,9 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { normalizeDeliveryMode } from "@/lib/case/deliveryMode";
+import { caseSessionTime, type CaseSessionRow } from "@/lib/case/caseSessionTime";
+import { deadlineForTimeframe } from "@/lib/case/deadline";
+import { centralDateTimeToISO } from "@/lib/timezone";
 import { revalidatePath } from "next/cache";
 
 // A firm's own writes to its case row, from the forms on its dashboard
@@ -10,13 +13,6 @@ import { revalidatePath } from "next/cache";
 // hand-made request can't use it once an admin has moved the case on. The
 // database separately refuses the changes only staff may make
 // (cases_protect_admin_fields, supabase/migrations/20261005_protect_case_admin_fields.sql).
-
-const TIMEFRAME_TO_DAYS: Record<string, number> = {
-  "Within a Week": 7,
-  "Within 2 Weeks": 14,
-  "Within a Month": 30,
-  "Within 3 Months": 90,
-};
 
 /**
  * "Edit Case Details" on the Requested tab: only while the case is current and
@@ -45,7 +41,8 @@ export async function updateCase(formData: FormData) {
   const updatePayload: Record<string, unknown> = {
     title,
     description,
-    scheduled_at: scheduledAt ? new Date(scheduledAt).toISOString() : null,
+    // The form's datetime-local is Central Time. new Date() read it as UTC here.
+    scheduled_at: centralDateTimeToISO(scheduledAt),
     focus_group_type: focusGroupType || null,
     case_type: caseType || null,
     hours_requested: hoursRequested ? Number(hoursRequested) : null,
@@ -72,12 +69,9 @@ export async function updateCase(formData: FormData) {
     }
   }
 
-  const days = TIMEFRAME_TO_DAYS[sessionCompletionTimeframe];
-  if (days) {
-    const d = new Date();
-    d.setDate(d.getDate() + days);
-    d.setHours(23, 59, 0, 0);
-    updatePayload.deadline_date = d.toISOString();
+  const deadline = deadlineForTimeframe(sessionCompletionTimeframe);
+  if (deadline) {
+    updatePayload.deadline_date = deadline;
   } else if (sessionCompletionTimeframe === "") {
     updatePayload.deadline_date = null;
   }
@@ -111,7 +105,7 @@ export async function respondToSchedule(formData: FormData) {
 
   const { data: caseData } = await supabase
     .from("cases")
-    .select("admin_scheduled_at")
+    .select("admin_scheduled_at, session_cases (start_time, end_time, sessions (session_date))")
     .eq("id", caseId)
     .eq("user_id", activeUser.id)
     .not("admin_scheduled_at", "is", null)
@@ -122,7 +116,10 @@ export async function respondToSchedule(formData: FormData) {
 
   const updatePayload: Record<string, string | null> = { schedule_status: response };
   if (response === "accepted") {
-    updatePayload.scheduled_at = caseData.admin_scheduled_at;
+    // Confirming makes the time the firm's preferred one. Once the case is in a
+    // session that is when the case starts: admin_scheduled_at is then its END.
+    const sessionTime = caseSessionTime(caseData.session_cases as CaseSessionRow[] | null | undefined);
+    updatePayload.scheduled_at = sessionTime?.start.toISOString() ?? caseData.admin_scheduled_at;
   }
 
   // The same state, and the same proposed time, again in the write, so a new

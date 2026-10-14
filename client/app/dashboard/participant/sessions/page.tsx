@@ -8,7 +8,7 @@ import { getPendingInvites } from "@/lib/participant/getPendingInvites";
 import { centralToday } from "@/lib/centralToday";
 import { updateInviteStatus } from "@/lib/participant/updateInviteStatus";
 import { hasSessionStarted } from "@/lib/participant/sessionStart";
-import { formatSessionSpan } from "@/lib/timezone";
+import { formatSessionDate, formatSessionSpan } from "@/lib/timezone";
 import {
   WAITLISTED_STATUS,
   OFFLINE_ARRIVE_EARLY_MINUTES,
@@ -124,9 +124,7 @@ export default async function ParticipantSessionsPage({
       return [{
         sessionId: inv.session_id,
         date,
-        displayDate: new Date(date).toLocaleDateString("en-US", {
-          weekday: "long", year: "numeric", month: "long", day: "numeric",
-        }),
+        displayDate: formatSessionDate(date),
         timeRange,
         caseTitles,
         deliveryMode,
@@ -242,9 +240,7 @@ export default async function ParticipantSessionsPage({
             const ends = sessionCases.map((c) => c.end_time).filter((v): v is string => Boolean(v));
             const timeRange = spanCt(date, starts, ends);
             const displayDate = date
-              ? new Date(date).toLocaleDateString("en-US", {
-                  weekday: "long", year: "numeric", month: "long", day: "numeric",
-                })
+              ? formatSessionDate(date)
               : "Date TBD";
 
             // Invitations close when the first case begins. Declining stays

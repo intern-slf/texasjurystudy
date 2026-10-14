@@ -22,7 +22,6 @@ import { requireAdmin, requireAdminPage } from "@/lib/requireAdmin";
 import { centralToday } from "@/lib/centralToday";
 import { AdminActionButton } from "@/components/AdminActionButton";
 import { RejectCaseButton } from "@/components/RejectCaseButton";
-import TimezoneInput from "@/components/TimezoneInput";
 import CaseModeSelectionGuard from "@/components/CaseModeSelectionGuard";
 import { deliveryModeLabel, isOffline, normalizeDeliveryMode } from "@/lib/case/deliveryMode";
 import { baseRatePerHourCents, formatCents } from "@/lib/receipt-pricing";
@@ -32,6 +31,8 @@ import { getBookingsForCases } from "@/lib/slotBookingData";
 import { bookingState } from "@/lib/slotBooking";
 import { describeSlot } from "@/lib/requesteeTimeSlots";
 import { BookingStateBadge } from "@/components/BookingSummary";
+import { caseSessionTime, type CaseSessionRow } from "@/lib/case/caseSessionTime";
+import { formatCentralClock, formatCentralDate, formatSessionDate } from "@/lib/timezone";
 
 /* =========================
    TYPES
@@ -59,7 +60,25 @@ interface JuryCase {
   session_completion_timeframe: string | null;
   preferred_day: string | null;
   deadline_date: string | null;
+  session_cases?: CaseSessionRow[] | null;
   is_in_session: boolean;
+}
+
+/**
+ * A date over a time, both Central. These used to be formatted on the server
+ * with no zone, which is UTC: 10 AM CT read 4:00 PM, and an evening time sat on
+ * the next day.
+ */
+function DateTimeCell({ date, time }: { date: string | null; time: string | null }) {
+  return (
+    <div className="flex items-center gap-2 text-sm text-foreground">
+      <Calendar className="h-4 w-4 text-muted-foreground" />
+      <div className="flex flex-col">
+        <span className="font-medium">{date ?? "—"}</span>
+        {time && <span className="text-muted-foreground text-xs">{time}</span>}
+      </div>
+    </div>
+  );
 }
 
 type AdminTab = "requested" | "approved";
@@ -120,6 +139,8 @@ export default async function AdminDashboardPage({
       ),
       session_cases (
         session_id,
+        start_time,
+        end_time,
         sessions (
           session_date
         )
@@ -305,8 +326,9 @@ export default async function AdminDashboardPage({
 
             <TableBody>
               {filteredCases.map((c) => {
-                const date = c.scheduled_at ? new Date(c.scheduled_at) : null;
-                const adminDate = c.admin_scheduled_at ? new Date(c.admin_scheduled_at) : null;
+                // In a session, the case's own times. admin_scheduled_at is then
+                // when the case ENDS; before that, it is the time an admin proposed.
+                const sessionTime = caseSessionTime(c.session_cases);
 
                 return (
                   <TableRow
@@ -389,18 +411,11 @@ export default async function AdminDashboardPage({
 
                     {/* SCHEDULE */}
                     <TableCell className="py-4">
-                      {date ? (
-                        <div className="flex items-center gap-2 text-sm text-foreground">
-                          <Calendar className="h-4 w-4 text-muted-foreground" />
-                          <div className="flex flex-col">
-                            <span className="font-medium">
-                              {date.toLocaleDateString()}
-                            </span>
-                            <span className="text-muted-foreground text-xs">
-                              {date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
-                            </span>
-                          </div>
-                        </div>
+                      {c.scheduled_at ? (
+                        <DateTimeCell
+                          date={formatCentralDate(c.scheduled_at)}
+                          time={formatCentralClock(c.scheduled_at)}
+                        />
                       ) : (
                         <span className="text-xs text-muted-foreground italic">
                           Not scheduled
@@ -421,18 +436,16 @@ export default async function AdminDashboardPage({
                     {/* ADMIN SCHEDULE */}
                     {tab === "approved" && (
                       <TableCell className="py-4">
-                        {adminDate ? (
-                          <div className="flex items-center gap-2 text-sm text-foreground">
-                            <Calendar className="h-4 w-4 text-muted-foreground" />
-                            <div className="flex flex-col">
-                              <span className="font-medium">
-                                {adminDate.toLocaleDateString()}
-                              </span>
-                              <span className="text-muted-foreground text-xs">
-                                {adminDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
-                              </span>
-                            </div>
-                          </div>
+                        {sessionTime ? (
+                          <DateTimeCell
+                            date={formatSessionDate(sessionTime.sessionDate, "short")}
+                            time={sessionTime.time}
+                          />
+                        ) : c.admin_scheduled_at ? (
+                          <DateTimeCell
+                            date={formatCentralDate(c.admin_scheduled_at)}
+                            time={formatCentralClock(c.admin_scheduled_at)}
+                          />
                         ) : (
                           <span className="text-xs text-muted-foreground italic">
                             Not set
@@ -450,7 +463,7 @@ export default async function AdminDashboardPage({
                           <div className="flex items-center gap-2 text-sm">
                             <Calendar className={`h-4 w-4 ${isPast ? "text-red-500" : "text-muted-foreground"}`} />
                             <span className={`font-medium ${isPast ? "text-red-600" : "text-foreground"}`}>
-                              {dl.toLocaleDateString()}
+                              {formatCentralDate(c.deadline_date)}
                             </span>
                           </div>
                         );
@@ -503,13 +516,14 @@ export default async function AdminDashboardPage({
                           <>
                             <form action={proposeScheduleAction} className="flex gap-2 items-center">
                               <input type="hidden" name="caseId" value={c.id} />
-                              <TimezoneInput />
                               <input
                                 type="datetime-local"
                                 name="scheduled_at"
                                 required
+                                aria-label="Proposed time, Central Time"
                                 className="h-8 rounded-md border border-input bg-background px-3 py-1 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                               />
+                              <span className="text-xs text-muted-foreground">CT</span>
                               <AdminActionButton
                                 label="Send"
                                 activeColor="bg-purple-600"

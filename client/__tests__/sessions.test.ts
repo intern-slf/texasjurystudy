@@ -7,7 +7,6 @@ import {
   beforeAll,
   beforeEach,
 } from "vitest";
-import { localToUTCTime } from "@/lib/timezone";
 
 process.env.NEXT_PUBLIC_SUPABASE_URL ||= "http://supabase.test";
 process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||= "anon-test-key";
@@ -382,7 +381,7 @@ describe("Sessions", () => {
         { error: null }, // case update 3
       ];
 
-      await addCasesToSession("session-1", cases, "2026-06-15", "UTC");
+      await addCasesToSession("session-1", cases, "2026-06-15");
 
       // `find` by table alone would now land on the delivery-mode guard's
       // read of session_cases, which has no insert op.
@@ -397,8 +396,10 @@ describe("Sessions", () => {
       expect((insert.payload as unknown[]).length).toBe(3);
     });
 
-    it("Correct UTC time conversion", async () => {
-      // For tz=UTC the conversion is identity — assertions stay deterministic.
+    it("Stores the admin's Central times as UTC", async () => {
+      // The form's times are Central Time whatever zone the admin's browser is
+      // in: 9:00 AM CDT on 2026-06-15 is 14:00 UTC. The browser's zone used to be
+      // sent along, so an admin in India typing 9:00 stored 03:30 UTC.
       state.responses = [
         ...modeGuard(),
         { error: null },
@@ -415,7 +416,7 @@ describe("Sessions", () => {
         { error: null },
       ];
 
-      await addCasesToSession("session-1", cases, "2026-06-15", "UTC");
+      await addCasesToSession("session-1", cases, "2026-06-15");
 
       const sc = state.captured.find(
         (x) => x.table === "session_cases" && x.ops.some((o) => o.op === "insert")
@@ -424,15 +425,23 @@ describe("Sessions", () => {
         op: "insert";
         payload: Array<{ start_time: string; end_time: string }>;
       };
-      expect(insert.payload[0].start_time).toBe(
-        localToUTCTime("2026-06-15", "09:00", "UTC")
-      );
-      expect(insert.payload[0].end_time).toBe(
-        localToUTCTime("2026-06-15", "10:00", "UTC")
-      );
-      expect(insert.payload[2].start_time).toBe(
-        localToUTCTime("2026-06-15", "13:00", "UTC")
-      );
+      expect(insert.payload.map((r) => [r.start_time, r.end_time])).toEqual([
+        ["14:00:00", "15:00:00"],
+        ["15:30:00", "16:30:00"],
+        ["18:00:00", "19:00:00"],
+      ]);
+
+      // Each case's admin_scheduled_at is when it ends, on the same clock.
+      const ends = state.captured
+        .filter((c) => c.table === "cases")
+        .flatMap((c) => c.ops)
+        .filter((o): o is { op: "update"; payload: Record<string, unknown> } => o.op === "update")
+        .map((o) => o.payload.admin_scheduled_at);
+      expect(ends).toEqual([
+        "2026-06-15T15:00:00.000Z",
+        "2026-06-15T16:30:00.000Z",
+        "2026-06-15T19:00:00.000Z",
+      ]);
     });
 
     it("Updates each case's admin_scheduled_at", async () => {
@@ -452,7 +461,7 @@ describe("Sessions", () => {
         { error: null },
       ];
 
-      await addCasesToSession("session-1", cases, "2026-06-15", "UTC");
+      await addCasesToSession("session-1", cases, "2026-06-15");
 
       const caseUpdates = state.captured.filter(
         (c) => c.table === "cases" && c.ops.some((o) => o.op === "update")
@@ -490,7 +499,7 @@ describe("Sessions", () => {
         { data: [], error: null },
       ];
 
-      await addCasesToSession("session-1", cases, "2026-06-15", "UTC");
+      await addCasesToSession("session-1", cases, "2026-06-15");
 
       const sc = state.captured.find(
         (x) => x.table === "session_cases" && x.ops.some((o) => o.op === "insert")
@@ -504,7 +513,7 @@ describe("Sessions", () => {
       ];
 
       await expect(
-        addCasesToSession("session-1", cases, "2026-06-15", "UTC")
+        addCasesToSession("session-1", cases, "2026-06-15")
       ).rejects.toThrow(/cannot hold both in-person and online/i);
 
       // Nothing was written — the guard runs before the insert.
@@ -520,7 +529,7 @@ describe("Sessions", () => {
       ];
 
       await expect(
-        addCasesToSession("session-1", cases, "2026-06-15", "UTC")
+        addCasesToSession("session-1", cases, "2026-06-15")
       ).rejects.toThrow(/cannot hold both in-person and online/i);
 
       const inserted = state.captured.find(
@@ -536,7 +545,7 @@ describe("Sessions", () => {
         { data: [], error: null },
       ];
 
-      await addCasesToSession("session-1", cases, "2026-06-15", "UTC");
+      await addCasesToSession("session-1", cases, "2026-06-15");
 
       const sc = state.captured.find(
         (x) => x.table === "session_cases" && x.ops.some((o) => o.op === "insert")
@@ -613,6 +622,48 @@ describe("Sessions", () => {
       );
 
       expect(scheduledAtWrites()).toEqual([null, "2026-10-21T02:00:00.000Z"]);
+    });
+
+    /** A replacement that goes through to its email, with the clock before the session. */
+    const replaceAndEmail = async (incoming: { status: string; admin_status: string }) => {
+      state.participantEmails.set("requestee-1", "firm@example.com");
+      state.responses = [
+        ...replaceGuard("online", ["online"]),
+        { error: null }, // delete old session_cases row
+        { error: null }, // reset old case
+        { error: null }, // insert new session_cases row
+        { error: null }, // set admin_scheduled_at
+        { data: { user_id: "requestee-1", title: "Doe v. Roe", ...incoming }, error: null },
+      ];
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-10-15T12:00:00Z"));
+      try {
+        await replaceCaseInSession(
+          "session-1", "case-old", "case-new", "00:30:00", "02:00:00", "2026-10-20",
+        );
+      } finally {
+        vi.useRealTimers();
+      }
+      const calls = (sendRescheduleEmailSpy.mock.calls as unknown as unknown[][]).map((args) =>
+        JSON.parse(JSON.stringify(args).replace(/\u202f/g, " ")),
+      );
+      return calls;
+    };
+
+    it("Tells the incoming firm when its case runs, and to confirm it", async () => {
+      expect(await replaceAndEmail({ status: "current", admin_status: "approved" })).toEqual([
+        [
+          "firm@example.com",
+          "Tuesday, October 20, 2026",
+          "requestee",
+          { caseTimes: [{ title: "Doe v. Roe", time: "7:30 PM – 9:00 PM CT" }], askToConfirm: true },
+        ],
+      ]);
+    });
+
+    it("Doesn't tell a firm to confirm a case on its Past tab, which has no Confirm button", async () => {
+      const [[, , , details]] = await replaceAndEmail({ status: "previous", admin_status: "approved" });
+      expect(details).toMatchObject({ askToConfirm: false });
     });
 
     it("Refuses times it cannot read before touching the session", async () => {
@@ -2287,7 +2338,7 @@ describe("Sessions", () => {
     /** The resync reads: the new times, then the seated rows. */
     const resyncReads = (
       seated: { participant_id: string; payout_cents: number | null }[],
-      times: { start_time: string | null; end_time: string | null }[] = [
+      times: { case_id?: string; start_time: string | null; end_time: string | null }[] = [
         { start_time: "09:00:00", end_time: "14:00:00" }, // 5 hours
       ],
     ) => [
@@ -2327,7 +2378,7 @@ describe("Sessions", () => {
         ...tail(),
       ];
 
-      await rescheduleSession("s-1", FUTURE, updates, "UTC");
+      await rescheduleSession("s-1", FUTURE, updates);
 
       const upd = payoutUpdate()!.ops.find((o) => o.op === "update") as {
         op: "update";
@@ -2344,7 +2395,7 @@ describe("Sessions", () => {
         ...tail(),
       ];
 
-      await rescheduleSession("s-1", FUTURE, updates, "UTC");
+      await rescheduleSession("s-1", FUTURE, updates);
 
       const upd = payoutUpdate()!.ops.find((o) => o.op === "update") as {
         op: "update";
@@ -2364,7 +2415,7 @@ describe("Sessions", () => {
         ...tail(),
       ];
 
-      await rescheduleSession("s-1", FUTURE, updates, "UTC");
+      await rescheduleSession("s-1", FUTURE, updates);
 
       const seatedSelect = state.captured.find(
         (c) =>
@@ -2391,7 +2442,7 @@ describe("Sessions", () => {
         ...tail(),
       ];
 
-      await rescheduleSession("s-1", FUTURE, updates, "UTC");
+      await rescheduleSession("s-1", FUTURE, updates);
 
       const ids = payoutUpdate()!.ins.find(([col]) => col === "participant_id")?.[1];
       expect(ids).toEqual(["p-new"]);
@@ -2409,7 +2460,7 @@ describe("Sessions", () => {
         { data: [], error: null },
       ];
 
-      await rescheduleSession("s-1", FUTURE, updates, "UTC");
+      await rescheduleSession("s-1", FUTURE, updates);
 
       expect(payoutUpdate()).toBeUndefined();
       // Witness that we got as far as reading the seated rows and then
@@ -2443,7 +2494,6 @@ describe("Sessions", () => {
           "s-1",
           "2026-10-20",
           [{ caseId: "case-A", start: "20:00", end: "22:00" }],
-          "America/Chicago",
         );
 
         const upd = payoutUpdate()!.ops.find((o) => o.op === "update") as {
@@ -2468,7 +2518,7 @@ describe("Sessions", () => {
         { data: [], error: null },
       ];
 
-      await rescheduleSession("s-1", PAST, updates, "UTC");
+      await rescheduleSession("s-1", PAST, updates);
 
       expect(payoutUpdate()).toBeUndefined();
       // Witness that the resync actually ran and chose to skip, rather than
@@ -2486,6 +2536,117 @@ describe("Sessions", () => {
       expect(cooldownRan).toBe(true);
     });
 
+    it("Emails the new time with the date: the session's to participants, each case's to its firm", async () => {
+      // Moving a session to another time on the same day sent "New Date: <the
+      // same date>" and no time at all.
+      state.participantEmails.set("p-1", "p-1@example.com");
+      state.participantEmails.set("firm-1", "firm@example.com");
+      state.responses = [
+        ...preamble(),
+        ...resyncReads([{ participant_id: "p-1", payout_cents: 9000 }], [
+          // 2-3 PM and 3-4 PM CDT. case-B is another firm's, not being moved.
+          { case_id: "case-A", start_time: "19:00:00", end_time: "20:00:00" },
+          { case_id: "case-B", start_time: "20:00:00", end_time: "21:00:00" },
+        ]),
+        ...repriceWrites(),
+        { error: null }, // cooldown
+        { data: [{ participant_id: "p-1" }], error: null }, // who to email
+        {
+          data: [{ id: "case-A", title: "Smith v. Jones", user_id: "firm-1", status: "current", admin_status: "approved" }],
+          error: null,
+        },
+      ];
+
+      await rescheduleSession("s-1", FUTURE, [{ caseId: "case-A", start: "14:00", end: "15:00" }]);
+
+      const calls = (sendRescheduleEmailSpy.mock.calls as unknown as unknown[][]).map((args) =>
+        JSON.parse(JSON.stringify(args).replace(/\u202f/g, " ")),
+      );
+      expect(calls).toEqual([
+        ["p-1@example.com", "Saturday, June 15, 2999", "participant", { timeStr: "2:00 PM – 4:00 PM CT" }],
+        [
+          "firm@example.com",
+          "Saturday, June 15, 2999",
+          "requestee",
+          {
+            timeStr: "2:00 PM – 4:00 PM CT",
+            caseTimes: [{ title: "Smith v. Jones", time: "2:00 PM – 3:00 PM CT" }],
+            // On its Approved tab and still ahead, so the firm gets the buttons.
+            askToConfirm: true,
+          },
+        ],
+      ]);
+
+      // And the times typed are Central: 2 PM CDT is 19:00 UTC.
+      const timesWrite = state.captured.find(
+        (c) => c.table === "session_cases" && c.ops.some((o) => o.op === "update"),
+      )!;
+      expect((timesWrite.ops.find((o) => o.op === "update") as { payload: unknown }).payload).toEqual({
+        start_time: "19:00:00",
+        end_time: "20:00:00",
+      });
+    });
+
+    it("Still emails the new times when they can't be read back", async () => {
+      state.participantEmails.set("firm-1", "firm@example.com");
+      state.responses = [
+        ...preamble(),
+        { data: null, error: { message: "read failed" } }, // the resync's re-read
+        { data: [], error: null }, // who to email
+        {
+          data: [{ id: "case-A", title: "Smith v. Jones", user_id: "firm-1", status: "current", admin_status: "approved" }],
+          error: null,
+        },
+      ];
+
+      await rescheduleSession("s-1", FUTURE, [{ caseId: "case-A", start: "14:00", end: "15:00" }]);
+
+      const calls = (sendRescheduleEmailSpy.mock.calls as unknown as unknown[][]).map((args) =>
+        JSON.parse(JSON.stringify(args).replace(/\u202f/g, " ")),
+      );
+      expect(calls).toEqual([
+        [
+          "firm@example.com",
+          "Saturday, June 15, 2999",
+          "requestee",
+          {
+            timeStr: "2:00 PM – 3:00 PM CT",
+            caseTimes: [{ title: "Smith v. Jones", time: "2:00 PM – 3:00 PM CT" }],
+            askToConfirm: true,
+          },
+        ],
+      ]);
+    });
+
+    /**
+     * The firm's email after a reschedule whose re-read fails (so nothing but the
+     * emails follows the writes), for a case in the given state.
+     */
+    const firmEmailAfterReschedule = async (date: string, theCase: { status: string; admin_status: string }) => {
+      state.participantEmails.set("firm-1", "firm@example.com");
+      state.responses = [
+        ...preamble(),
+        { data: null, error: { message: "read failed" } }, // the resync's re-read
+        { data: [], error: null }, // who to email
+        { data: [{ id: "case-A", title: "Smith v. Jones", user_id: "firm-1", ...theCase }], error: null },
+      ];
+      await rescheduleSession("s-1", date, [{ caseId: "case-A", start: "14:00", end: "15:00" }]);
+      const [[, , , details]] = sendRescheduleEmailSpy.mock.calls as unknown as unknown[][];
+      return details;
+    };
+
+    it("Doesn't tell a firm to confirm when its dashboard won't ask", async () => {
+      // A case already on the Past tab (Reschedule is on the admin's Past tab too).
+      expect(await firmEmailAfterReschedule(FUTURE, { status: "previous", admin_status: "approved" })).toMatchObject({
+        askToConfirm: false,
+      });
+      sendRescheduleEmailSpy.mockClear();
+      // A case moved to a time that has gone by: the dashboard files it under Past.
+      expect(await firmEmailAfterReschedule(PAST, { status: "current", admin_status: "approved" })).toMatchObject({
+        askToConfirm: false,
+      });
+    });
+
     it("Moves the cooldown with the session", async () => {
       // Anchored to the session end. Left stale on a session moved LATER, the
       // participant becomes eligible again before the session they are still
@@ -2497,7 +2658,7 @@ describe("Sessions", () => {
         ...tail(),
       ];
 
-      await rescheduleSession("s-1", FUTURE, updates, "UTC");
+      await rescheduleSession("s-1", FUTURE, updates);
 
       const cooldown = state.captured.find(
         (c) =>
@@ -2672,11 +2833,11 @@ describe("Sessions", () => {
     const calls: Array<[name: string, run: (a: Actions) => Promise<unknown>]> = [
       ["createSession", (a) => a.createSession("2026-12-01")],
       ["addCasesToSession", (a) =>
-        a.addCasesToSession("s-1", [{ caseId: "case-A", start: "09:00", end: "17:00" }], "2026-12-01", "UTC")],
+        a.addCasesToSession("s-1", [{ caseId: "case-A", start: "09:00", end: "17:00" }], "2026-12-01")],
       ["notifyRequesteesSessionCreated", (a) =>
         a.notifyRequesteesSessionCreated("s-1", ["case-A"], "2026-12-01")],
       ["rescheduleSession", (a) =>
-        a.rescheduleSession("s-1", "2999-12-30", [{ caseId: "case-A", start: "09:00", end: "17:00" }], "UTC")],
+        a.rescheduleSession("s-1", "2999-12-30", [{ caseId: "case-A", start: "09:00", end: "17:00" }])],
       ["adminRespondOnBehalf", (a) => a.adminRespondOnBehalf("s-1", "p-1", "accepted")],
       ["callInWaitlistParticipant", (a) => a.callInWaitlistParticipant("s-1", "p-1")],
       ["markWaitlistWaitedOut", (a) => a.markWaitlistWaitedOut("s-1", "p-1")],

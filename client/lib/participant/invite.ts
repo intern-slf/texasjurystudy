@@ -14,7 +14,7 @@ import { isOffline } from "@/lib/case/deliveryMode";
 import { getSessionDeliveryModeOrDefault } from "@/lib/case/getSessionDeliveryMode";
 import { NO_LOGIN_REASON, getIdsWithoutLogin } from "@/lib/participant/loginAccount";
 import { revalidatePath } from "next/cache";
-import { formatSessionSpan } from "@/lib/timezone";
+import { formatSessionDate, formatSessionSpan } from "@/lib/timezone";
 
 /**
  * Outcome of an invite attempt. Returned rather than thrown so the caller can
@@ -361,12 +361,7 @@ async function inviteToSessionInner(
         }
       }
       const dateStr = sessionDate
-        ? new Date(sessionDate).toLocaleDateString("en-US", {
-          weekday: "long",
-          year: "numeric",
-          month: "long",
-          day: "numeric",
-        })
+        ? formatSessionDate(sessionDate)
         : "TBD";
 
       const secret = process.env.EMAIL_ACTION_SECRET!;

@@ -703,6 +703,30 @@ describe("Cases", () => {
       expect(write.filters).toContainEqual(AWAITING);
     });
 
+    it("Confirming a case in a session makes its start the preferred time, not its end", async () => {
+      // In a session, admin_scheduled_at is when the case ENDS: 10-11 AM CST is
+      // 17:00 UTC. Copied as it was, the firm's Preferred Date became 11 AM.
+      serverState.responses = [
+        {
+          data: {
+            admin_scheduled_at: "2026-11-05T17:00:00.000Z",
+            session_cases: [
+              { start_time: "16:00:00", end_time: "17:00:00", sessions: { session_date: "2026-11-05" } },
+            ],
+          },
+          error: null,
+        },
+        { data: null, error: null },
+      ];
+
+      await respondToSchedule(form({ caseId: "case-sched-1", response: "accepted" }));
+
+      const [write] = caseUpdates();
+      expect(updatePayload(write)).toEqual({ schedule_status: "accepted", scheduled_at: "2026-11-05T16:00:00.000Z" });
+      // Still answered only while that same end time stands.
+      expect(write.eqs).toContainEqual(["admin_scheduled_at", "2026-11-05T17:00:00.000Z"]);
+    });
+
     it("Decline records the answer only", async () => {
       serverState.responses = [
         { data: { admin_scheduled_at: "2026-06-10T17:00:00Z" }, error: null },
@@ -767,6 +791,41 @@ describe("Cases", () => {
       expect(write.filters).toContainEqual(["in", "admin_status", ["all", "rejected"]]);
     });
 
+    it("Saves the Schedule field as Central Time, and the deadline at 11:59 PM Central", async () => {
+      // The server action runs on UTC: new Date("2026-11-05T10:00") stored 10:00
+      // UTC, 4 AM CST. The deadline was 11:59 PM UTC, 6:59 PM CDT.
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-10-15T01:00:00Z")); // 8 PM CDT on Oct 14
+      // In UTC, as the server runs. On a machine set to Central Time the old code
+      // happened to give the right answers.
+      const zone = process.env.TZ;
+      process.env.TZ = "UTC";
+      try {
+        serverState.responses = [{ data: null, error: null }];
+
+        await updateCase(
+          form({ ...details, scheduled_at: "2026-11-05T10:00", session_completion_timeframe: "Within a Week" }),
+        );
+
+        expect(updatePayload(caseUpdates()[0])).toMatchObject({
+          scheduled_at: "2026-11-05T16:00:00.000Z",
+          deadline_date: "2026-10-22T04:59:00.000Z", // Oct 21, 11:59 PM CDT
+        });
+      } finally {
+        vi.useRealTimers();
+        if (zone === undefined) delete process.env.TZ;
+        else process.env.TZ = zone;
+      }
+    });
+
+    it("Clears the schedule and deadline when the form sends none", async () => {
+      serverState.responses = [{ data: null, error: null }];
+
+      await updateCase(form(details));
+
+      expect(updatePayload(caseUpdates()[0])).toMatchObject({ scheduled_at: null, deadline_date: null });
+    });
+
     it("Drops the format once the case is in a session", async () => {
       serverState.responses = [
         { data: [{ id: "sc-1" }], error: null }, // session_cases: scheduled
@@ -827,16 +886,27 @@ describe("Cases", () => {
 
     it("Sets admin_scheduled_at and resets schedule_status, so the firm must confirm", async () => {
       asAdmin();
-      const { localToUTC } = await import("@/lib/timezone");
 
-      await proposeScheduleAction(form({ caseId: "case-1", scheduled_at: "2026-07-01T15:30", tz: "America/Chicago" }));
+      // Central Time, whatever zone a stale form says: 3:30 PM CDT is 20:30 UTC.
+      // The admin's browser zone used to be sent and used.
+      await proposeScheduleAction(form({ caseId: "case-1", scheduled_at: "2026-07-01T15:30", tz: "Asia/Kolkata" }));
 
       const [write] = caseUpdates();
       expect(updatePayload(write)).toEqual({
-        admin_scheduled_at: localToUTC("2026-07-01", "15:30", "America/Chicago"),
+        admin_scheduled_at: "2026-07-01T20:30:00.000Z",
         schedule_status: "pending",
       });
       expect(write.eqs).toEqual([["id", "case-1"]]);
+    });
+
+    it("Refuses a time it can't read, before writing", async () => {
+      asAdmin();
+      for (const scheduled_at of ["", "2026-07-01", "2026-02-30T10:00", "2026-07-01T25:00"]) {
+        await expect(proposeScheduleAction(form({ caseId: "case-1", scheduled_at }))).rejects.toThrow(
+          "Pick a date and time",
+        );
+      }
+      expect(caseUpdates()).toEqual([]);
     });
 
     it("Refuses anyone but an admin, even on the firm's own case", async () => {
@@ -846,12 +916,12 @@ describe("Cases", () => {
       for (const role of ["requestee", "participant", "blacklisted", null]) {
         serverState.role = role;
         await expect(
-          proposeScheduleAction(form({ caseId: "case-own", scheduled_at: "2026-07-01T15:30", tz: "UTC" }))
+          proposeScheduleAction(form({ caseId: "case-own", scheduled_at: "2026-07-01T15:30" }))
         ).rejects.toThrow("Not authorized");
       }
       serverState.user = null;
       await expect(
-        proposeScheduleAction(form({ caseId: "case-own", scheduled_at: "2026-07-01T15:30", tz: "UTC" }))
+        proposeScheduleAction(form({ caseId: "case-own", scheduled_at: "2026-07-01T15:30" }))
       ).rejects.toThrow("Not authenticated");
 
       expect(serverState.captured.filter((c) => c.table !== "roles")).toEqual([]);
