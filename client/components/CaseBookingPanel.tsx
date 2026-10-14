@@ -1,6 +1,12 @@
 import { requireAdmin } from "@/lib/requireAdmin";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { getBookingsForCases, getBookingsForSlots, getOpenSlots, toBookingView } from "@/lib/slotBookingData";
+import {
+  getBookingsForCases,
+  getBookingsForSlots,
+  getOpenSlots,
+  toBookingView,
+  type BookingDetail,
+} from "@/lib/slotBookingData";
 import { describeSlot } from "@/lib/requesteeTimeSlots";
 import { slotFitsHours } from "@/lib/slotBooking";
 import BookingSummary from "@/components/BookingSummary";
@@ -8,6 +14,16 @@ import BookingAdminControls from "@/components/BookingAdminControls";
 import AssignSlotControl from "@/components/AssignSlotControl";
 
 const SIX_MONTHS_MS = 183 * 24 * 60 * 60 * 1000;
+
+/** The panel with one line in it, for when its data can't be read. */
+function Notice({ children }: { children: React.ReactNode }) {
+  return (
+    <section className="rounded-xl border bg-white p-5 shadow-sm sm:p-8">
+      <h3 className="mb-4 text-xl font-bold">Time slot</h3>
+      <p className="text-sm text-slate-600">{children}</p>
+    </section>
+  );
+}
 
 /**
  * The admin case page's "Time slot" box: the slot the case holds and its payment,
@@ -37,17 +53,15 @@ export default async function CaseBookingPanel({ caseId }: { caseId: string }) {
       getOpenSlots(new Date(nowMs).toISOString(), new Date(nowMs + SIX_MONTHS_MS).toISOString()),
     ]);
   } catch (err) {
-    // Most likely the booking tables don't exist yet (migrations not run). The
-    // rest of the case page still works.
+    // On a new deploy, most likely the booking tables don't exist yet. The rest
+    // of the case page still works.
     console.error("[CaseBookingPanel] couldn't read the booking:", err);
     return (
-      <section className="rounded-xl border bg-white p-5 shadow-sm sm:p-8">
-        <h3 className="mb-4 text-xl font-bold">Time slot</h3>
-        <p className="text-sm text-slate-600">
-          Couldn&apos;t load this case&apos;s time slot. If this is a new deploy, run the time-slot migrations
-          (20261014_requestee_time_slots.sql, then 20261016_requestee_slot_bookings.sql) and reload.
-        </p>
-      </section>
+      <Notice>
+        Couldn&apos;t load this case&apos;s time slot. Reload the page. If this is a new deploy, check that the
+        time-slot migrations (20261014_requestee_time_slots.sql, then 20261016_requestee_slot_bookings.sql) have
+        been run.
+      </Notice>
     );
   }
   const [{ data: theCase }, records, openSlots] = loaded;
@@ -58,7 +72,15 @@ export default async function CaseBookingPanel({ caseId }: { caseId: string }) {
 
   let content: React.ReactNode;
   if (slot) {
-    const detail = (await getBookingsForSlots([slot.id]).catch(() => new Map())).get(slot.id);
+    // The read above found this slot, so the tables exist: a failure here is a
+    // real one, not a booking that changed while the page loaded.
+    let detail: BookingDetail | undefined;
+    try {
+      detail = (await getBookingsForSlots([slot.id])).get(slot.id);
+    } catch (err) {
+      console.error("[CaseBookingPanel] couldn't read the booking's details:", err);
+      return <Notice>Couldn&apos;t load this case&apos;s booking. Reload the page.</Notice>;
+    }
     const booking = detail ? toBookingView(detail, slot, nowMs) : null;
     content = booking ? (
       <div className="space-y-4">

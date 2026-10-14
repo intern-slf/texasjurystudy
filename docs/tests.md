@@ -462,6 +462,60 @@ Not covered: the migration itself (no database in this suite; the SQL checks its
 | Admin | Both return the admin's id, reading only their own `roles` row. |
 | Anyone else | `requireAdmin` throws "Not authorized" for a firm, participant, blacklisted login or one with no `roles` row, even with `user_metadata.role` set to admin, and "Not authenticated" signed out. `requireAdminPage` redirects the same callers to `/dashboard` and a signed-out visitor to `/auth/login`, before any `roles` read. |
 
+### 3.23 [requestee-time-slots.test.ts](../client/__tests__/requestee-time-slots.test.ts) — the admin's open time slots
+
+**Subject:** `planTimeSlots`, `findOverlappingSlot` and the calendar helpers in [lib/requesteeTimeSlots](../client/lib/requesteeTimeSlots.ts), and the real `createRequesteeTimeSlots` / `deleteRequesteeTimeSlot` actions with the server client mocked.
+
+| Case | Coverage |
+|---|---|
+| Planning | Central Time becomes the right instants (CDT and CST); a weekly series keeps its wall-clock time across the November change; the note is trimmed; bad input, slots already started and times in the hour skipped in March are refused. |
+| Overlaps | Partial and contained overlaps are found, slots that only touch are fine, and every week of a series is checked. |
+| Calendar | Whole weeks Sunday to Saturday, months across a year end, only a real month in `?month=`, a late-evening slot filed under its Central date, plain spaces in times. |
+| Actions | One row per week with the admin recorded; an overlap names the slot in the way and saves nothing; input is checked before any read; a failed overlap check saves nothing; a booked slot can't be deleted (it says to release the booking first); a non-uuid id is refused without a query. |
+
+### 3.24 [slot-booking-rules.test.ts](../client/__tests__/slot-booking-rules.test.ts) — payment deadline and which slots a case can book
+
+**Subject:** the pure rules in [lib/slotBooking](../client/lib/slotBooking.ts).
+
+| Case | Coverage |
+|---|---|
+| Deadline | 24 working hours, Monday to Friday on the Central clock (Tue → Wed, Fri → Mon, a weekend booking → end of Monday), the wall-clock time kept across both clock changes. |
+| Lead time | A slot must start 48 working hours ahead, so payment is due at least a working day before it. |
+| Fit | A slot must be at least as long as the hours requested; empty or zero hours count as one, as pricing does. |
+| State and labels | open, unpaid, overdue, paid and past; deadlines shown in Central Time; a firm named by its agreement, then its email. |
+
+### 3.25 [admin-slot-booking.test.ts](../client/__tests__/admin-slot-booking.test.ts) — the admin's booking actions
+
+**Subject:** the real actions in [lib/actions/adminSlotBooking](../client/lib/actions/adminSlotBooking.ts), over an in-memory database ([helpers/fakeSupabase](../client/__tests__/helpers/fakeSupabase.ts)) that enforces the table's keys.
+
+| Case | Coverage |
+|---|---|
+| Who | Every action refuses a firm, a participant and a signed-out caller, writing nothing. |
+| Payment | Mark paid (once) and unpaid. |
+| Release | Not for non-payment before the deadline or on a paid booking; an overdue release stops the clock and tells the firm it can pick again; another reason keeps the clock; nothing changes if the booking moved since the page loaded; a failed firm email still succeeds, with a warning. |
+| Move and assign | A move keeps the clock and any payment, and refuses another case's slot or the past. Booking for a firm refuses in-person and rejected cases and a case that already holds a slot, starts a new clock or reuses a running one, and never asks a paid firm to pay. |
+
+### 3.26 [firm-slot-booking.test.ts](../client/__tests__/firm-slot-booking.test.ts) — a firm booking its time
+
+**Subject:** the real actions in [lib/actions/requesteeSlotBooking](../client/lib/actions/requesteeSlotBooking.ts) over the same in-memory database, with `requireRequestee` reading `roles`.
+
+| Case | Coverage |
+|---|---|
+| Who | Every action refuses participants, admins and signed-out callers, writing nothing. |
+| Open times | Only free slots far enough ahead, with nothing about other firms. |
+| Booking | Holds a free slot and starts the clock; another firm's case gets the same answer as a missing one; approved, rejected, archived and in-person cases, and slots too soon, too short or gone, are refused; losing a race says so; a switch keeps the clock and any payment; a re-book after a cancel keeps the clock. |
+| Cancelling | Frees the slot and keeps the clock; refused for a paid time or an approved case. |
+
+### 3.27 [case-booking-views.test.ts](../client/__tests__/case-booking-views.test.ts) — the booking boxes when a read fails
+
+**Subject:** the async server components `CaseTimeSlotCard` (the firm's "Focus group time" box) and `CaseBookingPanel` (the admin case page's "Time slot" box), called directly and rendered with `renderToStaticMarkup`, and the Time Slots page. The booking reads, Supabase and the client controls are mocked.
+
+| Case | Coverage |
+|---|---|
+| Firm's box | If the open times can't be read, the firm still sees the time it holds and its payment deadline, with a reload message instead of the controls, and the error is logged; with both reads working the controls show; if the booking itself can't be read, the box is left out. |
+| Admin's box | A failed read of the booking's details is logged and named as such, not passed off as "the booking changed while the page loaded" (which still shows when the booking is really gone); every read working shows the booking and its controls; a failed first read points at the migrations. |
+| Time Slots page | Checks for an admin (`requireAdminPage`) before any read. |
+
 ---
 
 ## 4. Mocking patterns used across the suite

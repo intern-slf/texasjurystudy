@@ -24,6 +24,7 @@ import { Calendar, Clock, AlertCircle, FileText, Upload, ArrowRight } from "luci
 import LocalDateTime from "@/components/LocalDateTime";
 import { getBookingsForCases } from "@/lib/slotBookingData";
 import { describeSlot, type TimeSlot } from "@/lib/requesteeTimeSlots";
+import { SUPPORT_EMAIL } from "@/lib/legal-constants";
 import { TEXAS_COUNTIES } from "@/lib/constants/texas-counties";
 import {
   deliveryModeLabel,
@@ -151,13 +152,16 @@ export default async function RequesteeDashboard({
 
   const { data: cases } = await caseQuery;
 
-  // The time slot each case holds. Read with the service role, but only for the
-  // cases above, which the query already limits to this firm's own.
+  // The time slot each case holds, and which cases have paid for one. Read with
+  // the service role, but only for the cases above, which the query already
+  // limits to this firm's own.
   const heldSlotByCase = new Map<string, TimeSlot>();
+  const paidCaseIds = new Set<string>();
   try {
     const bookings = await getBookingsForCases((cases ?? []).map((c) => c.id as string));
     for (const [bookedCaseId, booking] of bookings) {
       if (booking.slot) heldSlotByCase.set(bookedCaseId, booking.slot);
+      if (booking.paid_at) paidCaseIds.add(bookedCaseId);
     }
   } catch (err) {
     console.error("[requestee dashboard] bookings failed:", err);
@@ -225,12 +229,15 @@ export default async function RequesteeDashboard({
     const { data: { user: activeUser } } = await supabase.auth.getUser();
     if (!activeUser) return;
 
-    await supabase
+    const { error } = await supabase
       .from("cases")
       .delete()
       .eq("id", caseId)
       .eq("user_id", activeUser.id)
       .eq("status", "previous");
+    // The database refuses a case with a paid time-slot booking, whose payment
+    // record would go with it; the page offers those an email to us instead.
+    if (error) console.error("[requestee dashboard] delete refused:", error.message);
 
     revalidatePath("/dashboard/requestee");
   }
@@ -726,12 +733,22 @@ export default async function RequesteeDashboard({
                         </form>
                       )}
 
-                      <form action={permanentDeleteCase}>
-                        <input type="hidden" name="case_id" value={c.id} />
-                        <Button size="sm" variant="outline" className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200">
-                            Permanently Delete
-                        </Button>
-                      </form>
+                      {paidCaseIds.has(c.id) ? (
+                        <p className="text-sm text-muted-foreground">
+                          This case has a paid focus group booking. To delete it, email us at{" "}
+                          <a href={`mailto:${SUPPORT_EMAIL}`} className="font-medium text-primary hover:underline">
+                            {SUPPORT_EMAIL}
+                          </a>
+                          .
+                        </p>
+                      ) : (
+                        <form action={permanentDeleteCase}>
+                          <input type="hidden" name="case_id" value={c.id} />
+                          <Button size="sm" variant="outline" className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200">
+                              Permanently Delete
+                          </Button>
+                        </form>
+                      )}
                       </div>
 
                       <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg border">

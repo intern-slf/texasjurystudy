@@ -425,7 +425,7 @@ Times an admin opens for law firms to book an online focus group (`20261014_requ
 
 **Code access:**
 - Admin: the Time Slots page (`client/app/dashboard/Admin/requestees/time-slots/page.tsx`) reads one month. The sidebar count in `client/app/dashboard/Admin/layout.tsx` reads too. `client/lib/actions/requesteeTimeSlots.ts` inserts and deletes. All three use the signed-in admin's client, so the policy below applies, and the actions call `requireAdmin()` first.
-- Requestees: none yet. When booking arrives, firms will get open slots from server actions, never from this table, so one firm can't see which slots another firm took.
+- Requestees: never this table. They get open slots from `listOpenTimeSlots` in `client/lib/actions/requesteeSlotBooking.ts`, which reads with the service role and returns only each slot's own fields, so one firm can't see which slots another firm took.
 
 **Policies (created by the migration):**
 
@@ -446,6 +446,7 @@ Which case holds which time slot, and whether the firm has paid (`20261016_reque
 - Admin reads with the service role, in `client/lib/slotBookingData.ts` (it joins the firm's name from `confidentiality_agreements_requestee`, which admins can't read under RLS). The Time Slots page and the case page's Time slot box check for an admin themselves before calling it; the case lists and Build Session only ask about cases the admin's own client already returned.
 - Firms: never this table. `client/lib/actions/requesteeSlotBooking.ts` (`listOpenTimeSlots`, `chooseTimeSlot`, `cancelMyTimeSlot`) reads and writes it with the service role after `requireRequestee()` (`client/lib/requireRequestee.ts`, which reads `roles`, not `user_metadata`) and after checking the case is the caller's own (`user_id` or `requestee_id`) and still under review, online and not archived. Another firm's case gets the same answer as a missing one, and the open-times list carries only each slot's own fields. The firm's case page and dashboard read the bookings of cases their own user-scoped queries returned.
 - Trigger `cases_release_slot_booking` on `cases` updates it as SECURITY DEFINER, so a firm archiving its own case frees its unpaid hold. It only ever clears `slot_id` on that case's own row; EXECUTE is revoked from PUBLIC, `anon` and `authenticated`.
+- Trigger `cases_keep_paid_slot_booking` (BEFORE DELETE on `cases`) refuses a non-admin's delete of a case whose booking is paid. Without it, the "user can delete own cases" policy (open under F28) would let a firm delete the payment record along with its case, since the row cascades. The trigger runs with the caller's rights and reads the booking through `public.own_case_slot_booking_is_paid(uuid)`, which is SECURITY DEFINER but answers only about the caller's own cases (EXECUTE for `authenticated` only).
 
 **Policies (created by the migration):**
 

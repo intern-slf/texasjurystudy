@@ -1,7 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { requireRequestee } from "@/lib/requireRequestee";
 import { SUPPORT_EMAIL } from "@/lib/legal-constants";
-import { describeSlot } from "@/lib/requesteeTimeSlots";
+import { describeSlot, type TimeSlot } from "@/lib/requesteeTimeSlots";
 import { earliestBookableStart, formatDeadline, paymentDueAt } from "@/lib/slotBooking";
 import { getBookingsForCases, getOpenSlots } from "@/lib/slotBookingData";
 import CaseTimeSlotControls from "@/components/CaseTimeSlotControls";
@@ -37,16 +37,27 @@ export default async function CaseTimeSlotCard({ caseId }: { caseId: string }) {
   const canChange = !offline && underReview;
 
   let record;
-  let openSlots;
   try {
     record = (await getBookingsForCases([caseId])).get(caseId);
-    openSlots = canChange
-      ? await getOpenSlots(earliestBookableStart(nowMs).toISOString(), new Date(nowMs + SIX_MONTHS_MS).toISOString())
-      : [];
   } catch (err) {
     // Most likely the booking tables don't exist yet; the rest of the page works.
     console.error("[CaseTimeSlotCard] couldn't read the booking:", err);
     return null;
+  }
+
+  // The open times are only for the controls. If they can't be read, the firm
+  // still sees the time it holds and its payment deadline.
+  let openSlots: TimeSlot[] | null = [];
+  if (canChange) {
+    try {
+      openSlots = await getOpenSlots(
+        earliestBookableStart(nowMs).toISOString(),
+        new Date(nowMs + SIX_MONTHS_MS).toISOString()
+      );
+    } catch (err) {
+      console.error("[CaseTimeSlotCard] couldn't read the open times:", err);
+      openSlots = null;
+    }
   }
   const slot = record?.slot ?? null;
   const due = record?.held_since && !record.paid_at ? paymentDueAt(record.held_since) : null;
@@ -87,7 +98,7 @@ export default async function CaseTimeSlotCard({ caseId }: { caseId: string }) {
         </p>
       )}
 
-      {canChange ? (
+      {canChange && openSlots ? (
         <CaseTimeSlotControls
           caseId={caseId}
           hasSlot={!!slot}
@@ -95,6 +106,10 @@ export default async function CaseTimeSlotCard({ caseId }: { caseId: string }) {
           openSlots={openSlots}
           hoursRequested={theCase.hours_requested}
         />
+      ) : canChange ? (
+        <p className="text-sm text-muted-foreground">
+          Couldn&apos;t load our open times. Reload the page to pick or change a time.
+        </p>
       ) : (
         slot && (
           <p className="text-sm text-muted-foreground">To change this time, email us at {contact}.</p>

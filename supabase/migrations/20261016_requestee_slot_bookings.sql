@@ -19,7 +19,9 @@
 --   * slot_id is UNIQUE: a slot is held by at most one case, so two firms
 --     racing for the same slot can't both get it (the second gets 23505).
 --   * Deleting a booked slot is refused (ON DELETE RESTRICT, 23503); the admin
---     moves or cancels the booking first. Deleting a case deletes its row.
+--     moves or cancels the booking first. Deleting a case deletes its row,
+--     except that a firm can't delete a case whose booking is paid (the second
+--     trigger at the end): paid_at is the only record of the payment.
 --
 -- Released automatically, by the trigger at the end: an unpaid hold on a slot
 -- that hasn't started, when its case is rejected, archived while still under
@@ -32,11 +34,28 @@
 -- another firm's booking. Explicit grants, because Supabase stops granting new
 -- public tables automatically on 2026-10-30.
 --
--- Needs 20261014_requestee_time_slots.sql first. Run this BEFORE deploying the
--- app change. Safe to re-run. Run in Supabase SQL Editor.
+-- Needs 20261014_requestee_time_slots.sql and 20261005_protect_case_admin_fields.sql
+-- (F28, for public.caller_is_admin()) first, and refuses to run without them.
+-- Run this BEFORE deploying the app change. Safe to re-run. Run in Supabase SQL
+-- Editor; the query at the end shows the result.
 -- =============================================================================
 
 BEGIN;
+
+-- The triggers below lock cases against writes until COMMIT. If something else
+-- holds a lock on it, give up after 5 seconds rather than queue every app query
+-- on cases behind this one.
+SET LOCAL lock_timeout = '5s';
+
+DO $$
+BEGIN
+  IF to_regclass('public.requestee_time_slots') IS NULL THEN
+    RAISE EXCEPTION 'Run 20261014_requestee_time_slots.sql first; nothing changed';
+  END IF;
+  IF to_regprocedure('public.caller_is_admin()') IS NULL THEN
+    RAISE EXCEPTION 'Run 20261005_protect_case_admin_fields.sql first; nothing changed';
+  END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS public.requestee_slot_bookings (
   case_id uuid NOT NULL,
@@ -134,6 +153,73 @@ CREATE TRIGGER cases_release_slot_booking
   FOR EACH ROW
   EXECUTE FUNCTION public.release_slot_booking_on_case_change();
 
+-- -----------------------------------------------------------------------------
+-- Keep a paid booking when a firm deletes its case.
+--
+-- A case's booking row goes with the case (the foreign key cascades), and
+-- paid_at is the only record that the firm paid. A firm can delete its own case
+-- (the cases DELETE policies, and the dashboard's Permanently Delete on archived
+-- and past cases), so it can't delete one whose booking is paid: it asks us.
+-- Admins on their own login, server code (service role) and the SQL Editor
+-- (postgres) can, as with protect_case_admin_fields (20261005).
+-- -----------------------------------------------------------------------------
+
+-- Whether one of the caller's own cases has a paid booking. SECURITY DEFINER
+-- because firms can't read this table. It answers only about the caller's own
+-- cases, so calling it directly tells nobody anything about another firm's.
+CREATE OR REPLACE FUNCTION public.own_case_slot_booking_is_paid(p_case_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+      FROM public.requestee_slot_bookings b
+      JOIN public.cases c ON c.id = b.case_id
+     WHERE b.case_id = p_case_id
+       AND b.paid_at IS NOT NULL
+       AND (c.user_id = auth.uid() OR c.requestee_id = auth.uid())
+  );
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.own_case_slot_booking_is_paid(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.own_case_slot_booking_is_paid(uuid) TO authenticated;
+
+-- Runs with the caller's rights, like protect_case_admin_fields, so that
+-- current_user says who is deleting.
+CREATE OR REPLACE FUNCTION public.keep_paid_slot_booking_on_case_delete()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+BEGIN
+  IF current_user NOT IN ('authenticated', 'anon') THEN
+    RETURN OLD;
+  END IF;
+  -- Signed out: the DELETE policies need auth.uid(), so this isn't reached
+  -- today, and anon can call neither function below. Refuse it outright.
+  IF current_user = 'anon' THEN
+    RAISE EXCEPTION 'Sign in to delete a case.' USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  IF public.caller_is_admin() THEN
+    RETURN OLD;
+  END IF;
+  IF public.own_case_slot_booking_is_paid(OLD.id) THEN
+    RAISE EXCEPTION 'This case has a paid focus group booking, so only staff can delete it.'
+      USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  RETURN OLD;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS cases_keep_paid_slot_booking ON public.cases;
+CREATE TRIGGER cases_keep_paid_slot_booking
+  BEFORE DELETE ON public.cases
+  FOR EACH ROW
+  EXECUTE FUNCTION public.keep_paid_slot_booking_on_case_delete();
+
 -- Self-check: with an unpaid hold on a future slot, rejecting the case frees
 -- the slot and stops the clock; with a paid hold, it doesn't. Uses a slot and a
 -- case that already exist, and undoes everything (the 'self-check: undo'
@@ -195,4 +281,98 @@ BEGIN
   END;
 END $$;
 
+-- Self-check for the delete guard, acting as the firm that owns a case (looked
+-- up first, as postgres: once acting as a user, RLS hides other rows). With a
+-- paid booking its delete is refused; with an unpaid one the guard lets it
+-- through. Undone the same way. Skipped when there is no firm case without a
+-- booking to try it on.
+DO $$
+DECLARE
+  firm uuid;
+  firm_case uuid;
+  changed integer;
+BEGIN
+  SELECT c.id, c.user_id INTO firm_case, firm
+  FROM public.cases c
+  WHERE c.user_id IS NOT NULL
+    AND NOT EXISTS (SELECT 1 FROM public.roles r WHERE r.user_id = c.user_id AND r.role = 'admin')
+    AND NOT EXISTS (SELECT 1 FROM public.requestee_slot_bookings b WHERE b.case_id = c.id)
+  LIMIT 1;
+
+  IF firm_case IS NULL THEN
+    RETURN;
+  END IF;
+
+  -- 3. Paid: the firm can't delete the case.
+  BEGIN
+    INSERT INTO public.requestee_slot_bookings (case_id, held_since, paid_at)
+    VALUES (firm_case, now(), now());
+    SET LOCAL ROLE authenticated;
+    PERFORM set_config('request.jwt.claims', json_build_object('sub', firm, 'role', 'authenticated')::text, true);
+    PERFORM set_config('request.jwt.claim.sub', firm::text, true);
+    BEGIN
+      DELETE FROM public.cases WHERE id = firm_case;
+      -- No row means the firm can't delete its case at all, which is fine too.
+      GET DIAGNOSTICS changed = ROW_COUNT;
+      IF changed > 0 THEN
+        RAISE EXCEPTION 'Self-check: a firm could delete its case and the paid booking with it; nothing changed';
+      END IF;
+    EXCEPTION WHEN insufficient_privilege THEN
+      IF SQLERRM NOT LIKE 'This case has a paid focus group booking%' THEN
+        RAISE;
+      END IF;
+    END;
+    RAISE EXCEPTION 'self-check: undo';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM <> 'self-check: undo' THEN
+      RAISE;
+    END IF;
+  END;
+
+  -- 4. Unpaid: the guard lets the delete through.
+  BEGIN
+    INSERT INTO public.requestee_slot_bookings (case_id, held_since)
+    VALUES (firm_case, now());
+    SET LOCAL ROLE authenticated;
+    PERFORM set_config('request.jwt.claims', json_build_object('sub', firm, 'role', 'authenticated')::text, true);
+    PERFORM set_config('request.jwt.claim.sub', firm::text, true);
+    BEGIN
+      DELETE FROM public.cases WHERE id = firm_case;
+    EXCEPTION
+      -- Another table still pointing at the case isn't this trigger's refusal.
+      WHEN foreign_key_violation THEN
+        NULL;
+      WHEN insufficient_privilege THEN
+        IF SQLERRM LIKE 'This case has a paid focus group booking%' THEN
+          RAISE EXCEPTION 'Self-check: a firm could not delete its case with an unpaid booking; nothing changed';
+        END IF;
+        RAISE;
+    END;
+    RAISE EXCEPTION 'self-check: undo';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM <> 'self-check: undo' THEN
+      RAISE;
+    END IF;
+  END;
+END $$;
+
 COMMIT;
+
+-- Verify: one row, reading true, true, true, false. Ends in LIMIT because the
+-- SQL Editor adds "limit 100" to a SELECT that has none.
+SELECT
+  EXISTS (
+    SELECT 1 FROM pg_trigger t
+    WHERE t.tgrelid = 'public.cases'::regclass
+      AND t.tgname = 'cases_release_slot_booking'
+      AND t.tgenabled = 'O'
+  ) AS release_trigger_enabled,
+  EXISTS (
+    SELECT 1 FROM pg_trigger t
+    WHERE t.tgrelid = 'public.cases'::regclass
+      AND t.tgname = 'cases_keep_paid_slot_booking'
+      AND t.tgenabled = 'O'
+  ) AS delete_guard_enabled,
+  has_function_privilege('authenticated', 'public.own_case_slot_booking_is_paid(uuid)', 'EXECUTE') AS signed_in_can_check_own_case,
+  has_function_privilege('anon', 'public.own_case_slot_booking_is_paid(uuid)', 'EXECUTE') AS anon_can_check
+LIMIT 1;
