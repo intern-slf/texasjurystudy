@@ -580,7 +580,7 @@ Not covered: the migration itself (no database in this suite; the SQL checks its
 | `describe` | Coverage |
 |---|---|
 | `paidMinutes`, `formatMinutes` | The hours asked for, or 1 hour when empty or 0, as the receipt prices it; lengths in words. |
-| how long a case runs | From typed Central times, with or without seconds; past midnight; in real time on the nights the clocks change (1-3 AM on the spring-forward morning is 1 hour, 12:30-2:30 AM on the fall-back morning is 3); 0 for an end at the start; null for an unreadable time; from stored UTC times on the session's date. |
+| how long a case runs | From typed Central times ("HH:MM" only, as the writers convert, so seconds or spaces are refused before Build Session creates anything); past midnight; in real time on the nights the clocks change (1-3 AM on the spring-forward morning is 1 hour, 12:30-2:30 AM on the fall-back morning is 3); 0 for an end at the start; null for an unreadable time; from stored UTC times on the session's date. |
 | `paidTimeProblem` | Up to the paid length is fine; longer is refused with what was paid for; a longer length a case already had may stay but not grow; nothing, or unreadable, is refused; `assertPaidTime` throws the same message. |
 | Build Session's end times | Every half hour up to the paid length, ending on it when it isn't a whole half hour, wrapping past midnight; none until there is a start; the picker starts closed and says what the case is paid for. |
 

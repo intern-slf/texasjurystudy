@@ -40,7 +40,7 @@ describe("formatMinutes", () => {
 describe("how long a case runs", () => {
   it("from the Central times an admin types", () => {
     expect(caseMinutes("2026-06-15", "09:00", "12:00")).toBe(180);
-    expect(caseMinutes("2026-06-15", "09:00:00", "10:30:00")).toBe(90);
+    expect(caseMinutes("2026-06-15", "09:00", "10:30")).toBe(90);
   });
 
   it("past midnight, as the pickers wrap", () => {
@@ -58,10 +58,14 @@ describe("how long a case runs", () => {
     expect(caseMinutes("2026-06-15", "09:00", "09:00")).toBe(0);
     expect(caseMinutes("2026-06-15", "9am", "10:00")).toBeNull();
     expect(caseMinutes("2026-06-15", "09:00", "")).toBeNull();
+    // Only what the writers convert: seconds or spaces would pass here and then
+    // crash the write, after Build Session had created the session.
+    expect(caseMinutes("2026-06-15", "09:00:00", "10:00")).toBeNull();
+    expect(caseMinutes("2026-06-15", " 09:00", "10:00")).toBeNull();
     expect(caseMinutes("not a date", "09:00", "10:00")).toBeNull();
   });
 
-  it("from the stored UTC times, on the session's Central date", () => {
+  it("from the stored UTC times, across midnight UTC", () => {
     // 7:30-9 PM CDT on Oct 20, stored on the next UTC day.
     expect(storedCaseMinutes("2026-10-20", "00:30:00", "02:00:00")).toBe(90);
     expect(storedCaseMinutes("2026-10-20", "", "")).toBeNull();

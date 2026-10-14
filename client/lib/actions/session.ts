@@ -498,7 +498,8 @@ export async function rescheduleSession(
     const theCase = one(row.cases);
     assertPaidTime(
       theCase?.title ?? "This case",
-      caseMinutes(newDate, cu.start, cu.end),
+      // The same "HH:MM" the write below converts.
+      caseMinutes(newDate, cu.start.slice(0, 5), cu.end.slice(0, 5)),
       theCase?.hours_requested,
       storedCaseMinutes(one(row.sessions)?.session_date, row.start_time, row.end_time) ?? 0,
     );

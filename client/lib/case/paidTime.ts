@@ -44,26 +44,19 @@ export function storedCaseMinutes(
   return Math.round((span.end.getTime() - span.start.getTime()) / 60_000);
 }
 
-/** "09:00" from "09:00" or "09:00:00"; null for anything else. */
-function clockOf(value: string): string | null {
-  const v = value.trim();
-  return /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/.test(v) ? v.slice(0, 5) : null;
-}
-
 /**
  * How long a case runs, in minutes, from Central clock times ("HH:MM") as an
  * admin types them, measured as they will be stored. An end before the start is
  * on the next day, as the time pickers wrap past midnight; an end equal to the
- * start is 0. Null when either isn't a clock time.
+ * start is 0. Null for anything but "HH:MM", which is all the writers convert:
+ * a time they would choke on is refused here, before they write anything.
  */
 export function caseMinutes(sessionDate: string, start: string, end: string): number | null {
-  const from = clockOf(start);
-  const to = clockOf(end);
-  if (!calendarDate(sessionDate) || !from || !to) return null;
+  if (!calendarDate(sessionDate) || !CLOCK.test(start) || !CLOCK.test(end)) return null;
   return storedCaseMinutes(
     sessionDate,
-    localToUTCTime(sessionDate, from, CENTRAL_TIME_ZONE),
-    localToUTCTime(sessionDate, to, CENTRAL_TIME_ZONE),
+    localToUTCTime(sessionDate, start, CENTRAL_TIME_ZONE),
+    localToUTCTime(sessionDate, end, CENTRAL_TIME_ZONE),
   );
 }
 
