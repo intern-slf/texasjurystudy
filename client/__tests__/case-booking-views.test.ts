@@ -208,13 +208,25 @@ describe("the admin case page's Time slot box", () => {
   it("shows the booking and its controls when every read works", async () => {
     mocks.getBookingsForCases.mockResolvedValue(held());
     mocks.getOpenSlots.mockResolvedValue([]);
-    mocks.getBookingsForSlots.mockResolvedValue(new Map([[SLOT.id, {}]]));
+    mocks.getBookingsForSlots.mockResolvedValue(new Map([[SLOT.id, [{ case_id: "case-1" }]]]));
 
     const page = html(await CaseBookingPanel({ caseId: "case-1" }));
 
     expect(page).toContain(describeSlot(SLOT));
     expect(page).toContain("[booking summary]");
     expect(page).toContain("[booking controls]");
+  });
+
+  it("shows this case's booking, not another case's in the same slot", async () => {
+    mocks.getBookingsForCases.mockResolvedValue(held());
+    mocks.getOpenSlots.mockResolvedValue([]);
+    // Another case shares the slot, and this case's own booking isn't there.
+    mocks.getBookingsForSlots.mockResolvedValue(new Map([[SLOT.id, [{ case_id: "case-2" }]]]));
+
+    const page = html(await CaseBookingPanel({ caseId: "case-1" }));
+
+    expect(page).toContain("changed while the page loaded");
+    expect(page).not.toContain("[booking summary]");
   });
 
   it("points at the migrations when the first read fails", async () => {
@@ -227,7 +239,7 @@ describe("the admin case page's Time slot box", () => {
   it("keeps the booking in view when only the open times fail", async () => {
     mocks.getBookingsForCases.mockResolvedValue(held());
     mocks.getOpenSlots.mockRejectedValue(new Error("open times read failed"));
-    mocks.getBookingsForSlots.mockResolvedValue(new Map([[SLOT.id, {}]]));
+    mocks.getBookingsForSlots.mockResolvedValue(new Map([[SLOT.id, [{ case_id: "case-1" }]]]));
 
     const page = html(await CaseBookingPanel({ caseId: "case-1" }));
 

@@ -2,6 +2,7 @@ import { emailWrapper, escHtml, sendEmail } from "@/lib/mail";
 import { SUPPORT_EMAIL } from "@/lib/legal-constants";
 import { SLOT_TIME_ZONE_LABEL, formatDateKey, formatSlotRange, slotDateKey, type TimeSlot } from "@/lib/requesteeTimeSlots";
 import { formatDeadline } from "@/lib/slotBooking";
+import { formatMinutes, paidMinutes } from "@/lib/case/paidTime";
 
 /**
  * Emails about a firm's booked time slot: to the firm, and a notice to the team
@@ -73,11 +74,14 @@ export async function sendSlotHeldEmail(args: {
   slot: Slot;
   dueAt: Date;
   paid?: boolean;
+  /** The case's hours: what it takes of the slot, which other firms can share. */
+  hoursRequested?: number | null;
 }): Promise<void> {
+  const hours = formatMinutes(paidMinutes(args.hoursRequested));
   const html = emailWrapper(`
     <h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#1e3a8a;">Your Focus Group Time Is Held</h2>
     <p style="margin:0 0 20px;font-size:15px;color:#475569;">
-      We are holding this time for your online focus group.
+      We are holding ${escHtml(hours)} of this time for your online focus group, and will confirm its exact start when we schedule the session.
     </p>
     ${detailTable([
       ["Case", args.caseTitle],

@@ -11,12 +11,12 @@ import {
   slotDateKey,
   type TimeSlot,
 } from "@/lib/requesteeTimeSlots";
-import { slotFitsHours } from "@/lib/slotBooking";
+import { hoursLeftLabel, slotFitsHours } from "@/lib/slotBooking";
 
 type Props = {
-  /** Open slots, earliest first. */
+  /** Open slots, earliest first, with the minutes each has left (other firms' cases can share one). */
   slots: TimeSlot[];
-  /** Only slots at least this long are offered. Empty or 0 counts as 1 hour, as in pricing. */
+  /** Only slots with at least this much left are offered. Empty or 0 counts as 1 hour, as in pricing. */
   hoursRequested: number | null;
   value: string | null;
   /** Called with the picked slot, or null when the firm unpicks it. */
@@ -79,6 +79,7 @@ export default function TimeSlotPicker({
             <div className="flex flex-wrap gap-2">
               {daySlots.map((slot) => {
                 const selected = value === slot.id;
+                const left = hoursLeftLabel(slot);
                 return (
                   <button
                     key={slot.id}
@@ -97,6 +98,7 @@ export default function TimeSlotPicker({
                     <span className="block font-medium">
                       {formatSlotRange(slot)} {SLOT_TIME_ZONE_LABEL}
                     </span>
+                    {left && <span className="block text-xs text-amber-700">{left}</span>}
                     {slot.note && <span className="block text-xs text-muted-foreground">{slot.note}</span>}
                   </button>
                 );

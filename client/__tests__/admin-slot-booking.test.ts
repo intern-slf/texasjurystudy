@@ -219,12 +219,17 @@ describe("moving a booking", () => {
     expect(mail.moved).toHaveBeenCalledWith(expect.objectContaining({ to: "firm@example.com" }));
   });
 
-  it("won't move it onto another case's slot", async () => {
-    expect(await actions.moveBooking(CASE, SLOT_A, SLOT_C)).toEqual({
-      ok: false,
-      error: "Another case has just taken that time. Pick a different one.",
-    });
+  it("won't move it into a slot whose hours other cases have taken", async () => {
+    // Slot C is 2 hours, all of them the other case's.
+    expect(await actions.moveBooking(CASE, SLOT_A, SLOT_C)).toEqual({ ok: false, error: "That time doesn't have enough hours left for this case. Pick a different one." });
     expect(bookingOf(CASE)).toMatchObject({ slot_id: SLOT_A });
+  });
+
+  it("moves it into a slot another case shares, while its hours fit", async () => {
+    for (const c of db.rows("cases")) if (c.id === CASE || c.id === OTHER_CASE) c.hours_requested = 1;
+    expect(await actions.moveBooking(CASE, SLOT_A, SLOT_C)).toMatchObject({ ok: true });
+    expect(bookingOf(CASE)).toMatchObject({ slot_id: SLOT_C });
+    expect(bookingOf(OTHER_CASE)).toMatchObject({ slot_id: SLOT_C });
   });
 
   it("won't move it into the past", async () => {
@@ -264,12 +269,16 @@ describe("booking a slot for a firm", () => {
     expect(mail.held).toHaveBeenCalledWith(expect.objectContaining({ paid: true }));
   });
 
-  it("refuses a slot another case holds", async () => {
+  it("refuses a slot whose hours other cases have taken", async () => {
     seed(null);
-    expect(await actions.assignSlot(CASE, SLOT_C)).toEqual({
-      ok: false,
-      error: "Another case has just taken that time. Pick a different one.",
-    });
+    expect(await actions.assignSlot(CASE, SLOT_C)).toEqual({ ok: false, error: "That time doesn't have enough hours left for this case. Pick a different one." });
     expect(bookingOf(CASE)).toBeUndefined();
+  });
+
+  it("books a slot another case shares, while its hours fit", async () => {
+    seed(null);
+    for (const c of db.rows("cases")) if (c.id === CASE || c.id === OTHER_CASE) c.hours_requested = 1;
+    expect(await actions.assignSlot(CASE, SLOT_C)).toMatchObject({ ok: true });
+    expect(bookingOf(CASE)).toMatchObject({ slot_id: SLOT_C });
   });
 });

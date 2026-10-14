@@ -5,8 +5,13 @@
  * firms racing for one slot and getting what Postgres would give them:
  *
  *   requestee_slot_bookings: case_id is the key (23505 on
- *   requestee_slot_bookings_pkey), slot_id is unique (23505 on
- *   requestee_slot_bookings_slot_key).
+ *   requestee_slot_bookings_pkey). Several cases can share a slot while the
+ *   hours their firms pay for fit in it; a booking or a move past that, or a
+ *   booked case's hours rising past it, gets 23514 "requestee_slot_full", as
+ *   the triggers in 20261017_shared_slot_hours.sql give.
+ *
+ * select() understands one embed, `cases(...)` on requestee_slot_bookings,
+ * which brings the booked case's row along as `cases`.
  *
  * No RLS: tests sign callers in and out through the server-client mock instead.
  */
@@ -32,15 +37,45 @@ export class FakeDb {
     return new Query(this, table);
   }
 
-  /** The unique-key violation a write to `table` would cause, if any. */
+  /** The minutes a case is paid for: its hours, or 1 hour when empty or 0. */
+  paidMinutes(caseId: unknown): number {
+    const hours = Number(this.rows("cases").find((c) => c.id === caseId)?.hours_requested ?? 0);
+    return hours > 0 ? hours * 60 : 60;
+  }
+
+  /** Minutes a slot has left for a case, not counting `caseId`'s own booking. Null for no such slot. */
+  minutesLeft(slotId: unknown, caseId: unknown): number | null {
+    const slot = this.rows("requestee_time_slots").find((s) => s.id === slotId);
+    if (!slot) return null;
+    const length = (Date.parse(String(slot.ends_at)) - Date.parse(String(slot.starts_at))) / 60_000;
+    const taken = this.rows("requestee_slot_bookings")
+      .filter((b) => b.slot_id === slotId && b.case_id !== caseId)
+      .reduce((sum, b) => sum + this.paidMinutes(b.case_id), 0);
+    return length - taken;
+  }
+
+  /** The constraint or trigger a write to `table` would trip, if any. */
   violation(table: string, candidate: Row, ignore?: Row): Result["error"] {
+    const full = { code: "23514", message: "requestee_slot_full: no room left in this slot" };
+    if (table === "cases" && ignore) {
+      // A booked case's hours can't rise past what its slot has left.
+      const before = Number(ignore.hours_requested ?? 0) > 0 ? Number(ignore.hours_requested) * 60 : 60;
+      const after = Number(candidate.hours_requested ?? 0) > 0 ? Number(candidate.hours_requested) * 60 : 60;
+      const booking = this.rows("requestee_slot_bookings").find((b) => b.case_id === candidate.id && b.slot_id != null);
+      if (after > before && booking) {
+        const left = this.minutesLeft(booking.slot_id, candidate.id);
+        if (left !== null && after > left) return full;
+      }
+      return null;
+    }
     if (table !== "requestee_slot_bookings") return null;
     const others = this.rows(table).filter((r) => r !== ignore);
     if (others.some((r) => r.case_id === candidate.case_id)) {
       return { code: "23505", message: 'duplicate key value violates unique constraint "requestee_slot_bookings_pkey"' };
     }
-    if (candidate.slot_id != null && others.some((r) => r.slot_id === candidate.slot_id)) {
-      return { code: "23505", message: 'duplicate key value violates unique constraint "requestee_slot_bookings_slot_key"' };
+    if (candidate.slot_id != null && candidate.slot_id !== ignore?.slot_id) {
+      const left = this.minutesLeft(candidate.slot_id, candidate.case_id);
+      if (left !== null && this.paidMinutes(candidate.case_id) > left) return full;
     }
     return null;
   }
@@ -52,12 +87,14 @@ class Query implements PromiseLike<Result> {
   private payload: Row | Row[] | null = null;
   private returning = false;
   private singleMode: "maybe" | "single" | null = null;
+  private embedsCase = false;
   private orderBy: { column: string; ascending: boolean } | null = null;
 
   constructor(private db: FakeDb, private table: string) {}
 
-  select() {
+  select(columns?: string) {
     if (this.op !== "select") this.returning = true;
+    if (this.table === "requestee_slot_bookings" && /\bcases\(/.test(columns ?? "")) this.embedsCase = true;
     return this;
   }
   eq(column: string, value: unknown) {
@@ -135,11 +172,13 @@ class Query implements PromiseLike<Result> {
   }
 
   private shape(rows: Row[]): Result {
+    const copy = (r: Row): Row =>
+      this.embedsCase ? { ...r, cases: { ...(this.db.rows("cases").find((c) => c.id === r.case_id) ?? {}) } } : { ...r };
     if (this.singleMode) {
       if (rows.length > 1) return { data: null, error: { message: "multiple rows" } };
-      return { data: rows[0] ? { ...rows[0] } : null, error: null };
+      return { data: rows[0] ? copy(rows[0]) : null, error: null };
     }
-    return { data: rows.map((r) => ({ ...r })), error: null };
+    return { data: rows.map(copy), error: null };
   }
 
   private run(): Result {

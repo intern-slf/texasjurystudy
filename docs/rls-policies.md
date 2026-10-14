@@ -439,7 +439,7 @@ Times an admin opens for law firms to book an online focus group (`20261014_requ
 
 ### 🟩 `requestee_slot_bookings` — RLS enabled (2026-10-16)
 
-Which case holds which time slot, and whether the firm has paid (`20261016_requestee_slot_bookings.sql`). One row per case.
+Which case holds hours in which time slot, and whether the firm has paid (`20261016_requestee_slot_bookings.sql`). One row per case. Since `20261017_shared_slot_hours.sql`, several cases can share a slot while their hours fit; triggers refuse an over-full slot, as SECURITY DEFINER functions with EXECUTE revoked (they only count and refuse, never write).
 
 **Code access:**
 - Admin: `client/lib/actions/adminSlotBooking.ts` (mark paid / unpaid, release, move, book for a firm) writes through the admin's own client, after `requireAdmin()`. Every write names the slot the admin saw, so a booking changed in the meantime is never overwritten.

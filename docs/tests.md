@@ -511,19 +511,19 @@ Not covered: the migration itself (no database in this suite; the SQL checks its
 |---|---|
 | Deadline | 24 working hours, Monday to Friday on the Central clock (Tue → Wed, Fri → Mon, a weekend booking → end of Monday), the wall-clock time kept across both clock changes. |
 | Lead time | A slot must start 48 working hours ahead, so payment is due at least a working day before it. |
-| Fit | A slot must be at least as long as the hours requested; empty or zero hours count as one, as pricing does. |
+| Fit | A case fits in what a slot has left when that is known (other cases share it), else in its whole length; empty or zero hours count as one, as pricing does. Firms are told "2 of 3 hours left" once some of a slot is booked. The database's over-full refusal (23514, `requestee_slot_full`) is recognised and nothing else is. |
 | State and labels | open, unpaid, overdue, paid and past; deadlines shown in Central Time; a firm named by its agreement, then its email. |
 
 ### 3.25 [admin-slot-booking.test.ts](../client/__tests__/admin-slot-booking.test.ts) — the admin's booking actions
 
-**Subject:** the real actions in [lib/actions/adminSlotBooking](../client/lib/actions/adminSlotBooking.ts), over an in-memory database ([helpers/fakeSupabase](../client/__tests__/helpers/fakeSupabase.ts)) that enforces the table's keys.
+**Subject:** the real actions in [lib/actions/adminSlotBooking](../client/lib/actions/adminSlotBooking.ts), over an in-memory database ([helpers/fakeSupabase](../client/__tests__/helpers/fakeSupabase.ts)) that enforces the table's key and, like the triggers in `20261017_shared_slot_hours.sql`, the slot's hours.
 
 | Case | Coverage |
 |---|---|
 | Who | Every action refuses a firm, a participant and a signed-out caller, writing nothing. |
 | Payment | Mark paid (once) and unpaid. |
 | Release | Not for non-payment before the deadline or on a paid booking; an overdue release stops the clock and tells the firm it can pick again; another reason keeps the clock; nothing changes if the booking moved since the page loaded; a failed firm email still succeeds, with a warning. |
-| Move and assign | A move keeps the clock and any payment, and refuses another case's slot or the past. Booking for a firm refuses in-person and rejected cases and a case that already holds a slot, starts a new clock or reuses a running one, and never asks a paid firm to pay. |
+| Move and assign | A move keeps the clock and any payment, and refuses a slot without room for its hours, or the past. Booking for a firm refuses in-person and rejected cases and a case that already holds a slot, starts a new clock or reuses a running one, and never asks a paid firm to pay. |
 
 ### 3.26 [firm-slot-booking.test.ts](../client/__tests__/firm-slot-booking.test.ts) — a firm booking its time
 
@@ -532,9 +532,11 @@ Not covered: the migration itself (no database in this suite; the SQL checks its
 | Case | Coverage |
 |---|---|
 | Who | Every action refuses participants, admins and signed-out callers, writing nothing. |
-| Open times | Only free slots far enough ahead, with nothing about other firms. |
-| Booking | Holds a free slot and starts the clock; another firm's case gets the same answer as a missing one; approved, rejected, archived and in-person cases, and slots too soon, too short or gone, are refused; losing a race says so; a switch keeps the clock and any payment; a re-book after a cancel keeps the clock. |
+| Open times | Only slots with an hour or more free and far enough ahead, each with its minutes left (a part-booked one stays), with nothing about who booked the rest. |
+| Booking | Holds a free slot and starts the clock; another firm's case gets the same answer as a missing one; approved, rejected, archived and in-person cases, and slots too soon, too short or gone, are refused; a part-booked slot is shared while the case's hours fit; a full slot, or one without enough left, is refused saying how much is left; losing the race for the last hours, which the database catches as it writes, says so; a switch keeps the clock and any payment; a re-book after a cancel keeps the clock. |
 | Cancelling | Frees the slot and keeps the clock; refused for a paid time or an approved case. |
+
+Also in [admin-slot-booking.test.ts](../client/__tests__/admin-slot-booking.test.ts): a move or a booking for a firm into a slot whose hours other cases have taken is refused, and one into a shared slot with room goes through. In [cases.test.ts](../client/__tests__/cases.test.ts): a firm's edit asking for more hours than its slot has left redirects to the dashboard's explanation. In [case-booking-views.test.ts](../client/__tests__/case-booking-views.test.ts): the admin case page shows its own case's booking in a shared slot, not another case's.
 
 ### 3.27 [case-booking-views.test.ts](../client/__tests__/case-booking-views.test.ts) — the booking boxes when a read fails
 

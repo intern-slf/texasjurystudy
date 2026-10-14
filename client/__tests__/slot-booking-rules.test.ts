@@ -5,14 +5,48 @@ import {
   earliestBookableStart,
   firmLabel,
   formatDeadline,
+  hoursLeftLabel,
   isSlotBookable,
+  isSlotFullError,
   paymentDueAt,
   slotFitsHours,
+  slotMinutes,
 } from "@/lib/slotBooking";
 import { billableHours } from "@/lib/receipt-pricing";
 
 // October 2026 is Central Daylight Time (UTC-5): 15:00 CT is 20:00 UTC.
 const ct = (date: string, time: string) => new Date(`${date}T${time}:00-05:00`).toISOString();
+
+describe("shared slots: several cases take the hours their firms pay for", () => {
+  const slot = { starts_at: ct("2026-10-29", "09:00"), ends_at: ct("2026-10-29", "12:00") };
+
+  it("measures a slot", () => {
+    expect(slotMinutes(slot)).toBe(180);
+  });
+
+  it("fits a case in what is left, when that is known, else in the whole slot", () => {
+    expect(slotFitsHours({ ...slot, minutes_left: 120 }, 2)).toBe(true);
+    expect(slotFitsHours({ ...slot, minutes_left: 120 }, 3)).toBe(false);
+    expect(slotFitsHours({ ...slot, minutes_left: 60 }, null)).toBe(true);
+    expect(slotFitsHours({ ...slot, minutes_left: 0 }, null)).toBe(false);
+    expect(slotFitsHours(slot, 3)).toBe(true);
+  });
+
+  it("tells firms the hours left, once some are booked", () => {
+    expect(hoursLeftLabel({ ...slot, minutes_left: 120 })).toBe("2 of 3 hours left");
+    expect(hoursLeftLabel({ ...slot, minutes_left: 60 })).toBe("1 of 3 hours left");
+    expect(hoursLeftLabel({ ...slot, minutes_left: 90 })).toBe("1 hour 30 minutes of 3 hours left");
+    expect(hoursLeftLabel({ ...slot, minutes_left: 180 })).toBeNull();
+    expect(hoursLeftLabel(slot)).toBeNull();
+  });
+
+  it("knows the database's refusal of an over-full slot", () => {
+    expect(isSlotFullError({ code: "23514", message: "requestee_slot_full: 0 minutes left in this slot, 60 needed" })).toBe(true);
+    expect(isSlotFullError({ code: "23514", message: "new row violates check constraint" })).toBe(false);
+    expect(isSlotFullError({ code: "23505", message: "requestee_slot_full" })).toBe(false);
+    expect(isSlotFullError(null)).toBe(false);
+  });
+});
 
 describe("payment deadline: 24 working hours, Monday to Friday on the Central clock", () => {
   it.each([

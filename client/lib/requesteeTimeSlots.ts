@@ -21,6 +21,12 @@ export type TimeSlot = {
   starts_at: string;
   ends_at: string;
   note: string | null;
+  /**
+   * In a list of open slots, the minutes still free for another case: several
+   * cases can share a slot, each taking the hours its firm pays for. Absent
+   * elsewhere.
+   */
+  minutes_left?: number;
 };
 
 export type NewTimeSlotsInput = {

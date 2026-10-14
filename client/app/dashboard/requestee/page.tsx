@@ -74,7 +74,10 @@ interface Case {
 type RequesteeDashboardProps = {
   searchParams?: Promise<{
     tab?: string;
-    /** "delete-refused": the database refused a Permanently Delete. */
+    /**
+     * "delete-refused": the database refused a Permanently Delete.
+     * "hours-full": an edit asked for more hours than the case's time slot has left.
+     */
     notice?: string;
   }>;
 };
@@ -135,6 +138,7 @@ export default async function RequesteeDashboard({
   // Shown on the Past tab after a refused delete. The Past tab's forms carry it,
   // so their actions know there is a notice to clear.
   const deleteRefused = tab === "previous" && resolvedSearchParams?.notice === "delete-refused";
+  const hoursFull = tab === "current" && resolvedSearchParams?.notice === "hours-full";
 
   /* ===========================
       FETCH CASES (UPDATED QUERY)
@@ -304,6 +308,23 @@ export default async function RequesteeDashboard({
                 </div>
             )}
           </div>
+
+          {hoursFull && (
+            <div
+              role="alert"
+              className="mb-6 flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"
+            >
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <p>
+                Your changes weren&apos;t saved: the time your case holds doesn&apos;t have that many hours free.
+                To ask for more hours, change or cancel the case&apos;s time on its page first, or email us at{" "}
+                <a href={`mailto:${SUPPORT_EMAIL}`} className="font-medium underline">
+                  {SUPPORT_EMAIL}
+                </a>
+                .
+              </p>
+            </div>
+          )}
 
           {deleteRefused && (
             <div

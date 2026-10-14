@@ -826,6 +826,21 @@ describe("Cases", () => {
       expect(updatePayload(caseUpdates()[0])).toMatchObject({ scheduled_at: null, deadline_date: null });
     });
 
+    it("Says why when the case's time slot can't fit more hours", async () => {
+      // The database refuses the whole edit (20261017_shared_slot_hours.sql), and
+      // the dashboard explains, rather than the edit silently not saving.
+      serverState.responses = [
+        { data: null, error: { code: "23514", message: "requestee_slot_full: 60 minutes left in this slot, 180 needed" } },
+      ];
+
+      const thrown = await updateCase(form({ ...details, hours_requested: "3" })).then(
+        () => null,
+        (err: unknown) => err as { digest?: string },
+      );
+
+      expect(thrown?.digest).toContain("/dashboard/requestee?tab=current&notice=hours-full");
+    });
+
     it("Drops the format once the case is in a session", async () => {
       serverState.responses = [
         { data: [{ id: "sc-1" }], error: null }, // session_cases: scheduled
