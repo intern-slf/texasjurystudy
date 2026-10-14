@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { requireAdminPage } from "@/lib/requireAdmin";
+import { centralToday } from "@/lib/centralToday";
 import Link from "next/link";
 import BackButton from "@/components/BackButton";
 import {
@@ -311,7 +312,7 @@ export default async function SessionsPage({
      the other tab needs only its length for the badge count.
   ========================= */
 
-  const todayStr = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  const todayStr = centralToday(); // YYYY-MM-DD, in Central Time like session_date
   const allSessions = sessions ?? [];
   const upcomingRaw = allSessions.filter((s) => s.session_date >= todayStr);
   const pastRaw = allSessions.filter((s) => s.session_date < todayStr);

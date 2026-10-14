@@ -19,6 +19,7 @@ import {
   unapproveCaseAction,
 } from "@/lib/actions/adminCase";
 import { requireAdmin, requireAdminPage } from "@/lib/requireAdmin";
+import { centralToday } from "@/lib/centralToday";
 import { AdminActionButton } from "@/components/AdminActionButton";
 import { RejectCaseButton } from "@/components/RejectCaseButton";
 import TimezoneInput from "@/components/TimezoneInput";
@@ -170,7 +171,7 @@ export default async function AdminDashboardPage({
   }
 
   // On the approved tab, hide cases whose session has already passed
-  const todayStr = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  const todayStr = centralToday(); // YYYY-MM-DD, in Central Time like session_date
   type SessionCaseRow = { sessions?: { session_date?: string | null } | { session_date?: string | null }[] | null };
   const filteredCases = tab === "approved"
     ? cases.filter((c) => {

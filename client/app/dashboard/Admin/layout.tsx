@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { ShieldCheck } from "lucide-react";
 import { createClient } from "../../../lib/supabase/server";
+import { centralToday } from "@/lib/centralToday";
 import AdminSidebar from "@/components/AdminSidebar";
 
 export default async function AdminLayout({
@@ -97,7 +98,7 @@ export default async function AdminLayout({
 
   // Match the Approved Cases page filter: include "approved" + "submitted",
   // and hide cases whose linked sessions are all in the past.
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = centralToday();
   type SessionCaseRow = { sessions?: { session_date?: string | null } | { session_date?: string | null }[] | null };
   type CaseRow = { admin_status?: string | null; session_cases?: SessionCaseRow[] | null };
   const approvedCount = ((allCases ?? []) as CaseRow[]).filter((c) => {

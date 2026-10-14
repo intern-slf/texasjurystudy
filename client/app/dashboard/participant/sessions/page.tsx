@@ -5,9 +5,10 @@ import Link from "next/link";
 import BackButton from "@/components/BackButton";
 import { unstable_noStore as noStore, revalidatePath } from "next/cache";
 import { getPendingInvites } from "@/lib/participant/getPendingInvites";
+import { centralToday } from "@/lib/centralToday";
 import { updateInviteStatus } from "@/lib/participant/updateInviteStatus";
 import { hasSessionStarted } from "@/lib/participant/sessionStart";
-import { formatSessionTime } from "@/lib/timezone";
+import { formatSessionSpan } from "@/lib/timezone";
 import {
   WAITLISTED_STATUS,
   OFFLINE_ARRIVE_EARLY_MINUTES,
@@ -66,10 +67,14 @@ export default async function ParticipantSessionsPage({
     .eq("participant_id", participant.user_id)
     .in("invite_status", ["accepted", WAITLISTED_STATUS]);
 
-  const fmtCt = (date: string, t: string) => formatSessionTime(date, t, "America/Chicago");
+  // The whole session, read on its date as instants, so an evening session
+  // crossing midnight UTC keeps its first case.
+  const spanCt = (date: string, starts: string[], ends: string[]) => {
+    const span = formatSessionSpan(date, starts, ends);
+    return span ? `${span} (CT)` : "TBD";
+  };
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const today = centralToday();
 
   type SessionCaseRow = {
     start_time?: string | null;
@@ -101,11 +106,9 @@ export default async function ParticipantSessionsPage({
       if (!date) return [];
 
       const sessionCases: SessionCaseRow[] = session?.session_cases ?? [];
-      const starts = sessionCases.map((c) => c.start_time).filter((v): v is string => Boolean(v)).sort();
-      const ends   = sessionCases.map((c) => c.end_time).filter((v): v is string => Boolean(v)).sort();
-      const timeRange = starts.length && ends.length
-        ? `${fmtCt(date, starts[0])} – ${fmtCt(date, ends[ends.length - 1])} (CT)`
-        : "TBD";
+      const starts = sessionCases.map((c) => c.start_time).filter((v): v is string => Boolean(v));
+      const ends   = sessionCases.map((c) => c.end_time).filter((v): v is string => Boolean(v));
+      const timeRange = spanCt(date, starts, ends);
 
       const caseTitles = sessionCases
         .map((c) => {
@@ -130,7 +133,7 @@ export default async function ParticipantSessionsPage({
         zoomLink,
         location,
         waitlisted: isWaitlisted(inv.invite_status),
-        isPast: new Date(date) < today,
+        isPast: date.slice(0, 10) < today,
       }];
     })
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
@@ -235,11 +238,9 @@ export default async function ParticipantSessionsPage({
             const session = (Array.isArray(invite.sessions) ? invite.sessions[0] : invite.sessions) as SessionRow | null | undefined;
             const date: string = session?.session_date ?? "";
             const sessionCases: SessionCaseRow[] = session?.session_cases ?? [];
-            const starts = sessionCases.map((c) => c.start_time).filter((v): v is string => Boolean(v)).sort();
-            const ends = sessionCases.map((c) => c.end_time).filter((v): v is string => Boolean(v)).sort();
-            const timeRange = starts.length && ends.length
-              ? `${fmtCt(date, starts[0])} – ${fmtCt(date, ends[ends.length - 1])} (CT)`
-              : "TBD";
+            const starts = sessionCases.map((c) => c.start_time).filter((v): v is string => Boolean(v));
+            const ends = sessionCases.map((c) => c.end_time).filter((v): v is string => Boolean(v));
+            const timeRange = spanCt(date, starts, ends);
             const displayDate = date
               ? new Date(date).toLocaleDateString("en-US", {
                   weekday: "long", year: "numeric", month: "long", day: "numeric",
@@ -251,7 +252,7 @@ export default async function ParticipantSessionsPage({
             const started = hasSessionStarted(date, starts);
             // Drives the concrete "about $90 for this session" figure on the
             // waitlist offer, so the rate is not left as arithmetic.
-            const sessionHoursFor = sessionLengthHours(starts, ends);
+            const sessionHoursFor = sessionLengthHours(starts, ends, date);
             const offerMode = modeOf(sessionCases);
 
             return (

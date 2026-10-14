@@ -61,14 +61,42 @@ describe("sessionLengthHours", () => {
     expect(sessionLengthHours(["09:00"], ["09:30"])).toBe(0.5);
   });
 
-  it("treats an end before the start as running past midnight", () => {
+  it("measures a session that ends after midnight UTC", () => {
     expect(sessionLengthHours(["23:00:00"], ["01:00:00"])).toBe(2);
+  });
+
+  it("measures a session that runs past Central midnight", () => {
+    // 10 PM to 1 AM CDT.
+    expect(sessionLengthHours(["03:00:00"], ["06:00:00"], "2026-10-20")).toBe(3);
+    // 10-11:30 PM and 12-1 AM CDT. Read on the session's date, the 12 AM case
+    // starts that morning, and this measured 23 hours.
+    expect(sessionLengthHours(["03:00:00", "05:00:00"], ["04:30:00", "06:00:00"], "2026-10-20")).toBe(3);
+  });
+
+  it("reads an end of 24:00, which a time column allows, as midnight", () => {
+    expect(sessionLengthHours(["15:00:00"], ["24:00:00"], "2026-11-05")).toBe(9);
   });
 
   it("returns 0 when times are missing or unparseable", () => {
     expect(sessionLengthHours([], [])).toBe(0);
     expect(sessionLengthHours([null], [undefined])).toBe(0);
     expect(sessionLengthHours(["nonsense"], ["also nonsense"])).toBe(0);
+  });
+
+  it("measures an evening session whose cases cross midnight UTC", () => {
+    // 5-6 PM and 6-7 PM CST, stored 23:00-00:00 and 00:00-01:00. Read as plain
+    // minutes, the 00:00 start counted as the first one and this measured 1 hour.
+    expect(sessionLengthHours(["23:00:00", "00:00:00"], ["00:00:00", "01:00:00"], "2026-11-05")).toBe(2);
+    expect(sessionLengthHours(["00:00:00", "23:00:00"], ["01:00:00", "00:00:00"], "2026-11-05")).toBe(2);
+    // 4-5:30 PM and 6:30-8 PM CST, stored 22:00-23:30 and 00:30-02:00: this was 23 hours.
+    expect(sessionLengthHours(["22:00:00", "00:30:00"], ["23:30:00", "02:00:00"], "2026-11-05")).toBe(4);
+    // 6-7:30 PM and 7:30-9 PM CDT, stored 23:00-00:30 and 00:30-02:00.
+    expect(sessionLengthHours(["23:00:00", "00:30:00"], ["00:30:00", "02:00:00"], "2026-10-20")).toBe(3);
+  });
+
+  it("pays an evening seat for the whole session", () => {
+    const hours = sessionLengthHours(["23:00:00", "00:00:00"], ["00:00:00", "01:00:00"], "2026-11-05");
+    expect(formatCents(seatPayoutCents(hours))).toBe(formatCents(2 * HOURLY_RATE_CENTS));
   });
 });
 

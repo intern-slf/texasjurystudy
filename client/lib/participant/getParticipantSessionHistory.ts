@@ -1,5 +1,7 @@
+import { centralToday } from "@/lib/centralToday";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import { formatSessionSpan } from "@/lib/timezone";
 
 /**
  * Every session a participant was ever invited to, with the case(s) that ran in
@@ -66,18 +68,6 @@ type InviteRow = {
   sessions?: SessionRow | SessionRow[] | null;
 };
 
-/** Times are stored as naive `time` values entered in Central — same conversion the participant + email paths use. */
-function fmtCt(t: string): string {
-  const [h, m] = t.split(":");
-  const d = new Date();
-  d.setUTCHours(parseInt(h), parseInt(m), 0, 0);
-  return d.toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    timeZone: "America/Chicago",
-  });
-}
-
 /** Rank used when the same participant has more than one row for a session — a real response beats a stale pending row. */
 function statusRank(status: string | null): number {
   if (status === "accepted") return 3;
@@ -124,8 +114,7 @@ export async function getParticipantSessionHistory(
     return null;
   }
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const today = centralToday();
 
   // Same session can appear twice (re-invites) — keep the strongest response.
   const bySession = new Map<string, ParticipantSessionRow>();
@@ -139,8 +128,14 @@ export async function getParticipantSessionHistory(
     if (!date) continue;
 
     const sessionCases: SessionCaseRow[] = session?.session_cases ?? [];
-    const starts = sessionCases.map((c) => c.start_time).filter((v): v is string => Boolean(v)).sort();
-    const ends = sessionCases.map((c) => c.end_time).filter((v): v is string => Boolean(v)).sort();
+    // Read on the session's date as instants: a clock change between now and
+    // then moves a time by an hour, and an evening session crossing midnight
+    // UTC must keep its first case.
+    const span = formatSessionSpan(
+      date,
+      sessionCases.map((c) => c.start_time),
+      sessionCases.map((c) => c.end_time),
+    );
 
     const cases: ParticipantSessionCase[] = [];
     const seenCaseIds = new Set<string>();
@@ -162,14 +157,11 @@ export async function getParticipantSessionHistory(
         month: "short",
         day: "numeric",
       }),
-      timeRange:
-        starts.length && ends.length
-          ? `${fmtCt(starts[0])} – ${fmtCt(ends[ends.length - 1])} CT`
-          : "Time TBD",
+      timeRange: span ? `${span} CT` : "Time TBD",
       inviteStatus: inv.invite_status ?? "pending",
       respondedAt: inv.responded_at ?? null,
       struckAt: inv.struck_at ?? null,
-      isPast: new Date(date) < today,
+      isPast: date.slice(0, 10) < today,
       cases,
     };
 
