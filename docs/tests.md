@@ -421,7 +421,7 @@ Not covered: the GCS module itself ([lib/gcs/idDocuments](../client/lib/gcs/idDo
 | `sendReactivationEmails` | Refuses anyone but an admin before any query or email; sends while `MAILING_ADDRESS` is still null; the participant query excludes `reactivation_status = 'no'`; every email gets an unsubscribe token signed for its own recipient. |
 | `reactivate route` | Opening the Unsubscribe link only renders the button and runs no query, so a scanner that opens it can't unsubscribe anyone. The button's POST sets `reactivation_status = 'no'` whether it was `pending` or `yes` (`.neq("reactivation_status", "no")` keeps the first timestamp on a repeat), and the page says seats already accepted are not cancelled; a failed write names the support address; Yes, No and edit tokens and a tampered token are refused with 400. The No link is unchanged: a plain GET still moves a `pending` row to `no` (so a scanner opening it has the same effect as unsubscribing) and never overwrites an earlier answer. |
 
-Not covered: the admin send-mail confirm page (a server component; this suite renders none), and the real `sendReactivationEmail` template, which is mocked here, so the footer is pinned at `emailWrapper` and at the `unsubscribeUrl` the action passes.
+Not covered: the admin send-mail confirm page (a server component, which this suite doesn't render), and the real `sendReactivationEmail` template, which is mocked here, so the footer is pinned at `emailWrapper` and at the `unsubscribeUrl` the action passes.
 
 ### 3.20 [requestee-participant-access.test.ts](../client/__tests__/requestee-participant-access.test.ts) — what a law firm can see
 
@@ -512,8 +512,9 @@ Not covered: the migration itself (no database in this suite; the SQL checks its
 
 | Case | Coverage |
 |---|---|
-| Firm's box | If the open times can't be read, the firm still sees the time it holds and its payment deadline, with a reload message instead of the controls (and no "pick one of our open times below" when it holds none), and the error is logged; with both reads working the controls show; if the booking itself can't be read, the box is left out. |
-| Admin's box | A failed read of the booking's details is logged and named as such, not passed off as "the booking changed while the page loaded" (which still shows when the booking is really gone); if only the open times fail, the booking and its controls stay, with a note that there's nothing to move it to; a failed case read is logged and shown, not silently dropped; every read working shows the booking and its controls; a failed first read points at the migrations. |
+| Firm's box | If the open times can't be read, the firm still sees the time it holds and its payment deadline, with a reload message instead of the controls, and the error is logged; "Pick one of our open times below" shows only when an open time fits the case (not when none was loaded, none is open, or none is long enough); with both reads working the controls show; if the booking itself can't be read, the box is left out. |
+| Picker | With nothing that fits, it says so and gives info@; "or tell us your preferred timing below" only where the form asks for it (the new-case form), not on the case page. |
+| Admin's box | A failed read of the booking's details is logged and named as such, not passed off as "the booking changed while the page loaded" (which still shows when the booking is really gone); if only the open times fail, the booking and its controls stay, the move list says the open times couldn't be loaded rather than that there are none, and with no booking the note replaces the book-a-time control; a failed case read is logged and shown, not silently dropped; every read working shows the booking and its controls; a failed first read points at the migrations. |
 | Time Slots page | Checks for an admin (`requireAdminPage`) before any read. |
 
 ---

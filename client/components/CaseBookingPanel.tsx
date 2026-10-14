@@ -41,6 +41,19 @@ export default async function CaseBookingPanel({ caseId }: { caseId: string }) {
   }
 
   const nowMs = Date.now();
+  // Read alongside the rest. The open times are only somewhere to move or book
+  // to, so if they can't be read the booking still shows, with a note instead.
+  const openSlotsRead = getOpenSlots(
+    new Date(nowMs).toISOString(),
+    new Date(nowMs + SIX_MONTHS_MS).toISOString()
+  ).then(
+    (slots) => ({ slots, failed: false }),
+    (err: unknown) => {
+      console.error("[CaseBookingPanel] couldn't read the open times:", err);
+      return { slots: [] as TimeSlot[], failed: true };
+    }
+  );
+
   let loaded;
   try {
     loaded = await Promise.all([
@@ -73,20 +86,12 @@ export default async function CaseBookingPanel({ caseId }: { caseId: string }) {
   const record = records.get(caseId);
   const slot = record?.slot ?? null;
 
-  // The open times are only somewhere to move or book to. If they can't be read,
-  // the booking still shows, with a note in place of the times.
-  let openSlots: TimeSlot[] = [];
-  let openSlotsNote: React.ReactNode = null;
-  try {
-    openSlots = await getOpenSlots(new Date(nowMs).toISOString(), new Date(nowMs + SIX_MONTHS_MS).toISOString());
-  } catch (err) {
-    console.error("[CaseBookingPanel] couldn't read the open times:", err);
-    openSlotsNote = (
-      <p className="text-sm text-amber-700">
-        Couldn&apos;t load the open times, so there&apos;s nothing to move or book to. Reload the page.
-      </p>
-    );
-  }
+  const { slots: openSlots, failed: openSlotsFailed } = await openSlotsRead;
+  const openSlotsNote = openSlotsFailed ? (
+    <p className="text-sm text-amber-700">
+      Couldn&apos;t load the open times, so there&apos;s nothing to move or book to. Reload the page.
+    </p>
+  ) : null;
 
   let content: React.ReactNode;
   if (slot) {
@@ -104,7 +109,7 @@ export default async function CaseBookingPanel({ caseId }: { caseId: string }) {
       <div className="space-y-4">
         <p className="text-base font-semibold text-slate-800">{describeSlot(slot)}</p>
         <BookingSummary booking={booking} showCaseLink={false} />
-        <BookingAdminControls booking={booking} openSlots={openSlots} />
+        <BookingAdminControls booking={booking} openSlots={openSlots} openSlotsUnavailable={openSlotsFailed} />
         {openSlotsNote}
       </div>
     ) : (

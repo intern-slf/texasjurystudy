@@ -11,6 +11,8 @@ type Props = {
   booking: BookingView;
   /** Free slots the booking can move to, earliest first. */
   openSlots: TimeSlot[];
+  /** The open times couldn't be read, so an empty openSlots doesn't mean there are none. */
+  openSlotsUnavailable?: boolean;
   /** Called after a change that takes the booking off this slot (moved or released). */
   onLeftSlot?: () => void;
 };
@@ -19,7 +21,7 @@ const SELECT_CLASSES =
   "h-8 min-w-0 flex-1 rounded-md border border-input bg-white px-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring";
 
 /** Mark paid / unpaid, move, and release, for one booked slot. Shared by the calendar and the case page. */
-export default function BookingAdminControls({ booking, openSlots, onLeftSlot }: Props) {
+export default function BookingAdminControls({ booking, openSlots, openSlotsUnavailable = false, onLeftSlot }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState<{ tone: "error" | "warning"; text: string } | null>(null);
@@ -116,7 +118,13 @@ export default function BookingAdminControls({ booking, openSlots, onLeftSlot }:
           disabled={pending || moveOptions.length === 0}
           className={SELECT_CLASSES}
         >
-          <option value="">{moveOptions.length ? "Move to another time…" : "No other open times"}</option>
+          <option value="">
+            {moveOptions.length
+              ? "Move to another time…"
+              : openSlotsUnavailable
+                ? "Open times couldn't be loaded"
+                : "No other open times"}
+          </option>
           {moveOptions.map((slot) => (
             <option key={slot.id} value={slot.id}>
               {describeSlot(slot)}

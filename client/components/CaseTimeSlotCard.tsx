@@ -2,7 +2,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { requireRequestee } from "@/lib/requireRequestee";
 import { SUPPORT_EMAIL } from "@/lib/legal-constants";
 import { describeSlot, type TimeSlot } from "@/lib/requesteeTimeSlots";
-import { earliestBookableStart, formatDeadline, paymentDueAt } from "@/lib/slotBooking";
+import { earliestBookableStart, formatDeadline, paymentDueAt, slotFitsHours } from "@/lib/slotBooking";
 import { getBookingsForCases, getOpenSlots } from "@/lib/slotBookingData";
 import CaseTimeSlotControls from "@/components/CaseTimeSlotControls";
 
@@ -24,11 +24,12 @@ export default async function CaseTimeSlotCard({ caseId }: { caseId: string }) {
     return null;
   }
 
-  const { data: theCase } = await supabaseAdmin
+  const { data: theCase, error: caseError } = await supabaseAdmin
     .from("cases")
     .select("user_id, requestee_id, admin_status, status, deleted_at, delivery_mode, hours_requested")
     .eq("id", caseId)
     .maybeSingle();
+  if (caseError) console.error("[CaseTimeSlotCard] couldn't read the case:", caseError.message);
   if (!theCase || (theCase.user_id !== userId && theCase.requestee_id !== userId)) return null;
 
   const nowMs = Date.now();
@@ -92,7 +93,8 @@ export default async function CaseTimeSlotCard({ caseId }: { caseId: string }) {
         <p className="text-sm text-muted-foreground">
           For an in-person focus group, email us at {contact} to arrange a time.
         </p>
-      ) : openSlots ? (
+      ) : openSlots?.some((s) => slotFitsHours(s, theCase.hours_requested)) ? (
+        // Only when there is one to pick: otherwise the picker says none fits.
         <p className="text-sm text-muted-foreground">
           Pick one of our open times below and we&apos;ll hold it while we review your case.
         </p>

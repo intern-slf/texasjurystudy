@@ -588,6 +588,7 @@ export default function NewCasePage() {
                       value={slotId}
                       onChange={setSlotId}
                       disabled={loading}
+                      timingQuestionsBelow
                     />
                   </>
                 )}

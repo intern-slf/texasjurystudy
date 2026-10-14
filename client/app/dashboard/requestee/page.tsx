@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 import CaseActions from "@/components/CaseActions";
 import CaseVideoGuide from "@/components/CaseVideoGuide";
 import Link from "next/link";
-import { redirect } from "next/navigation";
+import { redirect, RedirectType } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import RequesteeSidebar from "@/components/RequesteeSidebar";
 import {
@@ -242,11 +242,13 @@ export default async function RequesteeDashboard({
 
     // The database refuses some deletes: a case with a paid time-slot booking,
     // whose payment record would go with it, or one other rows still point at.
-    // Say so, rather than leave the button looking as if it did nothing.
+    // Say so, rather than leave the button looking as if it did nothing. A delete
+    // that works lands on the plain Past tab, so an earlier notice doesn't linger.
     if (error) {
       console.error("[requestee dashboard] delete refused:", error.message);
-      redirect("/dashboard/requestee?tab=previous&notice=delete-refused");
+      redirect("/dashboard/requestee?tab=previous&notice=delete-refused", RedirectType.replace);
     }
+    redirect("/dashboard/requestee?tab=previous", RedirectType.replace);
   }
 
   // Editing a requested case, answering a proposed time and Request Again are in

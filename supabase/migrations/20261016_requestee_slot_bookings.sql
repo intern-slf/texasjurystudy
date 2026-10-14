@@ -186,6 +186,7 @@ SET search_path = ''
 AS $$
 DECLARE
   caller text := current_setting('role');
+  paid timestamptz;
 BEGIN
   IF caller NOT IN ('authenticated', 'anon') THEN
     RETURN OLD;
@@ -195,10 +196,13 @@ BEGIN
       RETURN OLD;
     END IF;
   END IF;
-  IF EXISTS (
-    SELECT 1 FROM public.requestee_slot_bookings b
-     WHERE b.case_id = OLD.id AND b.paid_at IS NOT NULL
-  ) THEN
+  -- Locked, so an admin marking it paid can't slip in between this check and
+  -- the cascade that deletes it: their update waits, then finds it gone.
+  SELECT b.paid_at INTO paid
+    FROM public.requestee_slot_bookings b
+   WHERE b.case_id = OLD.id
+     FOR SHARE;
+  IF paid IS NOT NULL THEN
     RAISE EXCEPTION 'This case has a paid focus group booking, so only staff can delete it.'
       USING ERRCODE = 'insufficient_privilege';
   END IF;
@@ -279,39 +283,53 @@ BEGIN
   END;
 END $$;
 
--- Self-check for the delete guard, acting as the firm that owns a case (looked
--- up first, as postgres: once acting as a user, RLS hides other rows). With a
--- paid booking its delete is refused; with an unpaid one the guard lets it
--- through; and deleting the case's parent doesn't take a paid case with it,
--- whatever that foreign key does. Undone the same way. Skipped when there is no
--- firm case without a booking to try it on.
+-- Self-check for the delete guard. It works on fresh copies of a firm's case
+-- (made as postgres, then undone with everything else), so nothing else points
+-- at them, and acts as that firm: once acting as a user, RLS hides other rows.
+-- With a paid booking the delete is refused; with an unpaid one the guard lets
+-- it through; and deleting a paid case's parent doesn't take it along, whatever
+-- the parent foreign key does. Skipped when no firm has a case to copy.
 DO $$
 DECLARE
   firm uuid;
-  firm_case uuid;
+  template_case uuid;
+  test_case uuid;
   parent_case uuid;
+  parent_key text;
+  refusing_key text;
   changed integer;
 BEGIN
-  SELECT c.id, c.user_id INTO firm_case, firm
+  SELECT c.id, c.user_id INTO template_case, firm
   FROM public.cases c
   WHERE c.user_id IS NOT NULL
     AND NOT EXISTS (SELECT 1 FROM public.roles r WHERE r.user_id = c.user_id AND r.role = 'admin')
-    AND NOT EXISTS (SELECT 1 FROM public.requestee_slot_bookings b WHERE b.case_id = c.id)
   LIMIT 1;
 
-  IF firm_case IS NULL THEN
+  IF template_case IS NULL THEN
     RETURN;
   END IF;
 
+  -- The key that ties a follow-up to its parent case, whatever it is named.
+  SELECT k.conname INTO parent_key
+  FROM pg_constraint k
+  WHERE k.conrelid = 'public.cases'::regclass
+    AND k.confrelid = 'public.cases'::regclass
+    AND k.contype = 'f'
+  LIMIT 1;
+
   -- 3. Paid: the firm can't delete the case.
   BEGIN
+    INSERT INTO public.cases (user_id, title, description, documentation_type, filters, status)
+    SELECT user_id, title, description, documentation_type, filters, 'previous'
+      FROM public.cases WHERE id = template_case
+    RETURNING id INTO test_case;
     INSERT INTO public.requestee_slot_bookings (case_id, held_since, paid_at)
-    VALUES (firm_case, now(), now());
+    VALUES (test_case, now(), now());
     SET LOCAL ROLE authenticated;
     PERFORM set_config('request.jwt.claims', json_build_object('sub', firm, 'role', 'authenticated')::text, true);
     PERFORM set_config('request.jwt.claim.sub', firm::text, true);
     BEGIN
-      DELETE FROM public.cases WHERE id = firm_case;
+      DELETE FROM public.cases WHERE id = test_case;
       -- No row means the firm can't delete its case at all, which is fine too.
       GET DIAGNOSTICS changed = ROW_COUNT;
       IF changed > 0 THEN
@@ -330,16 +348,21 @@ BEGIN
   END;
 
   -- 4. Unpaid: the guard lets the delete through. The firm may delete its own
-  --    case ("user can delete own cases"), so the row goes, unless another table
-  --    still points at it, which isn't this trigger's refusal.
+  --    case ("user can delete own cases"), so the row goes. (A foreign key
+  --    refusing it is checked after this BEFORE trigger, so it would mean the
+  --    guard had let it through.)
   BEGIN
+    INSERT INTO public.cases (user_id, title, description, documentation_type, filters, status)
+    SELECT user_id, title, description, documentation_type, filters, 'previous'
+      FROM public.cases WHERE id = template_case
+    RETURNING id INTO test_case;
     INSERT INTO public.requestee_slot_bookings (case_id, held_since)
-    VALUES (firm_case, now());
+    VALUES (test_case, now());
     SET LOCAL ROLE authenticated;
     PERFORM set_config('request.jwt.claims', json_build_object('sub', firm, 'role', 'authenticated')::text, true);
     PERFORM set_config('request.jwt.claim.sub', firm::text, true);
     BEGIN
-      DELETE FROM public.cases WHERE id = firm_case;
+      DELETE FROM public.cases WHERE id = test_case;
       GET DIAGNOSTICS changed = ROW_COUNT;
       IF changed <> 1 THEN
         RAISE EXCEPTION 'Self-check: a firm could not delete its own case with an unpaid booking (% rows); nothing changed', changed;
@@ -360,17 +383,22 @@ BEGIN
     END IF;
   END;
 
-  -- 5. Paid, and its parent deleted by the firm: still kept. A copy of the case
-  --    becomes its parent, as a follow-up's is. Whatever the parent foreign key
-  --    does (cascade, refuse, or set NULL), the paid booking must survive.
+  -- 5. Paid, and its parent deleted by the firm: still kept. A fresh paid copy
+  --    is made the follow-up of another fresh copy. The parent key may refuse
+  --    the delete, take the follow-up along (then the guard must refuse), or
+  --    unlink it; the paid booking has to survive each. Only that key may refuse:
+  --    another one refusing wouldn't show what the guard did.
   BEGIN
     INSERT INTO public.cases (user_id, title, description, documentation_type, filters, status)
     SELECT user_id, title, description, documentation_type, filters, 'previous'
-      FROM public.cases WHERE id = firm_case
+      FROM public.cases WHERE id = template_case
     RETURNING id INTO parent_case;
-    UPDATE public.cases SET parent_case_id = parent_case WHERE id = firm_case;
+    INSERT INTO public.cases (user_id, title, description, documentation_type, filters, status, parent_case_id)
+    SELECT user_id, title, description, documentation_type, filters, 'previous', parent_case
+      FROM public.cases WHERE id = template_case
+    RETURNING id INTO test_case;
     INSERT INTO public.requestee_slot_bookings (case_id, held_since, paid_at)
-    VALUES (firm_case, now(), now());
+    VALUES (test_case, now(), now());
     SET LOCAL ROLE authenticated;
     PERFORM set_config('request.jwt.claims', json_build_object('sub', firm, 'role', 'authenticated')::text, true);
     PERFORM set_config('request.jwt.claim.sub', firm::text, true);
@@ -378,7 +406,10 @@ BEGIN
       DELETE FROM public.cases WHERE id = parent_case;
     EXCEPTION
       WHEN foreign_key_violation THEN
-        NULL;
+        GET STACKED DIAGNOSTICS refusing_key = CONSTRAINT_NAME;
+        IF refusing_key IS DISTINCT FROM parent_key THEN
+          RAISE;
+        END IF;
       WHEN insufficient_privilege THEN
         IF SQLERRM NOT LIKE 'This case has a paid focus group booking%' THEN
           RAISE;
@@ -387,7 +418,7 @@ BEGIN
     RESET ROLE;
     IF NOT EXISTS (
       SELECT 1 FROM public.requestee_slot_bookings b
-       WHERE b.case_id = firm_case AND b.paid_at IS NOT NULL
+       WHERE b.case_id = test_case AND b.paid_at IS NOT NULL
     ) THEN
       RAISE EXCEPTION 'Self-check: a firm could delete a paid case by deleting its parent; nothing changed';
     END IF;
@@ -401,8 +432,11 @@ END $$;
 
 COMMIT;
 
--- Verify: one row, reading true, true, true, false. Ends in LIMIT because the
--- SQL Editor adds "limit 100" to a SELECT that has none.
+-- Verify: one row, reading true, true, true, false, and then what deleting a
+-- parent case does to its follow-ups in this database, which the schema export
+-- doesn't show: a (no action) or r (restrict) refuses while it has any, c
+-- deletes them too, n unlinks them. The guard covers each. Ends in LIMIT because
+-- the SQL Editor adds "limit 100" to a SELECT that has none.
 SELECT
   EXISTS (
     SELECT 1 FROM pg_trigger t
@@ -418,5 +452,10 @@ SELECT
   ) AS delete_guard_enabled,
   (SELECT p.prosecdef FROM pg_proc p
     WHERE p.oid = 'public.keep_paid_slot_booking_on_case_delete()'::regprocedure) AS guard_reads_bookings_as_owner,
-  has_function_privilege('authenticated', 'public.keep_paid_slot_booking_on_case_delete()', 'EXECUTE') AS signed_in_can_call_guard
+  has_function_privilege('authenticated', 'public.keep_paid_slot_booking_on_case_delete()', 'EXECUTE') AS signed_in_can_call_guard,
+  (SELECT k.confdeltype::text FROM pg_constraint k
+    WHERE k.conrelid = 'public.cases'::regclass
+      AND k.confrelid = 'public.cases'::regclass
+      AND k.contype = 'f'
+    LIMIT 1) AS deleting_a_parent_case
 LIMIT 1;

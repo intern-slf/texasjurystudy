@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import type { ReactElement } from "react";
+import { createElement, type ReactElement } from "react";
 import CaseTimeSlotCard from "@/components/CaseTimeSlotCard";
 import CaseBookingPanel from "@/components/CaseBookingPanel";
+import TimeSlotPicker from "@/components/TimeSlotPicker";
 import RequesteeTimeSlotsPage from "@/app/dashboard/Admin/requestees/time-slots/page";
 import { describeSlot } from "@/lib/requesteeTimeSlots";
 
@@ -52,7 +53,10 @@ vi.mock("@/lib/slotBookingData", () => ({
 }));
 vi.mock("@/components/CaseTimeSlotControls", () => ({ default: () => "[time controls]" }));
 vi.mock("@/components/BookingSummary", () => ({ default: () => "[booking summary]" }));
-vi.mock("@/components/BookingAdminControls", () => ({ default: () => "[booking controls]" }));
+vi.mock("@/components/BookingAdminControls", () => ({
+  default: ({ openSlotsUnavailable }: { openSlotsUnavailable?: boolean }) =>
+    openSlotsUnavailable ? "[booking controls, open times unavailable]" : "[booking controls]",
+}));
 vi.mock("@/components/AssignSlotControl", () => ({ default: () => "[assign slot]" }));
 vi.mock("@/components/TimeSlotCalendar", () => ({ default: () => "[calendar]" }));
 vi.mock("@/components/BackButton", () => ({ default: () => "[back]" }));
@@ -151,6 +155,32 @@ describe("the firm's Focus group time box", () => {
     expect(page).not.toContain("open times below");
     expect(page).toContain("load our open times");
   });
+
+  it("points at open times below only when one fits the case", async () => {
+    // The case asks for 2 hours. Right after launch nothing is open at all.
+    const ONE_HOUR = { ...SLOT, id: "slot-short", ends_at: "2026-11-05T17:00:00.000Z" };
+    mocks.getBookingsForCases.mockResolvedValue(new Map());
+
+    for (const [open, shown] of [[[], false], [[ONE_HOUR], false], [[SLOT], true]] as const) {
+      mocks.getOpenSlots.mockResolvedValue(open);
+      const page = html(await CaseTimeSlotCard({ caseId: "case-1" }));
+      expect(page.includes("open times below"), `${open.length} open`).toBe(shown);
+      expect(page).toContain("[time controls]");
+    }
+  });
+});
+
+describe("the time picker", () => {
+  const empty = (timingQuestionsBelow?: boolean) =>
+    renderToStaticMarkup(
+      createElement(TimeSlotPicker, { slots: [], hoursRequested: 2, value: null, onChange: () => {}, timingQuestionsBelow })
+    );
+
+  it("says nothing fits, and asks about preferred timing only where the form does", () => {
+    expect(empty()).toContain("No open time fits 2 hours right now");
+    expect(empty()).not.toContain("preferred timing below");
+    expect(empty(true)).toContain("preferred timing below");
+  });
 });
 
 describe("the admin case page's Time slot box", () => {
@@ -202,15 +232,27 @@ describe("the admin case page's Time slot box", () => {
 
     expect(page).toContain(describeSlot(SLOT));
     expect(page).toContain("[booking summary]");
-    expect(page).toContain("[booking controls]");
+    // The move list is told, so it doesn't claim there are no other open times.
+    expect(page).toContain("[booking controls, open times unavailable]");
     expect(page).toContain("load the open times");
     expect(page).not.toContain("time-slot migrations");
     expect(errorSpy).toHaveBeenCalledWith("[CaseBookingPanel] couldn't read the open times:", expect.any(Error));
   });
 
+  it("puts the note in place of booking a time when there's no booking and the open times fail", async () => {
+    mocks.getBookingsForCases.mockResolvedValue(new Map());
+    mocks.getOpenSlots.mockRejectedValue(new Error("open times read failed"));
+
+    const page = html(await CaseBookingPanel({ caseId: "case-1" }));
+
+    expect(page).toContain("load the open times");
+    expect(page).not.toContain("[assign slot]");
+  });
+
   it("says so, and logs it, when the case can't be read", async () => {
     mocks.caseError.current = { message: "case read failed" };
     mocks.getBookingsForCases.mockResolvedValue(new Map());
+    mocks.getOpenSlots.mockResolvedValue([]);
 
     expect(html(await CaseBookingPanel({ caseId: "case-1" }))).toContain("Reload the page.");
     expect(errorSpy).toHaveBeenCalledWith("[CaseBookingPanel] couldn't read the case:", "case read failed");

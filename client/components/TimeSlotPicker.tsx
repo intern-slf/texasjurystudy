@@ -22,10 +22,19 @@ type Props = {
   /** Called with the picked slot, or null when the firm unpicks it. */
   onChange: (slotId: string | null) => void;
   disabled?: boolean;
+  /** The form asks for the firm's preferred timing below the picker (the new-case form does). */
+  timingQuestionsBelow?: boolean;
 };
 
 /** The open time slots a firm can pick from, by day, in Central Time. */
-export default function TimeSlotPicker({ slots, hoursRequested, value, onChange, disabled }: Props) {
+export default function TimeSlotPicker({
+  slots,
+  hoursRequested,
+  value,
+  onChange,
+  disabled,
+  timingQuestionsBelow = false,
+}: Props) {
   const byDate = useMemo(() => {
     const groups = new Map<string, TimeSlot[]>();
     for (const slot of slots) {
@@ -49,8 +58,8 @@ export default function TimeSlotPicker({ slots, hoursRequested, value, onChange,
     const hours = billableHours(hoursRequested);
     return (
       <p className="rounded-lg border bg-muted/30 p-3 text-sm text-muted-foreground">
-        No open time fits {hours} hour{hours === 1 ? "" : "s"} right now. To arrange one, {contact}, or tell us your
-        preferred timing below.
+        No open time fits {hours} hour{hours === 1 ? "" : "s"} right now. To arrange one, {contact}
+        {timingQuestionsBelow ? ", or tell us your preferred timing below" : ""}.
       </p>
     );
   }
