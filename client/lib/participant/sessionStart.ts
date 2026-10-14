@@ -1,4 +1,4 @@
-import { sessionSpan } from "@/lib/timezone";
+import { calendarDate, sessionSpan } from "@/lib/timezone";
 
 /* =========================
    SESSION TIMING
@@ -20,12 +20,6 @@ import { sessionSpan } from "@/lib/timezone";
    evening session's invitations a day early, and ended its cooldown a day early.
 ========================= */
 
-/** The session's date, "YYYY-MM-DD", or null when there is no usable one. */
-function sessionDay(sessionDate: string | null | undefined): string | null {
-  const day = (sessionDate ?? "").slice(0, 10);
-  return /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : null;
-}
-
 /**
  * The instant a session begins, or null when there is no usable date.
  *
@@ -36,7 +30,7 @@ export function sessionStartInstant(
   sessionDate: string | null | undefined,
   startTimes: readonly (string | null | undefined)[] = [],
 ): Date | null {
-  const day = sessionDay(sessionDate);
+  const day = calendarDate(sessionDate);
   if (!day) return null;
   return sessionSpan(day, startTimes, [])?.start ?? new Date(`${day}T00:00:00Z`);
 }
@@ -64,7 +58,7 @@ export function sessionEndInstant(
   startTimes: readonly (string | null | undefined)[] = [],
   endTimes: readonly (string | null | undefined)[] = [],
 ): Date | null {
-  const day = sessionDay(sessionDate);
+  const day = calendarDate(sessionDate);
   if (!day) return null;
   return sessionSpan(day, startTimes, endTimes)?.end ?? sessionStartInstant(day, startTimes);
 }

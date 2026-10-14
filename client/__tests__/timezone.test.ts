@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import {
+  calendarDate,
   formatSessionSpan,
   formatSessionTime,
   localToUTC,
@@ -116,6 +117,40 @@ describe("sessionTimeInstant", () => {
     expect(iso("2026-11-01", "01:00:00")).toBe("2026-11-02T01:00:00.000Z");
     expect(iso("2027-03-14", "00:00:00")).toBe("2027-03-15T00:00:00.000Z");
   });
+
+  it("reads 24:00, which a time column allows, as the next midnight", () => {
+    expect(iso("2026-11-05", "24:00:00")).toBe("2026-11-06T00:00:00.000Z");
+  });
+
+  it("treats a date that doesn't exist like no date, rather than throwing", () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-14T12:00:00Z"));
+    try {
+      expect(iso("2026-13-45", "15:00:00")).toBe("2026-10-14T15:00:00.000Z");
+      expect(iso("2026-02-30", "15:00:00")).toBe("2026-10-14T15:00:00.000Z");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("calendarDate", () => {
+  it("takes the date a date or timestamp starts with", () => {
+    expect(calendarDate("2026-11-05")).toBe("2026-11-05");
+    expect(calendarDate("2026-11-05T00:00:00+00:00")).toBe("2026-11-05");
+    expect(calendarDate("2028-02-29")).toBe("2028-02-29");
+  });
+
+  it("is null for anything that isn't a real date", () => {
+    // Date.parse rolls these over (Feb 30 is Mar 2) instead of refusing them.
+    expect(calendarDate("2026-02-29")).toBeNull();
+    expect(calendarDate("2026-02-30")).toBeNull();
+    expect(calendarDate("2026-13-45")).toBeNull();
+    expect(calendarDate("not-a-date")).toBeNull();
+    expect(calendarDate("")).toBeNull();
+    expect(calendarDate(null)).toBeNull();
+    expect(calendarDate(undefined)).toBeNull();
+  });
 });
 
 describe("sessionSpan", () => {
@@ -165,6 +200,39 @@ describe("sessionSpan", () => {
     });
   });
 
+  it("puts a case that starts after Central midnight on the next day too", () => {
+    // 10-11:30 PM and 12-1 AM CDT. The 12 AM start, read on the session's date, is
+    // the start of Oct 20: the session ran 23 hours, and paid for them.
+    const expected = { start: "2026-10-21T03:00:00.000Z", end: "2026-10-21T06:00:00.000Z" };
+    expect(span("2026-10-20", ["03:00:00", "05:00:00"], ["04:30:00", "06:00:00"])).toEqual(expected);
+    expect(span("2026-10-20", ["05:00:00", "03:00:00"], ["06:00:00", "04:30:00"])).toEqual(expected);
+  });
+
+  it("reads an 11 PM case on the night the clocks go back as CST", () => {
+    // 10-11 PM and 11-11:30 PM CST on Nov 1. 05:00 UTC is also 12 AM CDT that
+    // morning, which is what the session's date alone would say.
+    expect(span("2026-11-01", ["04:00:00", "05:00:00"], ["05:00:00", "05:30:00"])).toEqual({
+      start: "2026-11-02T04:00:00.000Z",
+      end: "2026-11-02T05:30:00.000Z",
+    });
+  });
+
+  it("leaves a long day's cases where they are", () => {
+    // 8-9 AM and 9-10 PM CDT, 13 hours apart.
+    expect(span("2026-10-20", ["13:00:00", "02:00:00"], ["14:00:00", "03:00:00"])).toEqual({
+      start: "2026-10-20T13:00:00.000Z",
+      end: "2026-10-21T03:00:00.000Z",
+    });
+  });
+
+  it("reads an end of 24:00 as midnight", () => {
+    // 9 AM CST to 24:00 UTC, which is 6 PM CST.
+    expect(span("2026-11-05", ["15:00:00"], ["24:00:00"])).toEqual({
+      start: "2026-11-05T15:00:00.000Z",
+      end: "2026-11-06T00:00:00.000Z",
+    });
+  });
+
   it("reads an evening on a clock-change Sunday with that evening's offset", () => {
     // 7-8 PM CST on Nov 1 and 7-8 PM CDT on Mar 14.
     expect(span("2026-11-01", ["01:00:00"], ["02:00:00"])).toEqual({
@@ -210,6 +278,11 @@ describe("formatSessionSpan", () => {
     expect(shown("2026-11-01", ["01:00:00"], ["02:00:00"])).toBe("7:00 PM – 8:00 PM");
   });
 
+  it("shows sessions running past Central midnight from their first case", () => {
+    expect(shown("2026-10-20", ["03:00:00", "05:00:00"], ["04:30:00", "06:00:00"])).toBe("10:00 PM – 1:00 AM");
+    expect(shown("2026-11-01", ["04:00:00", "05:00:00"], ["05:00:00", "05:30:00"])).toBe("10:00 PM – 11:30 PM");
+  });
+
   it("is null without both a start and an end time", () => {
     expect(formatSessionSpan("2026-11-05", ["16:00:00"], [])).toBeNull();
     expect(formatSessionSpan("2026-11-05", [], ["18:00:00"])).toBeNull();
@@ -246,9 +319,28 @@ describe("utcTimeToLocal", () => {
     }
   });
 
-  it("finds the instant on the session's Central date, whichever zone it is shown in", () => {
-    // 9 PM CDT on Oct 24 is 02:00 UTC on Oct 25, after Britain's clocks went back
-    // (02:00 GMT). Taking the instant on Oct 24 in London's calendar gave 03:00.
-    expect(utcTimeToLocal("2026-10-24", "02:00", "Europe/London")).toBe("02:00");
+  it("gives back the time it was saved from in any zone, so an unchanged Reschedule saves nothing new", () => {
+    // The Reschedule form shows these times in the admin's own zone and saves them
+    // back onto the session's date there. The first case is 9 PM CDT on Oct 24,
+    // stored 02:00: read as its real instant, 02:00 GMT on Oct 25 after Britain's
+    // clocks went back, a London admin's unchanged save stored 01:00 (8 PM CDT).
+    const saved: Array<[date: string, utc: string, zone: string]> = [
+      ["2026-10-24", "02:00", "Europe/London"],
+      ["2026-10-24", "02:00", "Europe/Berlin"],
+      ["2026-10-25", "18:00", "Europe/Berlin"],
+      ["2026-10-31", "01:00", "Europe/London"],
+      ["2026-11-01", "01:00", "America/Chicago"],
+      ["2026-11-01", "01:00", "America/New_York"],
+      ["2027-03-14", "00:00", "America/Los_Angeles"],
+      ["2026-10-24", "15:00", "Asia/Kolkata"],
+    ];
+    for (const [date, utc, zone] of saved) {
+      const local = utcTimeToLocal(date, utc, zone);
+      expect(localToUTCTime(date, local, zone), `${zone} ${date} ${utc} -> ${local}`).toBe(`${utc}:00`);
+    }
+  });
+
+  it("reads a date that doesn't exist like no date, rather than throwing", () => {
+    expect(() => utcTimeToLocal("2026-13-45", "15:00", "America/Chicago")).not.toThrow();
   });
 });

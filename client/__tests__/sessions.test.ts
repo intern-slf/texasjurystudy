@@ -2013,7 +2013,7 @@ describe("Sessions", () => {
 
         await updateInviteStatus("invite-t3", "accepted");
 
-        // Sorted as text, "00:00" came first: "6:00 PM – 7:00 PM CT".
+        // Sorted as text, "00:00" came first, so the span started at the second case.
         expect(sentArg(sendInviteAcceptedConfirmationEmailSpy, 2)).toBe("5:00 PM – 7:00 PM CT");
         // Two hours at the online rate. Measured as one, it paid $30.
         expect(writes("session_participants")[0].payout_cents).toBe(6000);
@@ -2491,8 +2491,15 @@ describe("Sessions", () => {
     beforeAll(async () => {
       ({ notifyRequesteesSessionCreated } = await import("@/lib/actions/session"));
     });
-    // An admin action since F28.
-    beforeEach(() => asAdmin());
+    // An admin action since F28. The clock is held in October (CDT) while the
+    // sessions below are in November (CST), so a time read on today's date
+    // instead of the session's comes out an hour off whenever the suite runs.
+    beforeEach(() => {
+      asAdmin();
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-10-14T15:00:00Z"));
+    });
+    afterEach(() => vi.useRealTimers());
 
     // session_cases times are stored in UTC and shown in Central time. Built
     // the same way as the action so the test doesn't depend on whether today

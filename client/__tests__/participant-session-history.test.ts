@@ -83,7 +83,7 @@ describe("getParticipantSessionHistory time range", () => {
 
     const history = await getParticipantSessionHistory(["p-1"]);
 
-    // Sorted as text, "00:00" came first: "6:00 PM – 7:00 PM CT".
+    // Sorted as text, "00:00" came first, so the span started at the second case.
     expect(ranges(history?.upcoming)).toEqual(["5:00 PM – 7:00 PM CT"]);
   });
 
