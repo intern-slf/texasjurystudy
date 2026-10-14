@@ -54,7 +54,8 @@ export default async function CaseTimeSlotCard({ caseId }: { caseId: string }) {
     try {
       openSlots = await getOpenSlots(
         earliestBookableStart(nowMs).toISOString(),
-        new Date(nowMs + SIX_MONTHS_MS).toISOString()
+        new Date(nowMs + SIX_MONTHS_MS).toISOString(),
+        caseId
       );
     } catch (err) {
       console.error("[CaseTimeSlotCard] couldn't read the open times:", err);

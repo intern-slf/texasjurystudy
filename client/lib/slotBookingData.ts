@@ -199,9 +199,10 @@ export function toBookingView(detail: BookingDetail, slot: TimeSlot, nowMs: numb
  * first, each with its `minutes_left`: what an admin can move a booking to, and
  * what a firm can pick from. Several cases can share a slot, so a part-booked
  * slot is still open. Only the slot's own fields and how much of it is free,
- * never anything about who booked the rest.
+ * never anything about who booked the rest. `exceptCaseId`'s own hours aren't
+ * counted, so a firm doesn't see its own booking as someone else's.
  */
-export async function getOpenSlots(from: string, to: string): Promise<TimeSlot[]> {
+export async function getOpenSlots(from: string, to: string, exceptCaseId?: string): Promise<TimeSlot[]> {
   const { data, error } = await supabaseAdmin
     .from("requestee_time_slots")
     .select("id, starts_at, ends_at, note")
@@ -213,7 +214,7 @@ export async function getOpenSlots(from: string, to: string): Promise<TimeSlot[]
   const slots = (data ?? []) as TimeSlot[];
   if (!slots.length) return [];
 
-  const booked = await bookedMinutesBySlot(slots.map((s) => s.id));
+  const booked = await bookedMinutesBySlot(slots.map((s) => s.id), exceptCaseId);
   return slots
     .map((s) => ({ ...s, minutes_left: slotMinutes(s) - (booked.get(s.id) ?? 0) }))
     .filter((s) => s.minutes_left >= 60);

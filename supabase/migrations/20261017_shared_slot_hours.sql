@@ -13,10 +13,14 @@
 --    several bookings. slot_id gets a plain index instead, for its foreign key
 --    and the per-slot sums.
 -- 2. Trigger slot_bookings_keep_within_hours (BEFORE INSERT OR UPDATE OF
---    slot_id): refuses a booking that would take its slot past its hours.
+--    slot_id, case_id): refuses a booking that would take its slot past its
+--    hours.
 -- 3. Trigger cases_keep_booked_hours_within_slot (BEFORE UPDATE OF
 --    hours_requested): refuses raising a booked case's hours past what its slot
 --    has left. (A firm can change its hours while its case is under review.)
+--    Not when the same edit takes the case out of its slot (rejected, archived
+--    under review, or switched to in person, with an unpaid hold on a slot that
+--    hasn't started), which cases_release_slot_booking then frees.
 --
 -- Both lock the slot's row before counting, so two bookings made at the same
 -- moment are counted one after the other: the second waits, then sees the
@@ -112,14 +116,20 @@ DECLARE
   needed numeric;
   minutes_left numeric;
 BEGIN
-  IF NEW.slot_id IS NULL OR (TG_OP = 'UPDATE' AND NEW.slot_id IS NOT DISTINCT FROM OLD.slot_id) THEN
+  IF NEW.slot_id IS NULL
+     OR (TG_OP = 'UPDATE' AND NEW.slot_id IS NOT DISTINCT FROM OLD.slot_id AND NEW.case_id = OLD.case_id) THEN
     RETURN NEW;
   END IF;
 
+  -- Locks the case row first, as an UPDATE of its hours does before its own
+  -- trigger runs: a rise in the case's hours and this booking then wait for
+  -- each other instead of each counting without the other. Both take the case,
+  -- then the slot, so they can't deadlock.
   SELECT CASE WHEN c.hours_requested > 0 THEN c.hours_requested * 60 ELSE 60 END
     INTO needed
     FROM public.cases c
-   WHERE c.id = NEW.case_id;
+   WHERE c.id = NEW.case_id
+     FOR SHARE;
 
   minutes_left := public.slot_minutes_left_for(NEW.slot_id, NEW.case_id);
   IF minutes_left IS NOT NULL AND coalesce(needed, 60) > minutes_left THEN
@@ -135,7 +145,7 @@ REVOKE ALL ON FUNCTION public.keep_slot_booking_within_hours() FROM PUBLIC, anon
 
 DROP TRIGGER IF EXISTS slot_bookings_keep_within_hours ON public.requestee_slot_bookings;
 CREATE TRIGGER slot_bookings_keep_within_hours
-  BEFORE INSERT OR UPDATE OF slot_id ON public.requestee_slot_bookings
+  BEFORE INSERT OR UPDATE OF slot_id, case_id ON public.requestee_slot_bookings
   FOR EACH ROW
   EXECUTE FUNCTION public.keep_slot_booking_within_hours();
 
@@ -160,6 +170,22 @@ BEGIN
     FROM public.requestee_slot_bookings b
    WHERE b.case_id = NEW.id;
   IF booked_slot IS NULL THEN
+    RETURN NEW;
+  END IF;
+
+  -- The same edit can take the case out of its slot: rejected, archived while
+  -- under review, or switched to in person, with an unpaid hold on a slot that
+  -- hasn't started. cases_release_slot_booking (AFTER UPDATE) then frees it, so
+  -- the new hours don't need to fit. These are that trigger's conditions.
+  IF (   (NEW.admin_status = 'rejected' AND OLD.admin_status IS DISTINCT FROM 'rejected')
+      OR (NEW.deleted_at IS NOT NULL AND OLD.deleted_at IS NULL AND NEW.admin_status IN ('all', 'rejected'))
+      OR (NEW.delivery_mode = 'offline' AND OLD.delivery_mode IS DISTINCT FROM 'offline'))
+     AND EXISTS (
+       SELECT 1
+         FROM public.requestee_slot_bookings b
+         JOIN public.requestee_time_slots s ON s.id = b.slot_id
+        WHERE b.case_id = NEW.id AND b.paid_at IS NULL AND s.starts_at > now()
+     ) THEN
     RETURN NEW;
   END IF;
 
@@ -270,6 +296,28 @@ BEGIN
     IF NOT refused THEN
       RAISE EXCEPTION 'Self-check: a booked case grew past its slot; nothing changed';
     END IF;
+
+    -- Going in person frees the hold, so more hours in the same edit are fine.
+    UPDATE public.cases SET delivery_mode = 'offline', hours_requested = 2 WHERE id = one_hour;
+    UPDATE public.cases SET delivery_mode = 'online', hours_requested = 1 WHERE id = one_hour;
+    UPDATE public.requestee_slot_bookings SET slot_id = test_slot WHERE case_id = one_hour;
+
+    -- Handing a booking to another case is counted too: the 1-hour case's
+    -- booking can't go to a 2-hour case while the 2-hour one fills the rest.
+    DELETE FROM public.requestee_slot_bookings WHERE case_id = third;
+    UPDATE public.cases SET hours_requested = 2 WHERE id = third;
+    refused := false;
+    BEGIN
+      UPDATE public.requestee_slot_bookings SET case_id = third WHERE case_id = one_hour;
+    EXCEPTION WHEN check_violation THEN
+      refused := SQLERRM LIKE 'requestee_slot_full%';
+      IF NOT refused THEN RAISE; END IF;
+    END;
+    IF NOT refused THEN
+      RAISE EXCEPTION 'Self-check: a booking handed to a longer case overfilled its slot; nothing changed';
+    END IF;
+    UPDATE public.cases SET hours_requested = NULL WHERE id = third;
+    INSERT INTO public.requestee_slot_bookings (case_id, slot_id, held_since) VALUES (third, other_slot, now());
 
     -- Shrinking frees hours, and then the third case fits.
     UPDATE public.cases SET hours_requested = 1 WHERE id = two_hours;

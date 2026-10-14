@@ -185,6 +185,20 @@ describe("the open times a firm sees", () => {
   });
 });
 
+describe("the open times on a firm's own case page", () => {
+  it("don't count the case's own hours as someone else's", async () => {
+    // The other firm's 1-hour case sits in SLOT_SHARED; on its own page that
+    // hour is its own, so the slot is shown with all 3 hours.
+    const { getOpenSlots } = await import("@/lib/slotBookingData");
+    const from = "2026-10-22T15:00:00.000Z";
+    const to = "2026-12-31T00:00:00.000Z";
+    const seen = await getOpenSlots(from, to, OTHER_FIRMS_SHORT_CASE);
+    expect(seen.find((s) => s.id === SLOT_SHARED)?.minutes_left).toBe(180);
+    const others = await getOpenSlots(from, to);
+    expect(others.find((s) => s.id === SLOT_SHARED)?.minutes_left).toBe(120);
+  });
+});
+
 describe("booking a time", () => {
   it("holds a free slot and starts the payment clock", async () => {
     const result = await actions.chooseTimeSlot(CASE, SLOT_OK);
