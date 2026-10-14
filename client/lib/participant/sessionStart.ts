@@ -1,3 +1,5 @@
+import { sessionSpan } from "@/lib/timezone";
+
 /* =========================
    SESSION TIMING
 
@@ -11,21 +13,21 @@
      * accepting a seat puts the participant on cooldown until the day after the
        session ends (`cooldownAfterSession`)
 
-   Every instant here is built with an explicit `Z`. Omitting it makes
-   `new Date("2026-08-22T22:30:00")` parse in the *server's* local zone, which
-   silently agrees with UTC on a UTC host and drifts by the offset anywhere else.
+   The session date is a Central calendar date, and an evening session's UTC
+   times fall on the next UTC day (from 7 PM CDT / 6 PM CST). So a time is never
+   read as "session date + time Z": sessionSpan in lib/timezone.ts finds the
+   instant on the session's Central date. Reading it the plain way closed an
+   evening session's invitations a day early, and ended its cooldown a day early.
 ========================= */
 
-/** "19:30" / "19:30:00" → "19:30:00". Null for anything unparseable. */
-function normalizeTime(value: string): string | null {
-  const m = /^(\d{1,2}):(\d{2})(?::(\d{2}))?/.exec(value.trim());
-  if (!m) return null;
-  const [, hour, minute, second] = m;
-  return `${hour.padStart(2, "0")}:${minute}:${second ?? "00"}`;
+/** The session's date, "YYYY-MM-DD", or null when there is no usable one. */
+function sessionDay(sessionDate: string | null | undefined): string | null {
+  const day = (sessionDate ?? "").slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : null;
 }
 
 /**
- * The UTC instant a session begins, or null when there is no usable date.
+ * The instant a session begins, or null when there is no usable date.
  *
  * A session with no case times falls back to midnight UTC on its date: it cannot
  * be run without cases, so once the day arrives the invite is no longer live.
@@ -34,20 +36,9 @@ export function sessionStartInstant(
   sessionDate: string | null | undefined,
   startTimes: readonly (string | null | undefined)[] = [],
 ): Date | null {
-  if (!sessionDate) return null;
-
-  const day = sessionDate.slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return null;
-
-  const earliest = startTimes
-    .filter((t): t is string => Boolean(t))
-    .map(normalizeTime)
-    .filter((t): t is string => Boolean(t))
-    .sort()
-    .at(0);
-
-  const instant = new Date(`${day}T${earliest ?? "00:00:00"}Z`);
-  return Number.isNaN(instant.getTime()) ? null : instant;
+  const day = sessionDay(sessionDate);
+  if (!day) return null;
+  return sessionSpan(day, startTimes, [])?.start ?? new Date(`${day}T00:00:00Z`);
 }
 
 /**
@@ -65,36 +56,17 @@ export function hasSessionStarted(
 }
 
 /**
- * The UTC instant a session finishes — its latest case end.
- *
- * A case ending "before" the session's first start ran past midnight, so it is
- * rolled onto the next day before the latest end is picked. Taking the plain
- * maximum would read a 19:30→22:30 plus 22:30→00:30 session as ending at 22:30.
+ * The instant a session finishes: its latest case end, or its start when no case
+ * has an end time. Null when there is no usable date.
  */
 export function sessionEndInstant(
   sessionDate: string | null | undefined,
   startTimes: readonly (string | null | undefined)[] = [],
   endTimes: readonly (string | null | undefined)[] = [],
 ): Date | null {
-  const start = sessionStartInstant(sessionDate, startTimes);
-  if (!start) return null;
-
-  const day = (sessionDate ?? "").slice(0, 10);
-  const ends = endTimes
-    .filter((t): t is string => Boolean(t))
-    .map(normalizeTime)
-    .filter((t): t is string => Boolean(t))
-    .map((t) => {
-      const instant = new Date(`${day}T${t}Z`);
-      // Ends before the session even started ⇒ it belongs to the next day.
-      return instant.getTime() < start.getTime()
-        ? new Date(instant.getTime() + 24 * 60 * 60 * 1000)
-        : instant;
-    })
-    .filter((d) => !Number.isNaN(d.getTime()));
-
-  if (!ends.length) return start;
-  return new Date(Math.max(...ends.map((d) => d.getTime())));
+  const day = sessionDay(sessionDate);
+  if (!day) return null;
+  return sessionSpan(day, startTimes, endTimes)?.end ?? sessionStartInstant(day, startTimes);
 }
 
 /**

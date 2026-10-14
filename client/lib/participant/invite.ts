@@ -14,7 +14,7 @@ import { isOffline } from "@/lib/case/deliveryMode";
 import { getSessionDeliveryModeOrDefault } from "@/lib/case/getSessionDeliveryMode";
 import { NO_LOGIN_REASON, getIdsWithoutLogin } from "@/lib/participant/loginAccount";
 import { revalidatePath } from "next/cache";
-import { formatSessionTime } from "@/lib/timezone";
+import { formatSessionSpan } from "@/lib/timezone";
 
 /**
  * Outcome of an invite attempt. Returned rather than thrown so the caller can
@@ -310,16 +310,14 @@ async function inviteToSessionInner(
     .select("start_time, end_time")
     .eq("session_id", sessionId);
 
-  const formatCentralTime = (t: string) => formatSessionTime(sessionDate, t, "America/Chicago");
-
-  let timeStr = "TBD";
-  if (sessionCaseRows && sessionCaseRows.length > 0) {
-    const starts = sessionCaseRows.map((r) => r.start_time).filter(Boolean).sort();
-    const ends   = sessionCaseRows.map((r) => r.end_time).filter(Boolean).sort();
-    if (starts.length && ends.length) {
-      timeStr = `${formatCentralTime(starts[0])} – ${formatCentralTime(ends[ends.length - 1])} CT`;
-    }
-  }
+  // The whole session, earliest start to latest end, read on its date as
+  // instants: an evening session crossing midnight UTC keeps its first case.
+  const span = formatSessionSpan(
+    sessionDate,
+    (sessionCaseRows ?? []).map((r) => r.start_time),
+    (sessionCaseRows ?? []).map((r) => r.end_time),
+  );
+  const timeStr = span ? `${span} CT` : "TBD";
 
   const hourlyRate = formatCents(hourlyRateCents(deliveryMode));
   const inviteWaitFee = formatCents(waitlistWaitFeeCents(deliveryMode));
