@@ -15,7 +15,7 @@ import {
   slotFitsHours,
   slotMinutes,
 } from "@/lib/slotBooking";
-import { bookedMinutesBySlot, getBookingsForCases, getOpenSlots } from "@/lib/slotBookingData";
+import { bookedMinutesBySlot, getBookingsForCases, getOpenSlots, slotsClosedToFirms } from "@/lib/slotBookingData";
 import { formatMinutes } from "@/lib/case/paidTime";
 import { sendSlotHeldEmail, sendSlotTeamNotice } from "@/lib/slotBookingEmails";
 
@@ -165,6 +165,12 @@ export async function chooseTimeSlot(
   const heldSince = existing?.held_since ?? new Date(now).toISOString();
   const due = paid ? null : paymentDueAt(heldSince).toISOString();
   if (existing?.slot_id === slotId) return { ok: true, slot, paid, dueAt: due };
+
+  // Its session's participants are invited, so the panel is chosen for the
+  // cases already in it: the leftover hours aren't sold any more.
+  if ((await slotsClosedToFirms([slotId])).has(slotId)) {
+    return fail(`That time is no longer open for booking. To join it, ${CONTACT}.`);
+  }
 
   const nowIso = new Date(now).toISOString();
   let result;

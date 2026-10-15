@@ -245,6 +245,10 @@ vi.mock("@/lib/mail", async (importOriginal) => ({
   emailWrapper: (content: string) => `<wrapped>${content}</wrapped>`,
 }));
 
+// The bookings in a time slot, for addSlotCasesToSession. Answered per test.
+const bookingsForSlotsMock = vi.fn(async (): Promise<Map<string, unknown[]>> => new Map());
+vi.mock("@/lib/slotBookingData", () => ({ getBookingsForSlots: () => bookingsForSlotsMock() }));
+
 vi.mock("next/cache", () => ({
   revalidatePath: vi.fn(),
 }));
@@ -2830,6 +2834,78 @@ describe("Sessions", () => {
       };
       // Day after the 2999-06-15 session ends, not the old date.
       expect(String(upd.payload.eligible_after_at)).toContain("2999-06-16");
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // addSlotCasesToSession — a slot's late bookings join its session
+  // -------------------------------------------------------------------------
+  describe("addSlotCasesToSession", () => {
+    let addSlotCasesToSession: (typeof import("@/lib/actions/session"))["addSlotCasesToSession"];
+    beforeAll(async () => {
+      ({ addSlotCasesToSession } = await import("@/lib/actions/session"));
+    });
+    beforeEach(() => asAdmin());
+
+    const booked = (caseId: string, adminStatus: string, hours: number | null) => ({
+      case_id: caseId,
+      slot_id: "slot-1",
+      held_since: "2026-10-20T10:00:00Z",
+      paid_at: null,
+      case: { id: caseId, title: caseId, admin_status: adminStatus, hours_requested: hours },
+    });
+
+    it("puts the slot's waiting cases after the session's last one, each for its paid hours", async () => {
+      bookingsForSlotsMock.mockResolvedValueOnce(
+        new Map([["slot-1", [booked("case-A", "approved", 1), booked("case-B", "approved", 2), booked("case-C", "all", 1)]]]),
+      );
+      state.participantEmails.set("firm-2", "two@firm.test");
+      state.responses = [
+        // case-A is already in session s-1 on Oct 29.
+        { data: [{ case_id: "case-A", session_id: "s-1", sessions: { session_date: "2026-10-29" } }], error: null },
+        // s-1 runs 9-10 AM CDT.
+        { data: [{ start_time: "14:00:00", end_time: "15:00:00" }], error: null },
+        // addCasesToSession: the format guard, then paid hours.
+        { data: [{ id: "case-B", delivery_mode: "online" }], error: null },
+        { data: [{ case_id: "case-A", cases: { delivery_mode: "online" } }], error: null },
+        { data: [{ id: "case-B", title: "Doe v. Roe", hours_requested: 2 }], error: null },
+        { error: null }, // session_cases insert
+        { data: [], error: null }, // the cases' preferred times
+        { error: null }, // admin_scheduled_at
+        // notifyRequesteesSessionCreated: the cases, then the session's times.
+        { data: [{ id: "case-B", title: "Doe v. Roe", user_id: "firm-2", delivery_mode: "online" }], error: null },
+        { data: [{ case_id: "case-B", start_time: "15:00:00", end_time: "17:00:00" }], error: null },
+        { data: [], error: null }, // nobody holds a place yet
+      ];
+
+      const result = await addSlotCasesToSession("slot-1");
+
+      expect(result).toEqual({ ok: true, added: 1, warning: undefined });
+      const insert = state.captured.find((c) => c.table === "session_cases" && c.ops.some((o) => o.op === "insert"))!;
+      // 10 AM-12 PM CDT; case-C isn't approved, so it waits.
+      expect((insert.ops.find((o) => o.op === "insert") as { payload: unknown }).payload).toEqual([
+        { session_id: "s-1", case_id: "case-B", start_time: "15:00:00", end_time: "17:00:00" },
+      ]);
+      expect(sendSessionCreatedEmailSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it("says to build a session when the slot has none, and writes nothing", async () => {
+      bookingsForSlotsMock.mockResolvedValueOnce(new Map([["slot-1", [booked("case-B", "approved", 2)]]]));
+      state.responses = [{ data: [], error: null }];
+
+      expect(await addSlotCasesToSession("slot-1")).toEqual({
+        ok: false,
+        error: "This slot has no session yet. Use Build session.",
+      });
+      expect(state.captured.some((c) => c.ops.some((o) => o.op === "insert" || o.op === "update"))).toBe(false);
+    });
+
+    it("is for admins only", async () => {
+      bookingsForSlotsMock.mockClear();
+      state.callerRole = "requestee";
+      state.user = { id: "firm-1" };
+      await expect(addSlotCasesToSession("slot-1")).rejects.toThrow("Not authorized");
+      expect(bookingsForSlotsMock).not.toHaveBeenCalled();
     });
   });
 

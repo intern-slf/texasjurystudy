@@ -596,7 +596,9 @@ Not covered: the Reschedule and Replace Case dialogs (both closed until clicked,
 |---|---|
 | Build Session's starting point | The slot's Central date (daylight and standard time); its cases one after another from its start, earliest booking first, each for its paid hours (an empty request is 1 hour); the slot the calendar link names, else the one most cases booked (not just the earliest), with the others named; nothing when no case booked a slot; the picker starts there and ends after the paid time. |
 | a session outside its booked slot | Any part before the slot starts or after it ends. |
-| the calendar's booked cases | No session yet, a session inside the slot, and one outside it (warned); Build session takes only approved cases not yet in a session, says how many await approval, and shows nothing when every case is in a session. |
+| the calendar's booked cases | No session yet, a session inside the slot, and one outside it (warned); Build session takes only approved cases not yet in a session, says how many await approval, and shows nothing when every case is in a session; once the slot has a session, its waiting cases are offered "Add N cases to the session" instead of a second session. |
+
+Also: in [firm-slot-booking.test.ts](../client/__tests__/firm-slot-booking.test.ts), a slot whose session is built still sells its leftover hours until that session invites participants, then is neither listed nor bookable. In [sessions.test.ts](../client/__tests__/sessions.test.ts) (`addSlotCasesToSession`): a slot's approved waiting cases go after the session's last case for their paid hours (10 AM-12 PM after a 9-10 session), a case awaiting approval waits, the firm gets the Session Scheduled email, a slot with no session is told to build one with nothing written, and only admins can call it.
 
 Not covered: the Build Session and sessions pages and the Reschedule dialog themselves, which use these functions.
 

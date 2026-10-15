@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }) }));
 // The calendar's buttons call these; nothing here clicks them.
 vi.mock("@/lib/actions/requesteeTimeSlots", () => ({ deleteRequesteeTimeSlot: vi.fn(), createRequesteeTimeSlots: vi.fn() }));
+vi.mock("@/lib/actions/session", () => ({ addSlotCasesToSession: vi.fn() }));
 vi.mock("@/lib/actions/adminSlotBooking", () => ({
   cancelBooking: vi.fn(),
   markBookingPaid: vi.fn(),
@@ -112,11 +113,11 @@ describe("the calendar's booked cases", () => {
 
   it("show the session a case is in, and warn when it runs outside the slot", () => {
     expect(html(createElement(SessionLine, { booking: booking({}) }))).toContain("No session built yet.");
-    const inSession = booking({ session: { date: "Oct 29, 2026", time: "9:00 AM – 10:00 AM CT", outsideSlot: false } });
+    const inSession = booking({ session: { date: "Oct 29, 2026", time: "9:00 AM – 10:00 AM CT", outsideSlot: false, id: "s-1", invited: false } });
     const page = html(createElement(SessionLine, { booking: inSession }));
     expect(page).toContain("Oct 29, 2026, 9:00 AM – 10:00 AM CT");
     expect(page).not.toContain("outside this booked slot");
-    const outside = booking({ session: { date: "Oct 30, 2026", time: "9:00 AM – 10:00 AM CT", outsideSlot: true } });
+    const outside = booking({ session: { date: "Oct 30, 2026", time: "9:00 AM – 10:00 AM CT", outsideSlot: true, id: "s-1", invited: false } });
     expect(html(createElement(SessionLine, { booking: outside }))).toContain("The session runs outside this booked slot");
   });
 
@@ -125,7 +126,6 @@ describe("the calendar's booked cases", () => {
       booking({ caseId: "case-1" }),
       booking({ caseId: "case-2" }),
       booking({ caseId: "case-3", approved: false }),
-      booking({ caseId: "case-4", session: { date: "Oct 29, 2026", time: null, outsideSlot: false } }),
     ];
     const page = html(createElement(BuildSessionLink, { slot: OCT_SLOT, list }));
     expect(page).toContain("Build session with 2 cases");
@@ -133,8 +133,17 @@ describe("the calendar's booked cases", () => {
     expect(page).toContain("1 case isn&#x27;t approved yet, so it isn&#x27;t included.");
   });
 
+  it("join the session already built for the slot, instead of building a second one", () => {
+    const session = { id: "s-1", date: "Oct 29, 2026", time: "9:00 AM – 10:00 AM CT", outsideSlot: false, invited: false };
+    const list = [booking({ caseId: "case-1", session }), booking({ caseId: "case-2" }), booking({ caseId: "case-3" })];
+    const page = html(createElement(BuildSessionLink, { slot: OCT_SLOT, list }));
+    expect(page).toContain("Add 2 cases to the session on Oct 29, 2026");
+    expect(page).not.toContain("Build session");
+    expect(page).not.toContain("sessions/new");
+  });
+
   it("offer nothing to build when every case is already in a session", () => {
-    const list = [booking({ session: { date: "Oct 29, 2026", time: null, outsideSlot: false } })];
+    const list = [booking({ session: { date: "Oct 29, 2026", time: null, outsideSlot: false, id: "s-1", invited: false } })];
     expect(renderToStaticMarkup(createElement(BuildSessionLink, { slot: OCT_SLOT, list }))).toBe("");
   });
 });

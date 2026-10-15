@@ -11,6 +11,7 @@ import BookingAdminControls from "@/components/BookingAdminControls";
 import BookingSummary, { BOOKING_STATE_CLASSES, BookingStateBadge } from "@/components/BookingSummary";
 import TimeSlotModal from "@/components/TimeSlotModal";
 import { deleteRequesteeTimeSlot } from "@/lib/actions/requesteeTimeSlots";
+import { addSlotCasesToSession } from "@/lib/actions/session";
 import {
   SLOT_TIME_ZONE_LABEL,
   TIME_SLOTS_PATH,
@@ -71,28 +72,110 @@ export function SessionLine({ booking }: { booking: BookingView }) {
 }
 
 /**
- * Opens Build Session with the slot's cases that can go into one: approved and
- * not in a session yet. Its date and their times start from the slot.
+ * What the slot's cases that can go into a session (approved, not in one yet)
+ * can do. A slot's cases make one session: with none built yet, Build session
+ * opens Build Session with them, its date and their times starting from the
+ * slot; once one exists, they're added to it after its last case.
  */
 export function BuildSessionLink({ slot, list }: { slot: TimeSlot; list: BookingView[] }) {
   const ready = list.filter((b) => b.approved && !b.session);
   const waiting = list.filter((b) => !b.approved && !b.session).length;
+  const existing = list.find((b) => b.session)?.session ?? null;
   if (!ready.length && !waiting) return null;
   const query = new URLSearchParams({ slot: slot.id });
   for (const b of ready) query.append("selectedCases", b.caseId);
+  const label = `${ready.length} case${ready.length === 1 ? "" : "s"}`;
   return (
     <div className="space-y-1">
-      {ready.length > 0 && (
-        <Button asChild size="sm">
-          <Link href={`/dashboard/Admin/sessions/new?${query.toString()}`}>
-            Build session with {ready.length} case{ready.length === 1 ? "" : "s"}
-          </Link>
-        </Button>
-      )}
+      {ready.length > 0 &&
+        (existing ? (
+          <AddToSessionButton slotId={slot.id} label={label} session={existing} />
+        ) : (
+          <Button asChild size="sm">
+            <Link href={`/dashboard/Admin/sessions/new?${query.toString()}`}>Build session with {label}</Link>
+          </Button>
+        ))}
       {waiting > 0 && (
         <p className="text-xs text-slate-500">
           {waiting} case{waiting === 1 ? " isn't" : "s aren't"} approved yet, so {waiting === 1 ? "it isn't" : "they aren't"}{" "}
           included.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Adds the slot's waiting cases to the session already built for it. Once its
+ * participants are invited, the admin confirms first: they're emailed the new
+ * time and repriced, and the panel was chosen without these cases.
+ */
+function AddToSessionButton({
+  slotId,
+  label,
+  session,
+}: {
+  slotId: string;
+  label: string;
+  session: NonNullable<BookingView["session"]>;
+}) {
+  const router = useRouter();
+  const [confirming, setConfirming] = useState(false);
+  const [message, setMessage] = useState<{ tone: "error" | "done"; text: string } | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  function add() {
+    setMessage(null);
+    startTransition(async () => {
+      try {
+        const result = await addSlotCasesToSession(slotId);
+        if (!result.ok) {
+          setMessage({ tone: "error", text: result.error });
+          return;
+        }
+        setConfirming(false);
+        setMessage({
+          tone: "done",
+          text: `Added ${result.added} case${result.added === 1 ? "" : "s"} to the session.${result.warning ? ` ${result.warning}` : ""}`,
+        });
+        router.refresh();
+      } catch (err) {
+        console.error("[TimeSlotCalendar] add to session failed:", err);
+        setMessage({ tone: "error", text: "Something went wrong. Refresh the page and try again." });
+      }
+    });
+  }
+
+  return (
+    <div className="space-y-2">
+      {session.invited && confirming ? (
+        <div className="space-y-2 rounded-md bg-amber-50 p-2 text-xs text-amber-900">
+          <p>
+            This session&apos;s participants are already invited, for a panel chosen without these cases. Those who
+            accepted will be emailed the new end time, and their pay will change with the longer session.
+          </p>
+          <div className="flex gap-2">
+            <Button type="button" size="sm" onClick={add} disabled={pending}>
+              {pending ? "Adding…" : "Add anyway"}
+            </Button>
+            <Button type="button" size="sm" variant="outline" onClick={() => setConfirming(false)} disabled={pending}>
+              Keep as is
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <Button
+          type="button"
+          size="sm"
+          onClick={() => (session.invited ? setConfirming(true) : add())}
+          disabled={pending}
+        >
+          {pending ? "Adding…" : `Add ${label} to the session on ${session.date}`}
+        </Button>
+      )}
+      {message && (
+        <p role={message.tone === "error" ? "alert" : "status"} className={message.tone === "error" ? "text-xs text-red-600" : "text-xs text-green-700"}>
+          {message.text}
         </p>
       )}
     </div>

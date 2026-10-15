@@ -28,11 +28,12 @@ import {
   formatCents,
 } from "@/lib/participant/waitlist";
 import { assertCasesShareDeliveryMode, isOffline } from "@/lib/case/deliveryMode";
-import { assertPaidTime, caseMinutes, storedCaseMinutes } from "@/lib/case/paidTime";
+import { assertPaidTime, caseMinutes, paidMinutes, storedCaseMinutes } from "@/lib/case/paidTime";
+import { getBookingsForSlots } from "@/lib/slotBookingData";
 import { getSessionDeliveryModeOrDefault } from "@/lib/case/getSessionDeliveryMode";
 import { getAllIdsWithoutLogin } from "@/lib/participant/loginAccount";
 import { revalidatePath } from "next/cache";
-import { CENTRAL_TIME_ZONE, formatSessionDate, formatSessionSpan, localToUTC, localToUTCTime, sessionSpan } from "@/lib/timezone";
+import { CENTRAL_TIME_ZONE, centralDateTimeInput, formatSessionDate, formatSessionSpan, localToUTC, localToUTCTime, sessionSpan } from "@/lib/timezone";
 
 /* =========================
    CREATE SESSION
@@ -200,6 +201,112 @@ export async function addCasesToSession(
         .eq("id", c.caseId);
     }
   }
+}
+
+/* =========================
+   ADD A SLOT'S LATE BOOKINGS TO ITS SESSION
+   A time slot's cases make one session. A firm that books the slot's leftover
+   hours after the session is built (firms can until its participants are
+   invited) joins that session: its case goes on after the session's last one,
+   for the hours it paid for, and its firm gets the Session Scheduled email. If
+   participants are already invited the admin confirms first, and those holding
+   a place are emailed the new time and repriced, as after a reschedule.
+========================= */
+export async function addSlotCasesToSession(
+  slotId: string,
+): Promise<{ ok: true; added: number; warning?: string } | { ok: false; error: string }> {
+  await requireAdmin();
+  const supabase = await createClient();
+
+  const bookings = (await getBookingsForSlots([slotId])).get(slotId) ?? [];
+  const caseIds = bookings.map((b) => b.case_id);
+  if (!caseIds.length) return { ok: false, error: "Nobody has booked this slot." };
+
+  type Row = {
+    case_id: string;
+    session_id: string;
+    sessions?: { session_date?: string | null } | { session_date?: string | null }[] | null;
+  };
+  const { data: rows, error: rowsError } = await supabase
+    .from("session_cases")
+    .select("case_id, session_id, sessions(session_date)")
+    .in("case_id", caseIds);
+  if (rowsError) throw rowsError;
+  const inSession = (rows ?? []) as Row[];
+  const dateOf = (r: Row) => (Array.isArray(r.sessions) ? r.sessions[0] : r.sessions)?.session_date ?? "";
+  // The slot's session: the latest one any of its cases is in.
+  const target = [...inSession].sort((a, b) => dateOf(b).localeCompare(dateOf(a)))[0];
+  if (!target) return { ok: false, error: "This slot has no session yet. Use Build session." };
+  const sessionDate = dateOf(target);
+
+  const inAnySession = new Set(inSession.map((r) => r.case_id));
+  const toAdd = bookings
+    .filter((b) => !inAnySession.has(b.case_id))
+    .filter((b) => b.case.admin_status === "approved" || b.case.admin_status === "submitted");
+  if (!toAdd.length) return { ok: false, error: "No approved case in this slot is waiting to join its session." };
+
+  // After the session's last case, one after another.
+  const { data: times, error: timesError } = await supabase
+    .from("session_cases")
+    .select("start_time, end_time")
+    .eq("session_id", target.session_id);
+  if (timesError) throw timesError;
+  const span = sessionSpan(
+    sessionDate,
+    (times ?? []).map((t) => t.start_time),
+    (times ?? []).map((t) => t.end_time),
+  );
+  const sessionEnd = (span?.end ?? span?.start)?.getTime();
+  if (sessionEnd === undefined) {
+    return { ok: false, error: "The session's times couldn't be read. Check it on the sessions page." };
+  }
+  let startMs = sessionEnd;
+  const clock = (ms: number) => centralDateTimeInput(new Date(ms).toISOString()).slice(11, 16);
+  const cases = toAdd.map((b) => {
+    const start = clock(startMs);
+    startMs += paidMinutes(b.case.hours_requested) * 60_000;
+    return { caseId: b.case_id, start, end: clock(startMs) };
+  });
+
+  await addCasesToSession(target.session_id, cases, sessionDate);
+  await notifyRequesteesSessionCreated(target.session_id, cases.map((c) => c.caseId), sessionDate);
+
+  // Participants already holding a place now sit longer: reprice them and say so.
+  let warning: string | undefined;
+  const { data: holders } = await supabase
+    .from("session_participants")
+    .select("participant_id")
+    .eq("session_id", target.session_id)
+    .in("invite_status", ["accepted", WAITLISTED_STATUS]);
+  if (holders?.length) {
+    const newTimes = await resyncScheduleDerivedValues(supabase, target.session_id, sessionDate);
+    const spanText = formatSessionSpan(
+      sessionDate,
+      newTimes.map((r) => r.start_time),
+      newTimes.map((r) => r.end_time),
+    );
+    let failed = 0;
+    for (const row of holders) {
+      try {
+        const { data: userData } = await supabaseAdmin.auth.admin.getUserById(row.participant_id);
+        if (userData?.user?.email) {
+          await sendRescheduleEmail(userData.user.email, formatSessionDate(sessionDate), "participant", {
+            timeStr: spanText ? `${spanText} CT` : null,
+          });
+        }
+      } catch (e) {
+        failed++;
+        console.error(`[addSlotCasesToSession] email failed for participant ${row.participant_id}:`, e);
+      }
+    }
+    warning = `${holders.length} participant${holders.length === 1 ? " was" : "s were"} emailed the new time${
+      failed ? `, but ${failed} email${failed === 1 ? "" : "s"} failed` : ""
+    }.`;
+  }
+
+  revalidatePath("/dashboard/Admin/sessions");
+  revalidatePath("/dashboard/Admin/requestees/time-slots");
+  return { ok: true, added: cases.length, warning };
 }
 
 /* =========================

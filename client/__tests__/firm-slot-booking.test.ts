@@ -185,6 +185,32 @@ describe("the open times a firm sees", () => {
   });
 });
 
+describe("a slot whose session is already built", () => {
+  // The other firm's 1-hour case in SLOT_SHARED is in session s-1.
+  const inSession = (invited: boolean) => {
+    db.rows("session_cases").push({ session_id: "s-1", case_id: OTHER_FIRMS_SHORT_CASE });
+    if (invited) db.rows("session_participants").push({ session_id: "s-1", participant_id: "p-1", invite_status: "pending" });
+  };
+
+  it("still sells its leftover hours until the session's participants are invited", async () => {
+    inSession(false);
+    const result = await actions.listOpenTimeSlots();
+    expect(result.ok && result.slots.map((s) => s.id)).toContain(SLOT_SHARED);
+    expect(await actions.chooseTimeSlot(CASE, SLOT_SHARED)).toMatchObject({ ok: true });
+  });
+
+  it("stops once they are: the panel was chosen for the cases already in it", async () => {
+    inSession(true);
+    const result = await actions.listOpenTimeSlots();
+    expect(result.ok && result.slots.map((s) => s.id)).not.toContain(SLOT_SHARED);
+    expect(await actions.chooseTimeSlot(CASE, SLOT_SHARED)).toEqual({
+      ok: false,
+      error: "That time is no longer open for booking. To join it, email us at info@texasjurystudy.com.",
+    });
+    expect(bookingOf(CASE)).toBeUndefined();
+  });
+});
+
 describe("the open times on a firm's own case page", () => {
   it("don't count the case's own hours as someone else's", async () => {
     // The other firm's 1-hour case sits in SLOT_SHARED; on its own page that
@@ -192,7 +218,7 @@ describe("the open times on a firm's own case page", () => {
     const { getOpenSlots } = await import("@/lib/slotBookingData");
     const from = "2026-10-22T15:00:00.000Z";
     const to = "2026-12-31T00:00:00.000Z";
-    const seen = await getOpenSlots(from, to, OTHER_FIRMS_SHORT_CASE);
+    const seen = await getOpenSlots(from, to, { exceptCaseId: OTHER_FIRMS_SHORT_CASE });
     expect(seen.find((s) => s.id === SLOT_SHARED)?.minutes_left).toBe(180);
     const others = await getOpenSlots(from, to);
     expect(others.find((s) => s.id === SLOT_SHARED)?.minutes_left).toBe(120);
