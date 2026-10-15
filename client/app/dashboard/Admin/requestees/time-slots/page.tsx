@@ -64,7 +64,10 @@ export default async function RequesteeTimeSlotsPage({
     try {
       const [details, open] = await Promise.all([
         getBookingsForSlots(slots.map((s) => s.id)),
-        getOpenSlots(new Date(nowMs).toISOString(), new Date(nowMs + SIX_MONTHS_MS).toISOString()),
+        // An admin can move or add a case into any slot with room, invitations or not.
+        getOpenSlots(new Date(nowMs).toISOString(), new Date(nowMs + SIX_MONTHS_MS).toISOString(), {
+          includeClosed: true,
+        }),
       ]);
       for (const slot of slots) {
         const inSlot = details.get(slot.id);
@@ -83,25 +86,43 @@ export default async function RequesteeTimeSlotsPage({
   if (bookedCaseIds.length) {
     const { data: sessionRows, error: sessionError } = await supabase
       .from("session_cases")
-      .select("case_id, start_time, end_time, sessions(session_date)")
+      .select("case_id, session_id, start_time, end_time, sessions(session_date)")
       .in("case_id", bookedCaseIds);
     if (sessionError) console.error("[time slots page] sessions failed:", sessionError.message);
-    const rowsByCase = new Map<string, CaseSessionRow[]>();
-    for (const row of (sessionRows ?? []) as (CaseSessionRow & { case_id: string })[]) {
+    type SessionRow = CaseSessionRow & { case_id: string; session_id: string };
+    const rowsByCase = new Map<string, SessionRow[]>();
+    for (const row of (sessionRows ?? []) as SessionRow[]) {
       rowsByCase.set(row.case_id, [...(rowsByCase.get(row.case_id) ?? []), row]);
+    }
+    // Which of those sessions have invited anyone: that closes their slots to firms.
+    const sessionIds = Array.from(new Set(((sessionRows ?? []) as SessionRow[]).map((r) => r.session_id)));
+    const invited = new Set<string>();
+    if (sessionIds.length) {
+      const { data: invites, error: inviteError } = await supabase
+        .from("session_participants")
+        .select("session_id")
+        .in("session_id", sessionIds);
+      if (inviteError) console.error("[time slots page] invitations failed:", inviteError.message);
+      for (const r of invites ?? []) invited.add(r.session_id as string);
     }
     for (const slot of slots) {
       bookings[slot.id] = (bookings[slot.id] ?? []).map((booking) => {
-        const time = caseSessionTime(rowsByCase.get(booking.caseId));
+        const rows = rowsByCase.get(booking.caseId) ?? [];
+        const time = caseSessionTime(rows);
+        // The row caseSessionTime read: the latest session the case is in.
+        const row = time ? rows.find((r) => (Array.isArray(r.sessions) ? r.sessions[0] : r.sessions)?.session_date === time.sessionDate) : undefined;
         return {
           ...booking,
-          session: time
-            ? {
-                date: formatSessionDate(time.sessionDate, "short"),
-                time: time.time,
-                outsideSlot: isOutsideSlot(time.start, time.end, slot),
-              }
-            : null,
+          session:
+            time && row
+              ? {
+                  id: row.session_id,
+                  date: formatSessionDate(time.sessionDate, "short"),
+                  time: time.time,
+                  outsideSlot: isOutsideSlot(time.start, time.end, slot),
+                  invited: invited.has(row.session_id),
+                }
+              : null,
         };
       });
       if (!bookings[slot.id].length) delete bookings[slot.id];
