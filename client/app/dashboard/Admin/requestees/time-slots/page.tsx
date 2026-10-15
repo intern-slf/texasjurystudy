@@ -3,7 +3,9 @@ import { requireAdminPage } from "@/lib/requireAdmin";
 import BackButton from "@/components/BackButton";
 import TimeSlotCalendar from "@/components/TimeSlotCalendar";
 import { getBookingsForSlots, getOpenSlots, toBookingView } from "@/lib/slotBookingData";
-import type { BookingView } from "@/lib/slotBooking";
+import { isOutsideSlot, type BookingView } from "@/lib/slotBooking";
+import { caseSessionTime, type CaseSessionRow } from "@/lib/case/caseSessionTime";
+import { formatSessionDate } from "@/lib/timezone";
 import {
   datesToInstantRange,
   isMonthKey,
@@ -52,9 +54,10 @@ export default async function RequesteeTimeSlotsPage({
   const tableMissing = error?.code === "PGRST205" || error?.code === "42P01";
   const slots = (data ?? []) as TimeSlot[];
 
-  // Who holds each slot. If bookings can't be read, the calendar still shows the
-  // slots, with a warning, rather than every booked slot looking open.
-  const bookings: Record<string, BookingView> = {};
+  // Who holds hours in each slot (several cases can share one). If bookings
+  // can't be read, the calendar still shows the slots, with a warning, rather
+  // than every booked slot looking open.
+  const bookings: Record<string, BookingView[]> = {};
   let openSlots: TimeSlot[] = [];
   let bookingsUnavailable = false;
   if (!error) {
@@ -64,13 +67,44 @@ export default async function RequesteeTimeSlotsPage({
         getOpenSlots(new Date(nowMs).toISOString(), new Date(nowMs + SIX_MONTHS_MS).toISOString()),
       ]);
       for (const slot of slots) {
-        const detail = details.get(slot.id);
-        if (detail) bookings[slot.id] = toBookingView(detail, slot, nowMs);
+        const inSlot = details.get(slot.id);
+        if (inSlot?.length) bookings[slot.id] = inSlot.map((detail) => toBookingView(detail, slot, nowMs));
       }
       openSlots = open;
     } catch (err) {
       console.error("[time slots page] bookings failed:", err);
       bookingsUnavailable = true;
+    }
+  }
+
+  // The session each booked case is in, once one is built: the slot's cases
+  // make one session. Without it the calendar still works, just without them.
+  const bookedCaseIds = Object.values(bookings).flat().map((b) => b.caseId);
+  if (bookedCaseIds.length) {
+    const { data: sessionRows, error: sessionError } = await supabase
+      .from("session_cases")
+      .select("case_id, start_time, end_time, sessions(session_date)")
+      .in("case_id", bookedCaseIds);
+    if (sessionError) console.error("[time slots page] sessions failed:", sessionError.message);
+    const rowsByCase = new Map<string, CaseSessionRow[]>();
+    for (const row of (sessionRows ?? []) as (CaseSessionRow & { case_id: string })[]) {
+      rowsByCase.set(row.case_id, [...(rowsByCase.get(row.case_id) ?? []), row]);
+    }
+    for (const slot of slots) {
+      bookings[slot.id] = (bookings[slot.id] ?? []).map((booking) => {
+        const time = caseSessionTime(rowsByCase.get(booking.caseId));
+        return {
+          ...booking,
+          session: time
+            ? {
+                date: formatSessionDate(time.sessionDate, "short"),
+                time: time.time,
+                outsideSlot: isOutsideSlot(time.start, time.end, slot),
+              }
+            : null,
+        };
+      });
+      if (!bookings[slot.id].length) delete bookings[slot.id];
     }
   }
 

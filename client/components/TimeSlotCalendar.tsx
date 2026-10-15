@@ -23,13 +23,81 @@ import {
   slotDateKey,
   type TimeSlot,
 } from "@/lib/requesteeTimeSlots";
-import type { BookingView } from "@/lib/slotBooking";
+import { slotMinutes, type BookingState, type BookingView } from "@/lib/slotBooking";
+import { formatMinutes } from "@/lib/case/paidTime";
 import { cn } from "@/lib/utils";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 /** Slots listed in a day cell before it says "+N more". The list under the calendar has them all. */
 const CHIPS_PER_DAY = 3;
 const LONG_DATE: Intl.DateTimeFormatOptions = { weekday: "long", month: "long", day: "numeric" };
+
+/** The state a slot's chip shows: the one most needing the admin, of all its bookings. */
+const STATE_URGENCY: Exclude<BookingState, "open">[] = ["overdue", "past", "unpaid", "paid"];
+function slotState(list: BookingView[]): Exclude<BookingState, "open"> {
+  return STATE_URGENCY.find((state) => list.some((b) => b.state === state)) ?? "paid";
+}
+
+/** "1 of 3 hours booked · 2 hours left", or "3 of 3 hours booked · full". */
+function slotHoursLine(slot: TimeSlot, list: BookingView[]): string {
+  const total = slotMinutes(slot);
+  const booked = list.reduce((sum, b) => sum + b.minutes, 0);
+  const left = total - booked;
+  const bookedText = `${formatMinutes(booked).replace(/ hours?$/, "")} of ${formatMinutes(total)} booked`;
+  return left > 0 ? `${bookedText} · ${formatMinutes(left)} left` : `${bookedText} · full`;
+}
+
+/** Where a booked case's session stands: built (and whether it keeps to the slot), or not yet. */
+export function SessionLine({ booking }: { booking: BookingView }) {
+  if (!booking.session) {
+    return <p className="text-xs text-slate-500">No session built yet.</p>;
+  }
+  return (
+    <div className="space-y-1 text-xs">
+      <p className="text-slate-700">
+        In session:{" "}
+        <Link href="/dashboard/Admin/sessions" className="font-medium text-blue-700 hover:underline">
+          {booking.session.date}
+          {booking.session.time ? `, ${booking.session.time}` : ""}
+        </Link>
+      </p>
+      {booking.session.outsideSlot && (
+        <p className="rounded-md bg-amber-50 px-2 py-1 text-amber-800">
+          The session runs outside this booked slot. Reschedule it, or move the booking.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Opens Build Session with the slot's cases that can go into one: approved and
+ * not in a session yet. Its date and their times start from the slot.
+ */
+export function BuildSessionLink({ slot, list }: { slot: TimeSlot; list: BookingView[] }) {
+  const ready = list.filter((b) => b.approved && !b.session);
+  const waiting = list.filter((b) => !b.approved && !b.session).length;
+  if (!ready.length && !waiting) return null;
+  const query = new URLSearchParams({ slot: slot.id });
+  for (const b of ready) query.append("selectedCases", b.caseId);
+  return (
+    <div className="space-y-1">
+      {ready.length > 0 && (
+        <Button asChild size="sm">
+          <Link href={`/dashboard/Admin/sessions/new?${query.toString()}`}>
+            Build session with {ready.length} case{ready.length === 1 ? "" : "s"}
+          </Link>
+        </Button>
+      )}
+      {waiting > 0 && (
+        <p className="text-xs text-slate-500">
+          {waiting} case{waiting === 1 ? " isn't" : "s aren't"} approved yet, so {waiting === 1 ? "it isn't" : "they aren't"}{" "}
+          included.
+        </p>
+      )}
+    </div>
+  );
+}
 
 const MONTH_NAV_CLASSES =
   "flex h-8 w-8 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800";
@@ -41,8 +109,8 @@ type Props = {
   todayKey: string;
   /** The slots starting on any date the grid shows, earliest first. */
   slots: TimeSlot[];
-  /** Who holds each booked slot, by slot id. */
-  bookings: Record<string, BookingView>;
+  /** The cases holding hours in each booked slot, by slot id. Several can share one. */
+  bookings: Record<string, BookingView[]>;
   /** Free future slots, which a booking can be moved to. */
   openSlots: TimeSlot[];
 };
@@ -190,24 +258,32 @@ export default function TimeSlotCalendar({ monthKey, todayKey, slots, bookings, 
                   <>
                     <ul className="mt-1 hidden space-y-1 sm:block">
                       {daySlots.slice(0, CHIPS_PER_DAY).map((slot) => {
-                        const booking = bookings[slot.id];
+                        const list = bookings[slot.id] ?? [];
                         return (
                           <li key={slot.id}>
                             <button
                               type="button"
                               onClick={() => setOpenSlot(slot)}
-                              title={booking ? `${booking.firm}: ${booking.caseTitle}` : (slot.note ?? undefined)}
+                              title={
+                                list.length
+                                  ? [...list.map((b) => `${b.firm}: ${b.caseTitle}`), slotHoursLine(slot, list)].join(" / ")
+                                  : (slot.note ?? undefined)
+                              }
                               className={cn(
                                 "w-full rounded px-1.5 py-0.5 text-left text-[11px] font-medium transition-opacity hover:opacity-80",
-                                booking
-                                  ? BOOKING_STATE_CLASSES[booking.state]
+                                list.length
+                                  ? BOOKING_STATE_CLASSES[slotState(list)]
                                   : isPast
                                     ? "bg-slate-100 text-slate-500"
                                     : BOOKING_STATE_CLASSES.open
                               )}
                             >
                               <span className="block truncate">{formatSlotRange(slot)}</span>
-                              {booking && <span className="block truncate text-[10px] font-normal">{booking.firm}</span>}
+                              {list.length > 0 && (
+                                <span className="block truncate text-[10px] font-normal">
+                                  {list.length === 1 ? list[0].firm : `${list.length} firms`}
+                                </span>
+                              )}
                             </button>
                           </li>
                         );
@@ -226,7 +302,7 @@ export default function TimeSlotCalendar({ monthKey, todayKey, slots, bookings, 
                           key={slot.id}
                           className={cn(
                             "h-1.5 w-1.5 rounded-full",
-                            bookings[slot.id] ? "bg-amber-500" : isPast ? "bg-slate-300" : "bg-blue-500"
+                            bookings[slot.id]?.length ? "bg-amber-500" : isPast ? "bg-slate-300" : "bg-blue-500"
                           )}
                         />
                       ))}
@@ -266,7 +342,7 @@ export default function TimeSlotCalendar({ monthKey, todayKey, slots, bookings, 
                 </p>
                 <ul className="flex-1 space-y-1">
                   {(slotsByDate.get(dateKey) ?? []).map((slot) => {
-                    const booking = bookings[slot.id];
+                    const list = bookings[slot.id] ?? [];
                     return (
                       <li key={slot.id} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
                         <div className="min-w-0 text-sm">
@@ -275,19 +351,26 @@ export default function TimeSlotCalendar({ monthKey, todayKey, slots, bookings, 
                               {formatSlotRange(slot)} {SLOT_TIME_ZONE_LABEL}
                             </span>
                             {slot.note && <span className="text-slate-500"> · {slot.note}</span>}
+                            {list.length > 0 && <span className="text-slate-500"> · {slotHoursLine(slot, list)}</span>}
                           </p>
-                          {booking && (
-                            <p className="mt-0.5 flex flex-wrap items-center gap-2 text-slate-600">
+                          {list.map((booking) => (
+                            <p key={booking.caseId} className="mt-0.5 flex flex-wrap items-center gap-2 text-slate-600">
                               <BookingStateBadge state={booking.state} />
                               <span>{booking.firm}</span>
                               <span className="text-slate-400">·</span>
                               <Link href={`/dashboard/Admin/${booking.caseId}`} className="text-blue-700 hover:underline">
                                 {booking.caseTitle}
                               </Link>
+                              <span className="text-slate-400">· {formatMinutes(booking.minutes)}</span>
+                              {booking.session && (
+                                <span className={booking.session.outsideSlot ? "text-amber-700" : "text-green-700"}>
+                                  · {booking.session.outsideSlot ? "in a session outside this slot" : "in session"}
+                                </span>
+                              )}
                             </p>
-                          )}
+                          ))}
                         </div>
-                        {booking ? (
+                        {list.length ? (
                           <Button type="button" variant="outline" size="sm" onClick={() => setOpenSlot(slot)}>
                             Manage
                           </Button>
@@ -326,16 +409,25 @@ export default function TimeSlotCalendar({ monthKey, todayKey, slots, bookings, 
                 <dd className="mt-0.5 break-words text-slate-800">{openSlot.note}</dd>
               </div>
             )}
+            <div>
+              <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Hours</dt>
+              <dd className="mt-0.5 text-slate-800">{slotHoursLine(openSlot, bookings[openSlot.id] ?? [])}</dd>
+            </div>
           </dl>
 
-          {bookings[openSlot.id] ? (
+          {bookings[openSlot.id]?.length ? (
             <div className="space-y-4 border-t pt-4">
-              <BookingSummary booking={bookings[openSlot.id]} />
-              <BookingAdminControls
-                booking={bookings[openSlot.id]}
-                openSlots={openSlots}
-                onLeftSlot={() => setOpenSlot(null)}
-              />
+              {bookings[openSlot.id].map((booking) => (
+                <div key={booking.caseId} className="space-y-3 rounded-lg border p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    {formatMinutes(booking.minutes)}
+                  </p>
+                  <BookingSummary booking={booking} />
+                  <SessionLine booking={booking} />
+                  <BookingAdminControls booking={booking} openSlots={openSlots} />
+                </div>
+              ))}
+              <BuildSessionLink slot={openSlot} list={bookings[openSlot.id]} />
               <div className="flex justify-end">
                 <Button variant="outline" onClick={() => setOpenSlot(null)}>
                   Close

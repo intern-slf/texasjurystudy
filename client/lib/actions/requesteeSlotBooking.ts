@@ -6,8 +6,17 @@ import { requireRequestee } from "@/lib/requireRequestee";
 import { SUPPORT_EMAIL } from "@/lib/legal-constants";
 import { billableHours } from "@/lib/receipt-pricing";
 import { TIME_SLOTS_PATH, describeSlot, type TimeSlot } from "@/lib/requesteeTimeSlots";
-import { earliestBookableStart, firmLabel, formatDeadline, paymentDueAt, slotFitsHours } from "@/lib/slotBooking";
-import { getBookingsForCases, getOpenSlots } from "@/lib/slotBookingData";
+import {
+  earliestBookableStart,
+  firmLabel,
+  formatDeadline,
+  isSlotFullError,
+  paymentDueAt,
+  slotFitsHours,
+  slotMinutes,
+} from "@/lib/slotBooking";
+import { bookedMinutesBySlot, getBookingsForCases, getOpenSlots } from "@/lib/slotBookingData";
+import { formatMinutes } from "@/lib/case/paidTime";
 import { sendSlotHeldEmail, sendSlotTeamNotice } from "@/lib/slotBookingEmails";
 
 // A law firm's own booking actions. Every export starts with requireRequestee():
@@ -130,9 +139,22 @@ export async function chooseTimeSlot(
   if (!slot) return fail("That time is no longer available. Pick another one.");
 
   const now = Date.now();
-  if (!slotFitsHours(slot, theCase.hours_requested)) {
+  // Other firms' cases can share the slot, so what fits is what they've left of
+  // it (not counting this case, if it's already there). The database checks the
+  // same when the booking is written, so two firms at once can't both get the
+  // last hours.
+  const booked = (await bookedMinutesBySlot([slotId], caseId)).get(slotId) ?? 0;
+  const minutesLeft = Math.max(slotMinutes(slot) - booked, 0);
+  if (!slotFitsHours({ ...slot, minutes_left: minutesLeft }, theCase.hours_requested)) {
     const hours = billableHours(theCase.hours_requested);
-    return fail(`That time is shorter than the ${hours} hour${hours === 1 ? "" : "s"} your case needs. Pick a longer one.`);
+    const needs = `${hours} hour${hours === 1 ? "" : "s"}`;
+    return fail(
+      !booked
+        ? `That time is shorter than the ${needs} your case needs. Pick a longer one.`
+        : minutesLeft
+          ? `That time has only ${formatMinutes(minutesLeft)} left, and your case needs ${needs}. Pick another one.`
+          : "That time is fully booked. Pick another one."
+    );
   }
   if (Date.parse(slot.starts_at) < earliestBookableStart(now).getTime()) {
     return fail("That time is too soon to book now. Pick a later one.");
@@ -161,8 +183,10 @@ export async function chooseTimeSlot(
   }
 
   const { data, error } = result;
-  if (error?.code === "23505") {
-    return fail(error.message.includes("requestee_slot_bookings_pkey") ? CHANGED : "Someone has just booked that time. Pick another one.");
+  // Two writes for one case: it was booked in another window.
+  if (error?.code === "23505") return fail(CHANGED);
+  if (isSlotFullError(error)) {
+    return fail("Someone has just booked hours in that time, so it no longer has room for your case. Pick another one.");
   }
   if (error) {
     console.error("[chooseTimeSlot] write failed:", error);
@@ -177,7 +201,15 @@ export async function chooseTimeSlot(
   const email = user?.user?.email ?? null;
   if (email) {
     try {
-      await sendSlotHeldEmail({ to: email, caseId, caseTitle: theCase.title, slot, dueAt: paymentDueAt(heldSince), paid });
+      await sendSlotHeldEmail({
+        to: email,
+        caseId,
+        caseTitle: theCase.title,
+        slot,
+        dueAt: paymentDueAt(heldSince),
+        paid,
+        hoursRequested: theCase.hours_requested,
+      });
     } catch (err) {
       console.error("[chooseTimeSlot] firm email failed:", err);
     }

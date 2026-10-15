@@ -5,11 +5,11 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { cancelBooking, markBookingPaid, markBookingUnpaid, moveBooking } from "@/lib/actions/adminSlotBooking";
 import { describeSlot, type TimeSlot } from "@/lib/requesteeTimeSlots";
-import type { BookingView } from "@/lib/slotBooking";
+import { slotMinutes, type BookingView } from "@/lib/slotBooking";
 
 type Props = {
   booking: BookingView;
-  /** Free slots the booking can move to, earliest first. */
+  /** Slots with time free, earliest first; those with room for this case are offered to move to. */
   openSlots: TimeSlot[];
   /** The open times couldn't be read, so an empty openSlots doesn't mean there are none. */
   openSlotsUnavailable?: boolean;
@@ -31,7 +31,10 @@ export default function BookingAdminControls({ booking, openSlots, openSlotsUnav
   // Releasing for non-payment is only offered once the deadline has passed, so
   // the firm is never told it didn't pay while it still could.
   const releaseReason = booking.state === "overdue" ? "unpaid" : "other";
-  const moveOptions = openSlots.filter((s) => s.id !== booking.slotId);
+  // Other cases can share a slot, so only those with this case's hours still free.
+  const moveOptions = openSlots.filter(
+    (s) => s.id !== booking.slotId && (s.minutes_left ?? slotMinutes(s)) >= booking.minutes,
+  );
 
   function run(action: () => Promise<{ ok: true; warning?: string } | { ok: false; error: string }>, leavesSlot = false) {
     setMessage(null);

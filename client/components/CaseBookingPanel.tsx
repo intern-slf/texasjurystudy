@@ -99,7 +99,8 @@ export default async function CaseBookingPanel({ caseId }: { caseId: string }) {
     // real one, not a booking that changed while the page loaded.
     let detail: BookingDetail | undefined;
     try {
-      detail = (await getBookingsForSlots([slot.id])).get(slot.id);
+      // Other cases can share the slot; this is this case's booking in it.
+      detail = (await getBookingsForSlots([slot.id])).get(slot.id)?.find((d) => d.case_id === caseId);
     } catch (err) {
       console.error("[CaseBookingPanel] couldn't read the booking's details:", err);
       return <Notice>Couldn&apos;t load this case&apos;s booking. Reload the page.</Notice>;

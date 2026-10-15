@@ -4,6 +4,7 @@ import { SUPPORT_EMAIL } from "@/lib/legal-constants";
 import { describeSlot, type TimeSlot } from "@/lib/requesteeTimeSlots";
 import { earliestBookableStart, formatDeadline, paymentDueAt, slotFitsHours } from "@/lib/slotBooking";
 import { getBookingsForCases, getOpenSlots } from "@/lib/slotBookingData";
+import { formatMinutes, paidMinutes } from "@/lib/case/paidTime";
 import CaseTimeSlotControls from "@/components/CaseTimeSlotControls";
 
 const SIX_MONTHS_MS = 183 * 24 * 60 * 60 * 1000;
@@ -53,7 +54,8 @@ export default async function CaseTimeSlotCard({ caseId }: { caseId: string }) {
     try {
       openSlots = await getOpenSlots(
         earliestBookableStart(nowMs).toISOString(),
-        new Date(nowMs + SIX_MONTHS_MS).toISOString()
+        new Date(nowMs + SIX_MONTHS_MS).toISOString(),
+        caseId
       );
     } catch (err) {
       console.error("[CaseTimeSlotCard] couldn't read the open times:", err);
@@ -79,6 +81,10 @@ export default async function CaseTimeSlotCard({ caseId }: { caseId: string }) {
       {slot ? (
         <div className="space-y-1">
           <p className="text-sm font-medium">{describeSlot(slot)}</p>
+          <p className="text-sm text-muted-foreground">
+            We&apos;ll schedule your {formatMinutes(paidMinutes(theCase.hours_requested))} within this time and
+            confirm the exact start.
+          </p>
           <p className="text-sm text-muted-foreground">
             {record?.paid_at
               ? "Payment received. Thank you."

@@ -54,7 +54,8 @@ import ParticipantCounter from "@/components/ParticipantCounter";
 import PriorInvolvementBadge from "@/components/PriorInvolvementBadge";
 import { BookingStateBadge } from "@/components/BookingSummary";
 import { getBookingsForCases } from "@/lib/slotBookingData";
-import { bookingState } from "@/lib/slotBooking";
+import { bookingState, formatDeadline, paymentDueAt } from "@/lib/slotBooking";
+import { sessionPrefill } from "@/lib/case/slotPrefill";
 import { describeSlot } from "@/lib/requesteeTimeSlots";
 import { formatCentralDateTime } from "@/lib/timezone";
 import { assertPaidTime, caseMinutes } from "@/lib/case/paidTime";
@@ -70,6 +71,8 @@ export default async function NewSessionPage({
     selectedCases?: string | string[];
     test_table?: string;
     limit?: string;
+    /** The slot the calendar's Build session link came from. */
+    slot?: string;
   }>;
 }) {
   await requireAdminPage();
@@ -151,6 +154,22 @@ export default async function NewSessionPage({
      they can fix, and a stack trace does not tell them which cases clashed.
   ========================= */
   const caseRows = (cases as CaseRow[] | null) ?? [];
+
+  // The date and each booked case's start, from the slot the cases booked: its
+  // cases make one session, one after another from its start. A starting point
+  // the admin can change.
+  const prefill = sessionPrefill(
+    caseRows.map((c) => {
+      const booking = bookingByCase.get(c.id);
+      return {
+        caseId: c.id,
+        hoursRequested: c.hours_requested,
+        heldSince: booking?.held_since,
+        slot: booking?.slot,
+      };
+    }),
+    params?.slot,
+  );
   const offlineCases = caseRows.filter((c) => isOffline(c.delivery_mode));
   const onlineCases = caseRows.filter((c) => !isOffline(c.delivery_mode));
   const hasMixedModes = offlineCases.length > 0 && onlineCases.length > 0;
@@ -562,7 +581,21 @@ export default async function NewSessionPage({
       {/* DATE */}
       <div>
         <label className="block text-sm font-medium mb-2">Session Date</label>
-        <input type="date" name="session_date" required className="border rounded px-3 py-2" />
+        <input
+          type="date"
+          name="session_date"
+          required
+          defaultValue={prefill?.date}
+          className="border rounded px-3 py-2"
+        />
+        {prefill && (
+          <p className="mt-2 text-sm text-slate-600">
+            The date and start times are filled in from the booked slot {describeSlot(prefill.slot)}, with its
+            cases one after another. Change them if you need to.
+            {prefill.otherSlots.length > 0 &&
+              ` Some cases booked other times (${prefill.otherSlots.map(describeSlot).join("; ")}); theirs aren't filled in.`}
+          </p>
+        )}
       </div>
 
       {/* VENUE — in person only. Required here because the invitations below go
@@ -609,6 +642,19 @@ export default async function NewSessionPage({
                             <span className="text-slate-700 font-medium">{describeSlot(booking.slot)}</span>
                           </div>
                           <BookingStateBadge state={bookingState(booking.slot, booking, nowMs)} />
+                          {(() => {
+                            // A session can still be built; the admin should know.
+                            const state = bookingState(booking.slot, booking, nowMs);
+                            if (state === "paid") return null;
+                            const due = booking.held_since ? paymentDueAt(booking.held_since) : null;
+                            return (
+                              <p className="text-[11px] text-amber-700">
+                                {state === "unpaid" && due
+                                  ? `Not paid yet · due ${formatDeadline(due)}`
+                                  : "Not paid · payment is overdue"}
+                              </p>
+                            );
+                          })()}
                         </div>
                       );
                     })()}
@@ -650,7 +696,11 @@ export default async function NewSessionPage({
                   </div>
                 </div>
 
-                <CaseTimeInputs caseId={c.id} hoursRequested={c.hours_requested ?? undefined} />
+                <CaseTimeInputs
+                  caseId={c.id}
+                  hoursRequested={c.hours_requested ?? undefined}
+                  initialStart={prefill?.starts[c.id]}
+                />
               </div>
             ))
           ) : (

@@ -1,7 +1,8 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { bookingState, firmLabel, paymentDueAt, slotFitsHours } from "@/lib/slotBooking";
+import { bookingState, firmLabel, paymentDueAt, slotFitsHours, slotMinutes } from "@/lib/slotBooking";
 import type { BookingView, SlotBookingRow } from "@/lib/slotBooking";
 import { billableHours } from "@/lib/receipt-pricing";
+import { paidMinutes } from "@/lib/case/paidTime";
 import type { TimeSlot } from "@/lib/requesteeTimeSlots";
 
 /**
@@ -88,8 +89,12 @@ async function withCasesAndFirms(rows: SlotBookingRow[]): Promise<BookingDetail[
   });
 }
 
-/** The booking holding each of these slots, by slot id. Admins only. */
-export async function getBookingsForSlots(slotIds: string[]): Promise<Map<string, BookingDetail>> {
+/**
+ * The bookings in each of these slots, by slot id, earliest held first: several
+ * cases can share a slot's hours. A slot nobody booked isn't in the map. Admins
+ * only.
+ */
+export async function getBookingsForSlots(slotIds: string[]): Promise<Map<string, BookingDetail[]>> {
   if (!slotIds.length) return new Map();
   const { data, error } = await supabaseAdmin
     .from("requestee_slot_bookings")
@@ -98,7 +103,40 @@ export async function getBookingsForSlots(slotIds: string[]): Promise<Map<string
   if (error) throw new Error(`Couldn't read the bookings: ${error.message}`);
 
   const details = await withCasesAndFirms((data ?? []) as SlotBookingRow[]);
-  return new Map(details.filter((d) => d.slot_id).map((d) => [d.slot_id as string, d]));
+  const bySlot = new Map<string, BookingDetail[]>();
+  for (const d of details) {
+    if (!d.slot_id) continue;
+    bySlot.set(d.slot_id, [...(bySlot.get(d.slot_id) ?? []), d]);
+  }
+  for (const list of bySlot.values()) list.sort((a, b) => (a.held_since ?? "").localeCompare(b.held_since ?? ""));
+  return bySlot;
+}
+
+/**
+ * The minutes each of these slots has booked: every case in it takes the hours
+ * its firm pays for. A slot nobody booked isn't in the map. `exceptCaseId`'s own
+ * hours aren't counted, for a case moving or asking about room.
+ */
+export async function bookedMinutesBySlot(slotIds: string[], exceptCaseId?: string): Promise<Map<string, number>> {
+  if (!slotIds.length) return new Map();
+  const { data, error } = await supabaseAdmin
+    .from("requestee_slot_bookings")
+    .select("case_id, slot_id, cases(hours_requested)")
+    .in("slot_id", slotIds);
+  if (error) throw new Error(`Couldn't read the bookings: ${error.message}`);
+
+  type Row = {
+    case_id: string;
+    slot_id: string | null;
+    cases?: { hours_requested?: number | null } | { hours_requested?: number | null }[] | null;
+  };
+  const booked = new Map<string, number>();
+  for (const row of (data ?? []) as Row[]) {
+    if (!row.slot_id || row.case_id === exceptCaseId) continue;
+    const theCase = Array.isArray(row.cases) ? row.cases[0] : row.cases;
+    booked.set(row.slot_id, (booked.get(row.slot_id) ?? 0) + paidMinutes(theCase?.hours_requested));
+  }
+  return booked;
 }
 
 /**
@@ -145,21 +183,26 @@ export function toBookingView(detail: BookingDetail, slot: TimeSlot, nowMs: numb
   return {
     caseId: detail.case_id,
     slotId: slot.id,
+    minutes: paidMinutes(detail.case.hours_requested),
     caseTitle: detail.case.title,
     firm: firmLabel(detail.firm.name, detail.firm.email),
     state: state === "open" ? "unpaid" : state,
     paidAt: detail.paid_at,
     dueAt: detail.held_since ? paymentDueAt(detail.held_since).toISOString() : null,
     warnings,
+    approved: detail.case.admin_status === "approved" || detail.case.admin_status === "submitted",
   };
 }
 
 /**
- * Slots nobody holds that start between `from` and `to`, earliest first: what an
- * admin can move a booking to, and what a firm can pick from. Only the slot's
- * own fields, never anything about other firms.
+ * Slots with at least an hour free that start between `from` and `to`, earliest
+ * first, each with its `minutes_left`: what an admin can move a booking to, and
+ * what a firm can pick from. Several cases can share a slot, so a part-booked
+ * slot is still open. Only the slot's own fields and how much of it is free,
+ * never anything about who booked the rest. `exceptCaseId`'s own hours aren't
+ * counted, so a firm doesn't see its own booking as someone else's.
  */
-export async function getOpenSlots(from: string, to: string): Promise<TimeSlot[]> {
+export async function getOpenSlots(from: string, to: string, exceptCaseId?: string): Promise<TimeSlot[]> {
   const { data, error } = await supabaseAdmin
     .from("requestee_time_slots")
     .select("id, starts_at, ends_at, note")
@@ -171,12 +214,8 @@ export async function getOpenSlots(from: string, to: string): Promise<TimeSlot[]
   const slots = (data ?? []) as TimeSlot[];
   if (!slots.length) return [];
 
-  const { data: held, error: heldError } = await supabaseAdmin
-    .from("requestee_slot_bookings")
-    .select("slot_id")
-    .in("slot_id", slots.map((s) => s.id));
-  if (heldError) throw new Error(`Couldn't read the bookings: ${heldError.message}`);
-
-  const heldIds = new Set((held ?? []).map((h) => h.slot_id as string));
-  return slots.filter((s) => !heldIds.has(s.id));
+  const booked = await bookedMinutesBySlot(slots.map((s) => s.id), exceptCaseId);
+  return slots
+    .map((s) => ({ ...s, minutes_left: slotMinutes(s) - (booked.get(s.id) ?? 0) }))
+    .filter((s) => s.minutes_left >= 60);
 }

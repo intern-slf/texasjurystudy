@@ -1,5 +1,6 @@
 import { localToUTC } from "@/lib/timezone";
 import { billableHours } from "@/lib/receipt-pricing";
+import { formatMinutes } from "@/lib/case/paidTime";
 import {
   SLOT_TIME_ZONE,
   SLOT_TIME_ZONE_LABEL,
@@ -43,6 +44,8 @@ export type BookingState = "open" | "unpaid" | "overdue" | "paid" | "past";
 export type BookingView = {
   caseId: string;
   slotId: string;
+  /** How long the case is, which is how much of the slot it takes (lib/case/paidTime.ts). */
+  minutes: number;
   caseTitle: string;
   firm: string;
   state: Exclude<BookingState, "open">;
@@ -51,6 +54,10 @@ export type BookingView = {
   dueAt: string | null;
   /** Things the admin should look at: a rejected or archived case, a slot shorter than the case needs. */
   warnings: string[];
+  /** Approved (or submitted), so it can go into a session. */
+  approved: boolean;
+  /** The session the case is in, once one is built; the Time Slots page fills it in. */
+  session?: { date: string; time: string | null; outsideSlot: boolean } | null;
 };
 
 export const BOOKING_STATE_LABEL: Record<BookingState, string> = {
@@ -130,11 +137,42 @@ export function earliestBookableStart(now: string | number | Date): Date {
   return addWorkingHours(now, BOOKING_LEAD_WORKING_HOURS);
 }
 
+/** How long a slot is, in minutes. */
+export function slotMinutes(slot: Pick<TimeSlot, "starts_at" | "ends_at">): number {
+  return Math.round((Date.parse(slot.ends_at) - Date.parse(slot.starts_at)) / 60_000);
+}
+
+/**
+ * Whether a case needing `hoursRequested` fits in a slot: in the minutes it has
+ * left when that is known (other cases share it), else in its whole length.
+ */
 export function slotFitsHours(
-  slot: Pick<TimeSlot, "starts_at" | "ends_at">,
+  slot: Pick<TimeSlot, "starts_at" | "ends_at" | "minutes_left">,
   hoursRequested: number | null | undefined
 ): boolean {
-  return Date.parse(slot.ends_at) - Date.parse(slot.starts_at) >= billableHours(hoursRequested) * MS_PER_HOUR;
+  const room = slot.minutes_left ?? slotMinutes(slot);
+  return room >= billableHours(hoursRequested) * 60;
+}
+
+/** Whether a case's session time falls outside the slot it booked, even partly. */
+export function isOutsideSlot(start: Date, end: Date | null, slot: Pick<TimeSlot, "starts_at" | "ends_at">): boolean {
+  return start.getTime() < Date.parse(slot.starts_at) || (end ?? start).getTime() > Date.parse(slot.ends_at);
+}
+
+/** "2 of 3 hours left", or null while nothing in the slot is booked. */
+export function hoursLeftLabel(slot: Pick<TimeSlot, "starts_at" | "ends_at" | "minutes_left">): string | null {
+  const total = slotMinutes(slot);
+  const left = slot.minutes_left;
+  if (left === undefined || left >= total) return null;
+  return `${formatMinutes(Math.max(left, 0)).replace(/ hours?$/, "")} of ${formatMinutes(total)} left`;
+}
+
+/**
+ * The database's refusal of a booking that would take a slot past its hours, or
+ * a booked case's hours past what its slot has left (20261017_shared_slot_hours.sql).
+ */
+export function isSlotFullError(error: { code?: string; message?: string } | null | undefined): boolean {
+  return error?.code === "23514" && (error.message ?? "").startsWith("requestee_slot_full");
 }
 
 /** Whether a firm may book this slot now for a case needing `hoursRequested`. */

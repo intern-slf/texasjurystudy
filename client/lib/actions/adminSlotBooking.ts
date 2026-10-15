@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdmin } from "@/lib/requireAdmin";
 import { TIME_SLOTS_PATH, describeSlot, type TimeSlot } from "@/lib/requesteeTimeSlots";
-import { firmLabel, formatDeadline, paymentDueAt } from "@/lib/slotBooking";
+import { firmLabel, formatDeadline, isSlotFullError, paymentDueAt } from "@/lib/slotBooking";
 import { getBookingsForCases } from "@/lib/slotBookingData";
 import {
   sendSlotHeldEmail,
@@ -41,13 +41,14 @@ type CaseInfo = {
   status: string | null;
   deleted_at: string | null;
   delivery_mode: string | null;
+  hours_requested: number | null;
   owner_id: string;
 };
 
 async function loadCase(caseId: string): Promise<CaseInfo | null> {
   const { data } = await supabaseAdmin
     .from("cases")
-    .select("id, title, admin_status, status, deleted_at, delivery_mode, user_id, requestee_id")
+    .select("id, title, admin_status, status, deleted_at, delivery_mode, hours_requested, user_id, requestee_id")
     .eq("id", caseId)
     .maybeSingle();
   if (!data) return null;
@@ -58,6 +59,7 @@ async function loadCase(caseId: string): Promise<CaseInfo | null> {
     status: data.status,
     deleted_at: data.deleted_at,
     delivery_mode: data.delivery_mode,
+    hours_requested: data.hours_requested,
     owner_id: data.requestee_id || data.user_id,
   };
 }
@@ -276,7 +278,8 @@ export async function moveBooking(caseId: string, fromSlotId: string, toSlotId: 
     .eq("slot_id", fromSlotId)
     .select("case_id");
 
-  if (error?.code === "23505") return fail("Another case has just taken that time. Pick a different one.");
+  // Other cases share slots; the database refuses a move past the slot's hours.
+  if (isSlotFullError(error)) return fail("That time doesn't have enough hours left for this case. Pick a different one.");
   if (error) {
     console.error("[moveBooking] update failed:", error);
     return fail("Couldn't move the booking. Try again.");
@@ -348,13 +351,10 @@ export async function assignSlot(caseId: string, slotId: string): Promise<Result
         .select("case_id");
   const { data, error } = await write;
 
-  if (error?.code === "23505") {
-    return fail(
-      error.message.includes("requestee_slot_bookings_pkey")
-        ? CHANGED
-        : "Another case has just taken that time. Pick a different one."
-    );
-  }
+  // Two writes for one case: someone else booked it in the meantime.
+  if (error?.code === "23505") return fail(CHANGED);
+  // Other cases share slots; the database refuses a booking past the slot's hours.
+  if (isSlotFullError(error)) return fail("That time doesn't have enough hours left for this case. Pick a different one.");
   if (error) {
     console.error("[assignSlot] write failed:", error);
     return fail("Couldn't book the time. Try again.");
@@ -368,7 +368,8 @@ export async function assignSlot(caseId: string, slotId: string): Promise<Result
   const dueAt = paymentDueAt(heldSince);
   const warning = await notify(
     firmEmail,
-    (to) => sendSlotHeldEmail({ to, caseId, caseTitle: theCase.title, slot, dueAt, paid }),
+    (to) =>
+      sendSlotHeldEmail({ to, caseId, caseTitle: theCase.title, slot, dueAt, paid, hoursRequested: theCase.hours_requested }),
     {
       subject: `Time booked for a firm: ${theCase.title}`,
       heading: "An admin booked a time for a firm",

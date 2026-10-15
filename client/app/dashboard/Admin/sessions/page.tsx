@@ -39,6 +39,10 @@ import RescheduleModal from "@/components/RescheduleModal";
 import ReplaceCaseModal, { type ReplacementCandidate } from "@/components/ReplaceCaseModal";
 import CentralTimeRange from "@/components/CentralTimeRange";
 import { paidMinutes } from "@/lib/case/paidTime";
+import { getBookingsForCases } from "@/lib/slotBookingData";
+import { isOutsideSlot } from "@/lib/slotBooking";
+import { describeSlot, type TimeSlot } from "@/lib/requesteeTimeSlots";
+import { sessionSpan } from "@/lib/timezone";
 import ParticipantActionsMenu from "@/components/ParticipantActionsMenu";
 import { sendCompletionNow } from "@/lib/actions/session";
 import ZoomLinkSender from "@/components/ZoomLinkSender";
@@ -474,6 +478,24 @@ export default async function SessionsPage({
           return Number(a.alreadySubmitted) - Number(b.alreadySubmitted);
         });
 
+  // The slot each case booked, to flag a session that runs outside it. The
+  // admin can build a session at any time; this only warns.
+  const slotByCase = new Map<string, TimeSlot>();
+  try {
+    const caseIds = displayedSessions.flatMap(({ scases }) => (scases ?? []).map((c) => c.case_id));
+    for (const [caseId, booking] of await getBookingsForCases(caseIds)) {
+      if (booking.slot) slotByCase.set(caseId, booking.slot);
+    }
+  } catch (err) {
+    console.error("[sessions page] bookings failed:", err);
+  }
+  /** The booked slot a case's session time falls outside of, if it does. */
+  const outsideSlot = (caseId: string, sessionDate: string, start: string, end: string): TimeSlot | null => {
+    const slot = slotByCase.get(caseId);
+    const span = slot ? sessionSpan(sessionDate, [start], [end]) : null;
+    return slot && span && isOutsideSlot(span.start, span.end, slot) ? slot : null;
+  };
+
   return (
     <div className="space-y-8">
       {/* ====== SUCCESS BANNER ====== */}
@@ -625,6 +647,7 @@ export default async function SessionsPage({
                         start_time: sc.start_time,
                         end_time: sc.end_time,
                         hours_requested: caseDetails?.find((cd) => cd.id === sc.case_id)?.hours_requested ?? null,
+                        booked_slot: slotByCase.get(sc.case_id) ?? null,
                       }))}
                     />
                   </div>
@@ -689,6 +712,14 @@ export default async function SessionsPage({
                                 startUtc={c.start_time}
                                 endUtc={c.end_time}
                               />
+                              {(() => {
+                                const slot = outsideSlot(c.case_id, s.session_date, c.start_time, c.end_time);
+                                return slot ? (
+                                  <span className="basis-full text-xs text-amber-700">
+                                    Outside the slot its firm booked: {describeSlot(slot)}
+                                  </span>
+                                ) : null;
+                              })()}
                             </div>
                           </div>
                         );

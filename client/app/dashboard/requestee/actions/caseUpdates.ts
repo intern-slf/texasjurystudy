@@ -6,6 +6,8 @@ import { caseSessionTime, type CaseSessionRow } from "@/lib/case/caseSessionTime
 import { deadlineForTimeframe } from "@/lib/case/deadline";
 import { centralDateTimeToISO } from "@/lib/timezone";
 import { revalidatePath } from "next/cache";
+import { redirect, RedirectType } from "next/navigation";
+import { isSlotFullError } from "@/lib/slotBooking";
 
 // A firm's own writes to its case row, from the forms on its dashboard
 // (app/dashboard/requestee/page.tsx). Each one acts only on a case in the state
@@ -76,13 +78,20 @@ export async function updateCase(formData: FormData) {
     updatePayload.deadline_date = null;
   }
 
-  await supabase
+  const { error } = await supabase
     .from("cases")
     .update(updatePayload)
     .eq("id", caseId)
     .eq("user_id", activeUser.id)
     .eq("status", "current")
     .in("admin_status", ["all", "rejected"]);
+
+  // More hours than the time slot the case holds has left: the database refuses
+  // the whole edit (20261017_shared_slot_hours.sql), and the dashboard says why.
+  if (isSlotFullError(error)) {
+    redirect("/dashboard/requestee?tab=current&notice=hours-full", RedirectType.replace);
+  }
+  if (error) console.error("[updateCase] update failed:", error.message);
 
   revalidatePath("/dashboard/requestee");
   revalidatePath(`/dashboard/requestee/${caseId}`);

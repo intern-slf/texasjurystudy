@@ -50,12 +50,15 @@ const REJECTED_CASE = "0c000000-0000-4000-8000-000000000003";
 const ARCHIVED_CASE = "0c000000-0000-4000-8000-000000000004";
 const OFFLINE_CASE = "0c000000-0000-4000-8000-000000000005";
 const OTHER_FIRMS_CASE = "0c000000-0000-4000-8000-000000000006";
+const OTHER_FIRMS_SHORT_CASE = "0c000000-0000-4000-8000-000000000007";
 
 const SLOT_OK = "05000000-0000-4000-8000-000000000001";
 const SLOT_OK_2 = "05000000-0000-4000-8000-000000000002";
 const SLOT_TOO_SOON = "05000000-0000-4000-8000-000000000003";
 const SLOT_TOO_SHORT = "05000000-0000-4000-8000-000000000004";
 const SLOT_TAKEN = "05000000-0000-4000-8000-000000000005";
+// 3 hours, 1 of them another firm's.
+const SLOT_SHARED = "05000000-0000-4000-8000-000000000006";
 const MISSING_SLOT = "05000000-0000-4000-8000-0000000000ff";
 
 // Tuesday 2026-10-20, 10:00 AM CDT. The earliest bookable start is 48 working
@@ -92,6 +95,7 @@ function seed(bookingForCase: Record<string, unknown> | null = null) {
       caseRow(ARCHIVED_CASE, { status: "previous", deleted_at: "2026-10-19T12:00:00.000Z" }),
       caseRow(OFFLINE_CASE, { delivery_mode: "offline" }),
       caseRow(OTHER_FIRMS_CASE, { user_id: OTHER_FIRM, title: "Doe v. Roe" }),
+      caseRow(OTHER_FIRMS_SHORT_CASE, { user_id: OTHER_FIRM, title: "Roe v. Wade", hours_requested: 1 }),
     ],
     confidentiality_agreements_requestee: [{ user_id: FIRM, first_name: "Jane", last_name: "Roe" }],
     requestee_time_slots: [
@@ -100,10 +104,13 @@ function seed(bookingForCase: Record<string, unknown> | null = null) {
       slotRow(SLOT_TOO_SOON, "2026-10-21T15:00:00.000Z", "2026-10-21T17:00:00.000Z"),
       slotRow(SLOT_TOO_SHORT, "2026-10-26T18:00:00.000Z", "2026-10-26T18:30:00.000Z"),
       slotRow(SLOT_TAKEN, "2026-10-28T15:00:00.000Z", "2026-10-28T17:00:00.000Z"),
+      slotRow(SLOT_SHARED, "2026-10-29T14:00:00.000Z", "2026-10-29T17:00:00.000Z"),
     ],
     requestee_slot_bookings: [
       // The other firm holds SLOT_TAKEN.
       { case_id: OTHER_FIRMS_CASE, slot_id: SLOT_TAKEN, booked_by: OTHER_FIRM, held_since: NOW, paid_at: null, paid_by: null },
+      // And 1 hour of SLOT_SHARED.
+      { case_id: OTHER_FIRMS_SHORT_CASE, slot_id: SLOT_SHARED, booked_by: OTHER_FIRM, held_since: NOW, paid_at: null, paid_by: null },
       ...(bookingForCase
         ? [{ case_id: CASE, slot_id: null, booked_by: FIRM, held_since: null, paid_at: null, paid_by: null, ...bookingForCase }]
         : []),
@@ -161,15 +168,34 @@ describe("only a firm can use them", () => {
 });
 
 describe("the open times a firm sees", () => {
-  it("lists only free slots far enough ahead, with nothing about other firms", async () => {
+  it("lists slots with an hour or more free, far enough ahead, saying how much is left and nothing about who", async () => {
     const result = await actions.listOpenTimeSlots();
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    // Too soon and taken are left out; too short is the picker's call, by case.
-    expect(result.slots.map((s) => s.id)).toEqual([SLOT_OK, SLOT_TOO_SHORT, SLOT_OK_2]);
+    // Too soon, full, and under an hour (the 30-minute one) are left out; one
+    // another firm has part-booked stays, with its 2 hours left.
+    expect(result.slots.map((s) => [s.id, s.minutes_left])).toEqual([
+      [SLOT_OK, 120],
+      [SLOT_OK_2, 120],
+      [SLOT_SHARED, 120],
+    ]);
     for (const slot of result.slots) {
-      expect(Object.keys(slot).sort()).toEqual(["ends_at", "id", "note", "starts_at"]);
+      expect(Object.keys(slot).sort()).toEqual(["ends_at", "id", "minutes_left", "note", "starts_at"]);
     }
+  });
+});
+
+describe("the open times on a firm's own case page", () => {
+  it("don't count the case's own hours as someone else's", async () => {
+    // The other firm's 1-hour case sits in SLOT_SHARED; on its own page that
+    // hour is its own, so the slot is shown with all 3 hours.
+    const { getOpenSlots } = await import("@/lib/slotBookingData");
+    const from = "2026-10-22T15:00:00.000Z";
+    const to = "2026-12-31T00:00:00.000Z";
+    const seen = await getOpenSlots(from, to, OTHER_FIRMS_SHORT_CASE);
+    expect(seen.find((s) => s.id === SLOT_SHARED)?.minutes_left).toBe(180);
+    const others = await getOpenSlots(from, to);
+    expect(others.find((s) => s.id === SLOT_SHARED)?.minutes_left).toBe(120);
   });
 });
 
@@ -213,10 +239,35 @@ describe("booking a time", () => {
     expect(db.writes).toEqual([]);
   });
 
-  it("loses the race for a slot another firm holds, and says so", async () => {
+  it("shares a slot another firm has part-booked, while its hours fit", async () => {
+    const result = await actions.chooseTimeSlot(CASE, SLOT_SHARED);
+    expect(result).toMatchObject({ ok: true, slot: { id: SLOT_SHARED } });
+    expect(bookingOf(CASE)).toMatchObject({ slot_id: SLOT_SHARED });
+    expect(bookingOf(OTHER_FIRMS_SHORT_CASE)).toMatchObject({ slot_id: SLOT_SHARED });
+    expect(mail.held).toHaveBeenCalledWith(expect.objectContaining({ hoursRequested: 2 }));
+  });
+
+  it("refuses a slot without enough hours left, saying how much is", async () => {
     expect(await actions.chooseTimeSlot(CASE, SLOT_TAKEN)).toEqual({
       ok: false,
-      error: "Someone has just booked that time. Pick another one.",
+      error: "That time is fully booked. Pick another one.",
+    });
+    for (const c of db.rows("cases")) if (c.id === CASE) c.hours_requested = 3;
+    expect(await actions.chooseTimeSlot(CASE, SLOT_SHARED)).toEqual({
+      ok: false,
+      error: "That time has only 2 hours left, and your case needs 3 hours. Pick another one.",
+    });
+    expect(bookingOf(CASE)).toBeUndefined();
+    expect(mail.held).not.toHaveBeenCalled();
+  });
+
+  it("loses the race when another firm takes the last hours first, and says so", async () => {
+    // The database counts again as it writes: here the other booking lands
+    // between this action's check and its write.
+    vi.spyOn(db, "violation").mockReturnValueOnce({ code: "23514", message: "requestee_slot_full: 0 minutes left" });
+    expect(await actions.chooseTimeSlot(CASE, SLOT_SHARED)).toEqual({
+      ok: false,
+      error: "Someone has just booked hours in that time, so it no longer has room for your case. Pick another one.",
     });
     expect(bookingOf(CASE)).toBeUndefined();
     expect(mail.held).not.toHaveBeenCalled();
