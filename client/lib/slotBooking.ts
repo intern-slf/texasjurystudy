@@ -57,7 +57,14 @@ export type BookingView = {
   /** Approved (or submitted), so it can go into a session. */
   approved: boolean;
   /** The session the case is in, once one is built; the Time Slots page fills it in. */
-  session?: { date: string; time: string | null; outsideSlot: boolean } | null;
+  session?: {
+    id: string;
+    date: string;
+    time: string | null;
+    outsideSlot: boolean;
+    /** Its participants have been invited, which closes the slot to firms. */
+    invited: boolean;
+  } | null;
 };
 
 export const BOOKING_STATE_LABEL: Record<BookingState, string> = {

@@ -195,14 +195,60 @@ export function toBookingView(detail: BookingDetail, slot: TimeSlot, nowMs: numb
 }
 
 /**
+ * Of these slots, those whose session has had invitations sent. A slot's cases
+ * make one session, and late bookings join it until its participants are
+ * invited. After that the panel is chosen for the cases already in it, so the
+ * slot's leftover hours stop being sold to firms (an admin can still add a case
+ * by hand).
+ */
+export async function slotsClosedToFirms(slotIds: string[]): Promise<Set<string>> {
+  const closed = new Set<string>();
+  if (!slotIds.length) return closed;
+
+  const { data: bookings, error } = await supabaseAdmin
+    .from("requestee_slot_bookings")
+    .select("case_id, slot_id")
+    .in("slot_id", slotIds);
+  if (error) throw new Error(`Couldn't read the bookings: ${error.message}`);
+  const slotByCase = new Map((bookings ?? []).map((b) => [b.case_id as string, b.slot_id as string]));
+  if (!slotByCase.size) return closed;
+
+  const { data: inSessions, error: sessionError } = await supabaseAdmin
+    .from("session_cases")
+    .select("case_id, session_id")
+    .in("case_id", Array.from(slotByCase.keys()));
+  if (sessionError) throw new Error(`Couldn't read the sessions: ${sessionError.message}`);
+  const sessionIds = Array.from(new Set((inSessions ?? []).map((r) => r.session_id as string)));
+  if (!sessionIds.length) return closed;
+
+  const { data: invites, error: inviteError } = await supabaseAdmin
+    .from("session_participants")
+    .select("session_id")
+    .in("session_id", sessionIds);
+  if (inviteError) throw new Error(`Couldn't read the invitations: ${inviteError.message}`);
+  const invited = new Set((invites ?? []).map((r) => r.session_id as string));
+
+  for (const r of inSessions ?? []) {
+    if (invited.has(r.session_id as string)) closed.add(slotByCase.get(r.case_id as string)!);
+  }
+  return closed;
+}
+
+/**
  * Slots with at least an hour free that start between `from` and `to`, earliest
  * first, each with its `minutes_left`: what an admin can move a booking to, and
  * what a firm can pick from. Several cases can share a slot, so a part-booked
- * slot is still open. Only the slot's own fields and how much of it is free,
- * never anything about who booked the rest. `exceptCaseId`'s own hours aren't
- * counted, so a firm doesn't see its own booking as someone else's.
+ * slot is still open, until its session's participants are invited
+ * (slotsClosedToFirms; `includeClosed` keeps those, for an admin). Only the
+ * slot's own fields and how much of it is free, never anything about who booked
+ * the rest. `exceptCaseId`'s own hours aren't counted, so a firm doesn't see its
+ * own booking as someone else's.
  */
-export async function getOpenSlots(from: string, to: string, exceptCaseId?: string): Promise<TimeSlot[]> {
+export async function getOpenSlots(
+  from: string,
+  to: string,
+  { exceptCaseId, includeClosed = false }: { exceptCaseId?: string; includeClosed?: boolean } = {},
+): Promise<TimeSlot[]> {
   const { data, error } = await supabaseAdmin
     .from("requestee_time_slots")
     .select("id, starts_at, ends_at, note")
@@ -215,7 +261,10 @@ export async function getOpenSlots(from: string, to: string, exceptCaseId?: stri
   if (!slots.length) return [];
 
   const booked = await bookedMinutesBySlot(slots.map((s) => s.id), exceptCaseId);
-  return slots
+  const withRoom = slots
     .map((s) => ({ ...s, minutes_left: slotMinutes(s) - (booked.get(s.id) ?? 0) }))
     .filter((s) => s.minutes_left >= 60);
+  if (includeClosed) return withRoom;
+  const closed = await slotsClosedToFirms(withRoom.map((s) => s.id));
+  return withRoom.filter((s) => !closed.has(s.id));
 }

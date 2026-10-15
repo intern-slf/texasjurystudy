@@ -43,9 +43,11 @@ export default async function CaseBookingPanel({ caseId }: { caseId: string }) {
   const nowMs = Date.now();
   // Read alongside the rest. The open times are only somewhere to move or book
   // to, so if they can't be read the booking still shows, with a note instead.
+  // An admin can book into any slot with room, its session's invitations or not.
   const openSlotsRead = getOpenSlots(
     new Date(nowMs).toISOString(),
-    new Date(nowMs + SIX_MONTHS_MS).toISOString()
+    new Date(nowMs + SIX_MONTHS_MS).toISOString(),
+    { includeClosed: true }
   ).then(
     (slots) => ({ slots, failed: false }),
     (err: unknown) => {
