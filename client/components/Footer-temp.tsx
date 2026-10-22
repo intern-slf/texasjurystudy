@@ -10,7 +10,7 @@ export default function Footer() {
   }, []);
 
   return (
-    <footer className="w-full border-t bg-white/80 backdrop-blur">
+    <footer className="w-full border-t bg-white/80 backdrop-blur print:hidden">
       <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-6 px-4 py-8 sm:px-6 md:flex-row lg:px-8">
         {/* Copyright */}
         <p className="text-sm text-muted-foreground">

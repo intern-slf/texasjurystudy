@@ -121,7 +121,7 @@ export default function Navbar({
   };
 
   return (
-    <header className="sticky top-0 z-[999] w-full border-b bg-background/75 backdrop-blur-md supports-[backdrop-filter]:bg-background/60 shadow-sm">
+    <header className="sticky top-0 z-[999] w-full border-b print:hidden bg-background/75 backdrop-blur-md supports-[backdrop-filter]:bg-background/60 shadow-sm">
       <nav className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
         {/* Logo */}
         <Link

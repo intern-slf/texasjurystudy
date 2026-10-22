@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import RequesteeSidebar from "@/components/RequesteeSidebar";
@@ -8,6 +9,7 @@ import RequesteeParticipantHistory from "@/components/RequesteeParticipantHistor
 import AddParticipantRequestee from "@/components/AddParticipantRequestee";
 import ReceiptPricingPreview from "@/components/ReceiptPricingPreview";
 import { Badge } from "@/components/ui/badge";
+import { buttonVariants } from "@/components/ui/button";
 import BackButton from "@/components/BackButton";
 import CaseTimeSlotCard from "@/components/CaseTimeSlotCard";
 import { caseSessionTime, type CaseSessionRow } from "@/lib/case/caseSessionTime";
@@ -26,6 +28,7 @@ import {
   Briefcase,
   Hourglass,
   MapPin,
+  Receipt,
   UserCheck,
   Video,
 } from "lucide-react";
@@ -127,7 +130,19 @@ export default async function RequesteeCaseDetailPage({
               <StatusBadge />
               <ScheduleBadge />
             </div>
-            <h1 className="text-3xl font-bold tracking-tight">{c.title}</h1>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <h1 className="text-3xl font-bold tracking-tight">{c.title}</h1>
+              {/* Once approved, in person or online. A held time links to it from its own box too. */}
+              {(admin_status === "approved" || admin_status === "submitted") && (
+                <Link
+                  href={`/invoice/${c.id}`}
+                  className={buttonVariants({ variant: "outline", size: "sm" })}
+                >
+                  <Receipt className="h-4 w-4" aria-hidden="true" />
+                  View invoice
+                </Link>
+              )}
+            </div>
             <p className="text-sm text-muted-foreground mt-1">
               Created {formatCentralDate(c.created_at) ?? "—"}
             </p>
