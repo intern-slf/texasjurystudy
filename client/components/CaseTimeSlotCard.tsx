@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { requireRequestee } from "@/lib/requireRequestee";
 import { SUPPORT_EMAIL } from "@/lib/legal-constants";
@@ -91,9 +92,12 @@ export default async function CaseTimeSlotCard({ caseId }: { caseId: string }) {
               : due && nowMs >= due.getTime()
                 ? `Payment was due ${formatDeadline(due)}. If we haven't received it, we may release this time.`
                 : due
-                  ? `Payment is due by ${formatDeadline(due)}. An invoice will follow from our team.`
+                  ? `Payment is due by ${formatDeadline(due)}.`
                   : null}
           </p>
+          <Link href={`/invoice/${caseId}`} className="inline-block text-sm font-medium text-primary hover:underline">
+            View invoice
+          </Link>
         </div>
       ) : offline ? (
         <p className="text-sm text-muted-foreground">

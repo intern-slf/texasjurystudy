@@ -411,7 +411,12 @@ export default async function AdminCaseDetailPage({
 
       {/* RECEIPT */}
       <section>
-        <h3 className="text-xl font-bold mb-4">Receipt</h3>
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <h3 className="text-xl font-bold">Receipt</h3>
+          <Link href={`/invoice/${caseInfo.id}`} className="text-sm font-medium text-primary hover:underline">
+            Open invoice →
+          </Link>
+        </div>
         <ReceiptPricingPreview
           filters={caseInfo.filters}
           hoursRequested={caseInfo.hours_requested}
