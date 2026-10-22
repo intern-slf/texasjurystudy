@@ -1,6 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
+import { Receipt } from "lucide-react";
+import { buttonVariants } from "@/components/ui/button";
 import { CaseFilters } from "@/lib/filter-utils";
 import {
   calculateReceiptPrice,
@@ -13,10 +16,13 @@ export default function ReceiptPricingPreview({
   hoursRequested,
   /** Omitted means online — the historical behaviour and the column default. */
   deliveryMode,
+  invoiceHref,
 }: {
   filters: CaseFilters | null | undefined;
   hoursRequested?: number | null;
   deliveryMode?: string | null;
+  /** Where this receipt's invoice is, once the case has one. Omitted, no link. */
+  invoiceHref?: string;
 }) {
   const [expanded, setExpanded] = useState(false);
   const breakdown = calculateReceiptPrice(filters, hoursRequested, deliveryMode);
@@ -102,6 +108,15 @@ export default function ReceiptPricingPreview({
               </tr>
             </tbody>
           </table>
+        </div>
+      )}
+
+      {invoiceHref && (
+        <div className={`mt-3 flex justify-end border-t pt-3 ${offline ? "border-green-200" : "border-blue-200"}`}>
+          <Link href={invoiceHref} className={buttonVariants({ variant: "outline", size: "sm" })}>
+            <Receipt className="h-4 w-4" aria-hidden="true" />
+            View invoice
+          </Link>
         </div>
       )}
     </div>
