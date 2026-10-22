@@ -37,6 +37,9 @@ vi.mock("@/lib/slotBookingEmails", () => ({
   sendSlotHeldEmail: (...args: unknown[]) => mail.held(...args),
   sendSlotTeamNotice: (...args: unknown[]) => mail.team(...args),
 }));
+// What issues or updates the case's invoice; tested in invoice.test.ts.
+const syncInvoiceQuietly = vi.hoisted(() => vi.fn<(caseId: string) => Promise<void>>(async () => {}));
+vi.mock("@/lib/invoiceData", () => ({ syncInvoiceQuietly }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 
 const FIRM = "0f000000-0000-4000-8000-000000000001";
@@ -232,6 +235,7 @@ describe("booking a time", () => {
     // Due Wednesday 10:00 AM CDT, one working day later.
     expect(result.ok && result.dueAt).toBe("2026-10-21T15:00:00.000Z");
     expect(bookingOf(CASE)).toMatchObject({ slot_id: SLOT_OK, held_since: NOW, booked_by: FIRM });
+    expect(syncInvoiceQuietly).toHaveBeenCalledWith(CASE);
     expect(mail.held).toHaveBeenCalledWith(expect.objectContaining({ caseId: CASE, paid: false }));
     expect(mail.team).toHaveBeenCalledWith(expect.objectContaining({ heading: "A firm booked a time" }));
   });

@@ -18,6 +18,7 @@ import {
 import { bookedMinutesBySlot, getBookingsForCases, getOpenSlots, slotsClosedToFirms } from "@/lib/slotBookingData";
 import { formatMinutes } from "@/lib/case/paidTime";
 import { sendSlotHeldEmail, sendSlotTeamNotice } from "@/lib/slotBookingEmails";
+import { syncInvoiceQuietly } from "@/lib/invoiceData";
 
 // A law firm's own booking actions. Every export starts with requireRequestee():
 // as server actions they can be called by anyone signed in, with any arguments.
@@ -200,6 +201,8 @@ export async function chooseTimeSlot(
   }
   if (!data?.length) return fail(CHANGED);
 
+  // Holding a time bills the case: number its invoice now.
+  await syncInvoiceQuietly(caseId);
   revalidateBooking(caseId);
 
   // Emails don't decide the booking: it's made, so a failure is only logged.

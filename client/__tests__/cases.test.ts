@@ -160,6 +160,9 @@ vi.mock("@/lib/mail", () => ({
     sendRejectionEmailSpy(to, t, r),
 }));
 
+// What issues or updates the case's invoice; tested in invoice.test.ts.
+const syncInvoiceQuietly = vi.hoisted(() => vi.fn<(caseId: string) => Promise<void>>(async () => {}));
+vi.mock("@/lib/invoiceData", () => ({ syncInvoiceQuietly }));
 vi.mock("next/cache", () => ({
   revalidatePath: vi.fn(),
 }));
@@ -322,6 +325,7 @@ describe("Cases", () => {
       expect(update!.table).toBe("cases");
       expect(updateOp.payload).toEqual({ admin_status: "approved" });
       expect(update!.eqs).toContainEqual(["id", "case-A"]);
+      expect(syncInvoiceQuietly).toHaveBeenCalledWith("case-A");
     });
 
     it("Sends approval email", async () => {
@@ -407,6 +411,8 @@ describe("Cases", () => {
         payload: Record<string, unknown>;
       };
       expect(updateOp.payload.rejection_reason).toBe("Insufficient evidence");
+      // Voids its invoice, unless paid.
+      expect(syncInvoiceQuietly).toHaveBeenCalledWith("case-Z");
     });
 
     it("Sends rejection email", async () => {
