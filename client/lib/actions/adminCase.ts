@@ -6,6 +6,7 @@ import { sendApprovalEmail, sendRejectionEmail } from "@/lib/mail";
 import { requireAdmin } from "@/lib/requireAdmin";
 import { centralDateTimeToISO } from "@/lib/timezone";
 import { revalidatePath } from "next/cache";
+import { syncInvoiceQuietly } from "@/lib/invoiceData";
 
 // Every export here is an admin action, and starts with requireAdmin(): as server
 // actions they can be called by anyone signed in, with any case's id. RLS doesn't stop
@@ -55,6 +56,8 @@ export async function approveCaseAction(caseId: string) {
     }
   }
 
+  // Approval bills the case: number its invoice now, in the order cases are billed.
+  await syncInvoiceQuietly(caseId);
   revalidatePath("/dashboard/Admin");
 }
 
@@ -107,6 +110,8 @@ export async function rejectCaseAction(caseId: string, reason: string) {
     }
   }
 
+  // Voids its invoice, unless already paid.
+  await syncInvoiceQuietly(caseId);
   revalidatePath("/dashboard/Admin");
 }
 

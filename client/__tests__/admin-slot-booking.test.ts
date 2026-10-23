@@ -42,6 +42,9 @@ vi.mock("@/lib/slotBookingEmails", () => ({
   sendSlotReleasedEmail: (...args: unknown[]) => mail.released(...args),
   sendSlotTeamNotice: (...args: unknown[]) => mail.team(...args),
 }));
+// What issues or updates the case's invoice; tested in invoice.test.ts.
+const syncInvoiceQuietly = vi.hoisted(() => vi.fn<(caseId: string) => Promise<void>>(async () => {}));
+vi.mock("@/lib/invoiceData", () => ({ syncInvoiceQuietly }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 
 const ADMIN = "0a000000-0000-4000-8000-000000000001";
@@ -159,6 +162,8 @@ describe("payment", () => {
   it("marks a booking paid, once", async () => {
     await expect(actions.markBookingPaid(CASE)).resolves.toEqual({ ok: true });
     expect(bookingOf(CASE)).toMatchObject({ paid_at: NOW, paid_by: ADMIN });
+    // Brought up to date before payment freezes it.
+    expect(syncInvoiceQuietly).toHaveBeenCalledWith(CASE);
     await expect(actions.markBookingPaid(CASE)).resolves.toMatchObject({ ok: false });
   });
 
@@ -259,6 +264,7 @@ describe("booking a slot for a firm", () => {
     seed(null);
     await expect(actions.assignSlot(CASE, SLOT_B)).resolves.toMatchObject({ ok: true });
     expect(bookingOf(CASE)).toMatchObject({ slot_id: SLOT_B, held_since: NOW, booked_by: ADMIN });
+    expect(syncInvoiceQuietly).toHaveBeenCalledWith(CASE);
     expect(mail.held).toHaveBeenCalledWith(expect.objectContaining({ to: "firm@example.com", paid: false }));
   });
 

@@ -3,8 +3,8 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { getInvoiceData } from "@/lib/invoiceData";
-import { INVOICE_STATUS_LABEL, invoiceNumber, type InvoiceStatus } from "@/lib/invoice";
+import { syncInvoice } from "@/lib/invoiceData";
+import { INVOICE_STATUS_LABEL, type InvoiceStatus } from "@/lib/invoice";
 import { formatCents } from "@/lib/receipt-pricing";
 import { formatDeadline } from "@/lib/slotBooking";
 import { formatCentralDate } from "@/lib/timezone";
@@ -18,16 +18,15 @@ const STATUS_PILL: Record<InvoiceStatus, string> = {
   paid: "bg-green-100 text-green-700",
   unpaid: "bg-amber-100 text-amber-800",
   overdue: "bg-red-100 text-red-700",
+  void: "bg-slate-100 text-slate-600",
 };
 
 /** "texasjurystudy.com", from the app's own address, for the footer. */
 const SITE_HOST = (process.env.NEXT_PUBLIC_APP_URL || "").replace(/^https?:\/\//, "").replace(/\/.*$/, "");
 
-/** The title is what a saved PDF is named after. */
-export async function generateMetadata({ params }: { params: Promise<{ caseId: string }> }): Promise<Metadata> {
-  const { caseId } = await params;
-  return { title: UUID_RE.test(caseId) ? `Invoice ${invoiceNumber(caseId)} – ${LEGAL_ENTITY}` : "Invoice" };
-}
+// The number is only known once the caller is checked, so the Download PDF
+// button names the saved file instead.
+export const metadata: Metadata = { title: `Invoice – ${LEGAL_ENTITY}` };
 
 /**
  * A case's invoice, laid out after the one Heritage Plaza sends us: one page,
@@ -35,9 +34,11 @@ export async function generateMetadata({ params }: { params: Promise<{ caseId: s
  * total. "Download PDF" prints it; the print styles in globals.css drop
  * everything but the sheet.
  *
- * Shared by the firm and admins. Reads with the service role, so it checks for
- * itself, by public.roles, that the caller is an admin or the firm whose case
- * it is.
+ * Shared by the firm and admins. Shows the invoice kept in public.invoices,
+ * brought up to date first (syncInvoice: issued if the case is billed but has
+ * none yet, revised while unpaid, voided if the case is cancelled). Reads with
+ * the service role, so it checks for itself, by public.roles, that the caller
+ * is an admin or the firm whose case it is.
  */
 export default async function InvoicePage({ params }: { params: Promise<{ caseId: string }> }) {
   const { caseId } = await params;
@@ -52,26 +53,44 @@ export default async function InvoicePage({ params }: { params: Promise<{ caseId
   if (role !== "admin" && role !== "requestee") redirect("/dashboard");
   if (!UUID_RE.test(caseId)) notFound();
 
-  const nowMs = Date.now();
-  const data = await getInvoiceData(caseId, nowMs);
+  const data = await syncInvoice(caseId, Date.now());
   // Another firm's case reads as no case at all.
   if (!data || (role !== "admin" && !data.ownerIds.includes(user.id))) notFound();
   const { invoice } = data;
 
   const backHref = role === "admin" ? `/dashboard/Admin/${caseId}` : `/dashboard/requestee/${caseId}`;
+  const backLink = (
+    <Link
+      href={backHref}
+      className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-primary"
+    >
+      <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+      Back to case
+    </Link>
+  );
+
+  if (!invoice) {
+    return (
+      <div className="mx-auto w-full max-w-[8.5in] space-y-4">
+        {backLink}
+        <section className="rounded-xl border bg-white p-6 sm:p-8">
+          <h1 className="text-lg font-semibold">No invoice yet</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            The invoice is issued once the case is approved or a time is booked for it.
+          </p>
+        </section>
+      </div>
+    );
+  }
+
   const paid = invoice.status === "paid";
+  const voided = invoice.status === "void";
 
   return (
     <div className="mx-auto w-full max-w-[8.5in] space-y-4 print:max-w-none print:space-y-0">
       <div className="flex items-center justify-between gap-3 print:hidden">
-        <Link
-          href={backHref}
-          className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-primary"
-        >
-          <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-          Back to case
-        </Link>
-        <PrintInvoiceButton />
+        {backLink}
+        <PrintInvoiceButton fileName={`Invoice ${invoice.number} – ${LEGAL_ENTITY}`} />
       </div>
 
       {/* The sheet keeps its own light colors, so the paper looks the same in dark mode. */}
@@ -105,7 +124,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ caseId
             <p>
               Invoice # <span className="font-medium text-slate-800">{invoice.number}</span>
             </p>
-            {invoice.issuedAt && <p>Issued {formatCentralDate(invoice.issuedAt)}</p>}
+            <p>Issued {formatCentralDate(invoice.issuedAt)}</p>
             {paid && invoice.paidAt && <p>Paid {formatCentralDate(invoice.paidAt)}</p>}
             {!paid && invoice.dueAt && <p>Due {formatDeadline(invoice.dueAt)}</p>}
           </div>
@@ -141,8 +160,10 @@ export default async function InvoicePage({ params }: { params: Promise<{ caseId
           </table>
 
           <div className="mt-6 flex items-center justify-between gap-4 rounded-xl bg-blue-50 px-6 py-5 sm:px-7">
-            <p className="font-bold text-blue-600">{paid ? "Total paid" : "Amount due"}</p>
-            <p className="text-2xl font-bold text-blue-600 sm:text-3xl">{formatCents(invoice.totalCents)}</p>
+            <p className="font-bold text-blue-600">{paid ? "Total paid" : voided ? "Total (void)" : "Amount due"}</p>
+            <p className={`text-2xl font-bold text-blue-600 sm:text-3xl ${voided ? "line-through opacity-60" : ""}`}>
+              {formatCents(invoice.totalCents)}
+            </p>
           </div>
         </section>
 
@@ -151,7 +172,9 @@ export default async function InvoicePage({ params }: { params: Promise<{ caseId
           <p className="text-slate-700">
             {paid
               ? "This invoice has been paid in full — thank you."
-              : invoice.status === "overdue" && invoice.dueAt
+              : voided
+                ? `This invoice has been voided — nothing is owed. Questions? Email ${SUPPORT_EMAIL}.`
+                : invoice.status === "overdue" && invoice.dueAt
                 ? `Payment was due ${formatDeadline(invoice.dueAt)}. Questions? Email ${SUPPORT_EMAIL}.`
                 : invoice.dueAt
                   ? `Payment is due by ${formatDeadline(invoice.dueAt)}. Questions? Email ${SUPPORT_EMAIL}.`

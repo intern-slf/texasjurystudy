@@ -7,6 +7,7 @@ import { requireAdmin } from "@/lib/requireAdmin";
 import { TIME_SLOTS_PATH, describeSlot, type TimeSlot } from "@/lib/requesteeTimeSlots";
 import { firmLabel, formatDeadline, isSlotFullError, paymentDueAt } from "@/lib/slotBooking";
 import { getBookingsForCases } from "@/lib/slotBookingData";
+import { syncInvoiceQuietly } from "@/lib/invoiceData";
 import {
   sendSlotHeldEmail,
   sendSlotMovedEmail,
@@ -131,6 +132,9 @@ async function adminLabel(adminId: string): Promise<string> {
 export async function markBookingPaid(caseId: string): Promise<Result> {
   const adminId = await requireAdmin();
   if (!isUuid(caseId)) return fail("That booking doesn't exist.");
+
+  // Paid invoices are frozen, so bring this one up to date with its case first.
+  await syncInvoiceQuietly(caseId);
 
   const supabase = await createClient();
   const now = new Date().toISOString();
@@ -361,6 +365,8 @@ export async function assignSlot(caseId: string, slotId: string): Promise<Result
   }
   if (!data?.length) return fail(CHANGED);
 
+  // Holding a time bills the case: number its invoice now.
+  await syncInvoiceQuietly(caseId);
   revalidateBooking(caseId);
 
   const firmEmail = await emailOf(theCase.owner_id);
