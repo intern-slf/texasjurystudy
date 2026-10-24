@@ -116,7 +116,7 @@ export default function ParticipantsLanding() {
             {
               icon: DollarSign,
               title: "Real compensation",
-              desc: "We pay competitively for your time and attention. Payment is sent via PayPal shortly after each completed session.",
+              desc: "We pay competitively for your time and attention. Payment is sent via PayPal shortly after each completed session, minus PayPal's processing fee of about $2 to $3.",
             },
             {
               icon: Video,
@@ -229,7 +229,7 @@ export default function ParticipantsLanding() {
             },
             {
               q: "How am I paid?",
-              a: "We pay exclusively through PayPal. You'll need an active PayPal account on file in your participant dashboard — we don't offer checks, direct deposit, or any other payout method.",
+              a: "We pay exclusively through PayPal. You'll need an active PayPal account on file in your participant dashboard — we don't offer checks, direct deposit, or any other payout method. PayPal treats the payment as a “service” payment and takes a processing fee out of it, so the amount that reaches you is about $2 to $3 less than the session amount. That fee is PayPal's, not ours.",
             },
             {
               q: "Why do you need my driver's license?",
