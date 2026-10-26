@@ -10,7 +10,8 @@ HTML here. This service only delivers.
 ```
 Vercel (Next.js)                  Cloud Run (this service)        Google
 lib/mail.ts sendEmail()  ──────►  POST /send            ──────►   Gmail API
-                          HTTPS   { to, subject, html }            users.messages.send
+                          HTTPS   { to, subject, html,             users.messages.send
+                                    attachments? }
                           bearer  → RFC 2822 MIME                  as support@
                                   → base64url
 ```
@@ -460,16 +461,25 @@ delivered message can tell you.
   "to": "one@recipient.com",
   "subject": "...",
   "html": "<p>...</p>",
+  "attachments": [
+    { "filename": "Invoice INV-2026-0007 - Texas Jury Study.pdf", "contentType": "application/pdf", "contentBase64": "JVBERi0..." }
+  ],
   "idempotencyKey": "optional-but-strongly-advised"
 }
 ```
 
+`attachments` is optional, at most 5. With any, the message goes out as
+`multipart/mixed`; without, it is the single HTML part it always was. A
+`filename` must be printable ASCII with no quotes or backslashes, since it goes
+into a header. The admin's "Email to firm" invoice button is the one sender
+today (`client/lib/invoiceEmail.ts`).
+
 | Status | Meaning |
 |---|---|
-| `200` | Sent. Body is `{ id, threadId, deduplicated }`. |
-| `400` | Malformed body, `to` is not a single valid address, or a bad `idempotencyKey`. |
+| `200` | Sent. Body is `{ id, threadId, deduplicated, attachments }`, `attachments` being how many files went out. |
+| `400` | Malformed body, `to` is not a single valid address, bad `attachments`, or a bad `idempotencyKey`. |
 | `401` | Missing or wrong bearer token. |
-| `413` | Body over 2 MB. |
+| `413` | Body over 4 MB. |
 | `429` | Gmail rate or quota limit. `retryable` distinguishes a transient limit from the daily cap. |
 | `502` | Auth or Gmail upstream failure. `retryable` says whether to retry. |
 

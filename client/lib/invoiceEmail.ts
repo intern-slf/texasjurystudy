@@ -4,12 +4,13 @@ import { INVOICE_STATUS_LABEL, type InvoiceView } from "@/lib/invoice";
 import { formatCents } from "@/lib/receipt-pricing";
 import { formatDeadline } from "@/lib/slotBooking";
 import { formatCentralDate } from "@/lib/timezone";
+import { invoicePdfFileName } from "@/lib/invoicePdf";
 
 /**
- * The invoice, emailed to the firm by an admin (lib/actions/adminInvoice.ts).
- * The mailer can't attach files, so the email carries the invoice itself, the
- * same rows and total as app/invoice/[caseId], and links to that page, where
- * the firm can download the PDF. Every value a firm typed is escaped.
+ * The invoice, emailed to the firm by an admin (lib/actions/adminInvoice.ts),
+ * with the PDF attached (lib/invoicePdf.ts). The email also carries the
+ * invoice itself, the same rows and total as app/invoice/[caseId], and links
+ * to that page. Every value a firm typed is escaped.
  */
 
 const appUrl = () => (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "");
@@ -59,7 +60,7 @@ export function invoiceEmailHtml(caseId: string, invoice: InvoiceView): string {
   return emailWrapper(`
     <h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#1e3a8a;">Your Invoice from Texas Jury Study</h2>
     <p style="margin:0 0 20px;font-size:15px;color:#475569;">
-      Here is the invoice for your focus group, <strong>${escHtml(invoice.caseTitle)}</strong>, billed to ${escHtml(invoice.billedTo.name)}.
+      Here is the invoice for your focus group, <strong>${escHtml(invoice.caseTitle)}</strong>, billed to ${escHtml(invoice.billedTo.name)}. A PDF copy is attached.
     </p>
 
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;margin:0 0 24px;">
@@ -100,7 +101,7 @@ export function invoiceEmailHtml(caseId: string, invoice: InvoiceView): string {
         <td style="border-radius:6px;background-color:#2563eb;">
           <a href="${appUrl()}/invoice/${encodeURIComponent(caseId)}"
              style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:6px;">
-            View or Download Invoice
+            View Invoice Online
           </a>
         </td>
       </tr>
@@ -108,6 +109,24 @@ export function invoiceEmailHtml(caseId: string, invoice: InvoiceView): string {
   `);
 }
 
-export async function sendInvoiceEmail(args: { to: string; caseId: string; invoice: InvoiceView }): Promise<void> {
-  await sendEmail({ to: args.to, subject: invoiceEmailSubject(args.invoice), html: invoiceEmailHtml(args.caseId, args.invoice) });
+/** Sends it with `pdf` attached. Returns whether the mailer attached it (an older one sends without). */
+export async function sendInvoiceEmail(args: {
+  to: string;
+  caseId: string;
+  invoice: InvoiceView;
+  pdf: Uint8Array;
+}): Promise<{ attached: boolean }> {
+  const result = await sendEmail({
+    to: args.to,
+    subject: invoiceEmailSubject(args.invoice),
+    html: invoiceEmailHtml(args.caseId, args.invoice),
+    attachments: [
+      {
+        filename: invoicePdfFileName(args.invoice),
+        contentType: "application/pdf",
+        contentBase64: Buffer.from(args.pdf).toString("base64"),
+      },
+    ],
+  });
+  return { attached: result.attachments === 1 };
 }

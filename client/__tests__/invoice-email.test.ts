@@ -57,7 +57,14 @@ function data({
 const mocks = vi.hoisted(() => ({
   isAdmin: { current: true },
   syncInvoice: vi.fn(),
-  sendEmail: vi.fn<(opts: { to: string; subject: string; html: string }) => Promise<unknown>>(),
+  sendEmail: vi.fn<
+    (opts: {
+      to: string;
+      subject: string;
+      html: string;
+      attachments?: Array<{ filename: string; contentType: string; contentBase64: string }>;
+    }) => Promise<unknown>
+  >(),
 }));
 
 vi.mock("@/lib/requireAdmin", () => ({
@@ -80,10 +87,10 @@ describe("emailInvoice", () => {
     mocks.syncInvoice.mockReset();
     mocks.syncInvoice.mockResolvedValue(data());
     mocks.sendEmail.mockReset();
-    mocks.sendEmail.mockResolvedValue({ id: "m-1", threadId: "t-1" });
+    mocks.sendEmail.mockResolvedValue({ id: "m-1", threadId: "t-1", attachments: 1 });
   });
 
-  it("emails the invoice to the address it's billed to", async () => {
+  it("emails the invoice to the address it's billed to, with the PDF attached", async () => {
     expect(await emailInvoice(CASE_ID)).toEqual({ ok: true, sentTo: "jane@firm.com" });
     expect(mocks.syncInvoice).toHaveBeenCalledWith(CASE_ID);
     expect(mocks.sendEmail).toHaveBeenCalledTimes(1);
@@ -95,6 +102,29 @@ describe("emailInvoice", () => {
     expect(html).toContain("Amount due");
     expect(html).toContain("Unpaid");
     expect(html).toContain(`/invoice/${CASE_ID}`);
+    expect(html).toContain("A PDF copy is attached");
+
+    const { attachments } = mocks.sendEmail.mock.calls[0][0];
+    expect(attachments).toHaveLength(1);
+    expect(attachments![0].filename).toBe("Invoice INV-2026-0007 - Texas Jury Study.pdf");
+    expect(attachments![0].contentType).toBe("application/pdf");
+    const pdf = Buffer.from(attachments![0].contentBase64, "base64");
+    expect(pdf.subarray(0, 5).toString("latin1")).toBe("%PDF-");
+  });
+
+  it("warns the admin when the mail service sent it without the PDF", async () => {
+    // A mailer deployed before it took attachments doesn't say how many it sent.
+    mocks.sendEmail.mockResolvedValue({ id: "m-1", threadId: "t-1" });
+    expect(await emailInvoice(CASE_ID)).toEqual({
+      ok: true,
+      sentTo: "jane@firm.com",
+      warning: expect.stringContaining("without the PDF"),
+    });
+  });
+
+  it("makes a PDF even when the firm typed what the PDF fonts can't print", async () => {
+    mocks.syncInvoice.mockResolvedValue(data({ title: "Doe v. Roe 🎉 — 日本" }));
+    expect(await emailInvoice(CASE_ID)).toEqual({ ok: true, sentTo: "jane@firm.com" });
   });
 
   it("turns away anyone who isn't an admin before reading anything", async () => {

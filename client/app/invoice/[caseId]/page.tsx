@@ -4,7 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { syncInvoice } from "@/lib/invoiceData";
-import { INVOICE_STATUS_LABEL, type InvoiceStatus } from "@/lib/invoice";
+import { INVOICE_STATUS_LABEL, invoiceFooterNote, invoiceTotalLabel, type InvoiceStatus } from "@/lib/invoice";
 import { formatCents } from "@/lib/receipt-pricing";
 import { formatDeadline } from "@/lib/slotBooking";
 import { formatCentralDate } from "@/lib/timezone";
@@ -167,7 +167,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ caseId
           </table>
 
           <div className="mt-6 flex items-center justify-between gap-4 rounded-xl bg-blue-50 px-6 py-5 sm:px-7">
-            <p className="font-bold text-blue-600">{paid ? "Total paid" : voided ? "Total (void)" : "Amount due"}</p>
+            <p className="font-bold text-blue-600">{invoiceTotalLabel(invoice.status)}</p>
             <p className={`text-2xl font-bold text-blue-600 sm:text-3xl ${voided ? "line-through opacity-60" : ""}`}>
               {formatCents(invoice.totalCents)}
             </p>
@@ -176,17 +176,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ caseId
 
         {/* FOOTER */}
         <footer className="mx-6 mt-auto space-y-1 border-t border-slate-200 pb-10 pt-4 text-sm sm:mx-14">
-          <p className="text-slate-700">
-            {paid
-              ? "This invoice has been paid in full — thank you."
-              : voided
-                ? `This invoice has been voided — nothing is owed. Questions? Email ${SUPPORT_EMAIL}.`
-                : invoice.status === "overdue" && invoice.dueAt
-                ? `Payment was due ${formatDeadline(invoice.dueAt)}. Questions? Email ${SUPPORT_EMAIL}.`
-                : invoice.dueAt
-                  ? `Payment is due by ${formatDeadline(invoice.dueAt)}. Questions? Email ${SUPPORT_EMAIL}.`
-                  : `Questions about this invoice? Email ${SUPPORT_EMAIL}.`}
-          </p>
+          <p className="text-slate-700">{invoiceFooterNote(invoice)}</p>
           <p className="text-xs text-slate-500">
             {[LEGAL_ENTITY, SUPPORT_EMAIL, SITE_HOST].filter(Boolean).map((part, i) => (
               <span key={part}>
