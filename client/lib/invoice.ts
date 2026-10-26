@@ -72,6 +72,7 @@ export type InvoiceStatus = "paid" | "unpaid" | "overdue" | "void";
 
 export type InvoiceView = {
   number: string;
+  caseTitle: string;
   issuedAt: string;
   /** When payment is (or was) due, while unpaid. Null when no payment clock is running. */
   dueAt: string | null;
@@ -233,6 +234,7 @@ export function invoiceView({
 
   return {
     number: record.invoice_number,
+    caseTitle: record.case_title,
     issuedAt: record.issued_at,
     dueAt: due ? due.toISOString() : null,
     paidAt,

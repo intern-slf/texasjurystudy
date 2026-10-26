@@ -11,6 +11,7 @@ import { formatCentralDate } from "@/lib/timezone";
 import { LEGAL_ENTITY, MAILING_ADDRESS, SUPPORT_EMAIL } from "@/lib/legal-constants";
 import Logo from "@/components/Logo";
 import PrintInvoiceButton from "@/components/PrintInvoiceButton";
+import EmailInvoiceButton from "@/components/EmailInvoiceButton";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -38,7 +39,8 @@ export const metadata: Metadata = { title: `Invoice – ${LEGAL_ENTITY}` };
  * brought up to date first (syncInvoice: issued if the case is billed but has
  * none yet, revised while unpaid, voided if the case is cancelled). Reads with
  * the service role, so it checks for itself, by public.roles, that the caller
- * is an admin or the firm whose case it is.
+ * is an admin or the firm whose case it is. Admins can also email it to the
+ * firm from here (EmailInvoiceButton), unless it's void.
  */
 export default async function InvoicePage({ params }: { params: Promise<{ caseId: string }> }) {
   const { caseId } = await params;
@@ -90,7 +92,12 @@ export default async function InvoicePage({ params }: { params: Promise<{ caseId
     <div className="mx-auto w-full max-w-[8.5in] space-y-4 print:max-w-none print:space-y-0">
       <div className="flex items-center justify-between gap-3 print:hidden">
         {backLink}
-        <PrintInvoiceButton fileName={`Invoice ${invoice.number} – ${LEGAL_ENTITY}`} />
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {role === "admin" && !voided && invoice.billedTo.email && (
+            <EmailInvoiceButton caseId={caseId} to={invoice.billedTo.email} />
+          )}
+          <PrintInvoiceButton fileName={`Invoice ${invoice.number} – ${LEGAL_ENTITY}`} />
+        </div>
       </div>
 
       {/* The sheet keeps its own light colors, so the paper looks the same in dark mode. */}

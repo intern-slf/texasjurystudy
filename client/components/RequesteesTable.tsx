@@ -13,6 +13,7 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ChevronRight, Search, X } from "lucide-react";
+import EmailInvoiceButton from "@/components/EmailInvoiceButton";
 
 export type RequesteeCase = {
   id: string;
@@ -20,6 +21,8 @@ export type RequesteeCase = {
   admin_status: string | null;
   created_at: string | null;
   deleted_at: string | null;
+  /** Billed (lib/invoice.ts isInvoiceable), so it has an invoice to email. */
+  invoiceable: boolean;
 };
 
 export type RequesteeRow = {
@@ -269,7 +272,8 @@ export default function RequesteesTable({ requestees }: Props) {
                                       >
                                         {c.title}
                                       </Link>
-                                      <div className="flex items-center gap-3">
+                                      <div className="flex flex-wrap items-center justify-end gap-3">
+                                        {c.invoiceable && <EmailInvoiceButton caseId={c.id} to={r.email} />}
                                         <span className="text-xs text-muted-foreground">
                                           {fmtDate(c.created_at)}
                                         </span>
