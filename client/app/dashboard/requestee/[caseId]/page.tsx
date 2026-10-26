@@ -95,6 +95,8 @@ export default async function RequesteeCaseDetailPage({
       : "approved";
 
   const filters = c.filters as CaseFilters | null;
+  // The invoice is linked once the case is approved.
+  const hasInvoice = admin_status === "approved" || admin_status === "submitted";
 
   function StatusBadge() {
     if (status === "previous") return <Badge variant="secondary">Past</Badge>;
@@ -133,7 +135,7 @@ export default async function RequesteeCaseDetailPage({
             <div className="flex flex-wrap items-start justify-between gap-3">
               <h1 className="text-3xl font-bold tracking-tight">{c.title}</h1>
               {/* Once approved, in person or online. A held time links to it from its own box too. */}
-              {(admin_status === "approved" || admin_status === "submitted") && (
+              {hasInvoice && (
                 <Link
                   href={`/invoice/${c.id}`}
                   className={buttonVariants({ variant: "outline", size: "sm" })}
@@ -326,6 +328,7 @@ export default async function RequesteeCaseDetailPage({
                 filters={filters}
                 hoursRequested={c.hours_requested}
                 deliveryMode={c.delivery_mode as string | null}
+                invoiceHref={hasInvoice ? `/invoice/${c.id}` : undefined}
               />
             </section>
           )}
