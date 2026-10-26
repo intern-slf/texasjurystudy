@@ -1,5 +1,6 @@
 import { calculateReceiptPrice, formatCents } from "@/lib/receipt-pricing";
-import { bookingState, firmLabel, paymentDueAt, type SlotBookingRow } from "@/lib/slotBooking";
+import { bookingState, firmLabel, formatDeadline, paymentDueAt, type SlotBookingRow } from "@/lib/slotBooking";
+import { SUPPORT_EMAIL } from "@/lib/legal-constants";
 import {
   SLOT_TIME_ZONE_LABEL,
   formatDateKey,
@@ -93,6 +94,22 @@ export const INVOICE_STATUS_LABEL: Record<InvoiceStatus, string> = {
   overdue: "Overdue",
   void: "Void",
 };
+
+/** What the total is called, by where payment stands. Shared by the page and the PDF. */
+export function invoiceTotalLabel(status: InvoiceStatus): string {
+  return status === "paid" ? "Total paid" : status === "void" ? "Total (void)" : "Amount due";
+}
+
+/** The line at the foot of the invoice: where payment stands, and who to ask. Shared by the page and the PDF. */
+export function invoiceFooterNote(invoice: Pick<InvoiceView, "status" | "dueAt">): string {
+  if (invoice.status === "paid") return "This invoice has been paid in full — thank you.";
+  if (invoice.status === "void") return `This invoice has been voided — nothing is owed. Questions? Email ${SUPPORT_EMAIL}.`;
+  if (invoice.status === "overdue" && invoice.dueAt) {
+    return `Payment was due ${formatDeadline(invoice.dueAt)}. Questions? Email ${SUPPORT_EMAIL}.`;
+  }
+  if (invoice.dueAt) return `Payment is due by ${formatDeadline(invoice.dueAt)}. Questions? Email ${SUPPORT_EMAIL}.`;
+  return `Questions about this invoice? Email ${SUPPORT_EMAIL}.`;
+}
 
 /** Rejected or archived: it can't run, so nothing is owed unless it was already paid. */
 export function isCancelled(theCase: Pick<InvoiceCase, "admin_status" | "deleted_at">): boolean {

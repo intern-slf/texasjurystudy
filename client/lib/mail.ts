@@ -99,15 +99,28 @@ function releaseSlot(): void {
   waiting.shift()?.();
 }
 
+export interface EmailAttachment {
+  /** Printable ASCII, no quotes: the mailer puts it in a header and refuses anything else. */
+  filename: string;
+  contentType: string;
+  contentBase64: string;
+}
+
 export interface SendEmailOptions {
   to: string;
   subject: string;
   html: string;
+  attachments?: EmailAttachment[];
 }
 
 export interface SendEmailResult {
   id: string;
   threadId: string;
+  /**
+   * How many attachments the mailer sent. Missing from a mailer deployed
+   * before it took attachments, which sends the email without them.
+   */
+  attachments?: number;
 }
 
 interface MailerRequest extends SendEmailOptions {
@@ -199,6 +212,7 @@ export async function sendEmail({
   to,
   subject,
   html,
+  attachments,
 }: SendEmailOptions): Promise<SendEmailResult> {
   // Trimmed because these are pasted into a dashboard by hand. Stray
   // whitespace makes MAILER_URL an invalid URL, so fetch throws before any
@@ -223,7 +237,7 @@ export async function sendEmail({
   await acquireSlot();
   try {
     const result = await postToMailer(
-      { to, subject, html, idempotencyKey },
+      { to, subject, html, ...(attachments?.length ? { attachments } : {}), idempotencyKey },
       url,
       secret
     );

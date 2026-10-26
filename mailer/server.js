@@ -42,7 +42,10 @@ const SEND_DOMAIN = FROM_ADDRESS.split("@")[1] || "localhost";
 // SMTP pool — without it a bulk campaign trips 429s instead of 454s.
 const SENDS_PER_SECOND = Number(process.env.SENDS_PER_SECOND) || 2;
 
-const MAX_BODY_BYTES = 2_000_000;
+// Room for a few small attachments (an invoice PDF is ~5 KB) on top of the
+// HTML. Gmail's own limit on a message sent as JSON `raw` is about 5 MB.
+const MAX_BODY_BYTES = 4_000_000;
+const MAX_ATTACHMENTS = 5;
 
 // Every outbound call needs its own deadline. undici's default header timeout
 // is measured in minutes, so without these a stalled metadata server or Gmail
@@ -308,7 +311,30 @@ function encodeHeaderValue(value, prefixLength = 0) {
 // headers, so addresses are validated rather than escaped.
 const ADDRESS = /^[^\s@<>,;:"\\]+@[^\s@<>,;:"\\]+\.[^\s@<>,;:"\\]+$/;
 
-function buildRawMessage({ to, subject, html, messageId }) {
+// Attachments are named by the app, but still checked: the name goes into a
+// header, so printable ASCII with no quotes or backslashes (a non-ASCII name
+// would need RFC 2231 encoding, which nothing sends yet).
+const ATTACHMENT_FILENAME = /^[\x20-\x7E]{1,150}$/;
+const ATTACHMENT_TYPE = /^[a-z]+\/[a-z0-9.+-]+$/i;
+const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
+
+function validAttachment(a) {
+  return (
+    a !== null &&
+    typeof a === "object" &&
+    typeof a.filename === "string" &&
+    ATTACHMENT_FILENAME.test(a.filename) &&
+    !/["\\]/.test(a.filename) &&
+    typeof a.contentType === "string" &&
+    ATTACHMENT_TYPE.test(a.contentType) &&
+    typeof a.contentBase64 === "string" &&
+    BASE64.test(a.contentBase64)
+  );
+}
+
+const wrap76 = (base64) => base64.replace(/(.{76})/g, "$1\r\n");
+
+function buildRawMessage({ to, subject, html, messageId, attachments = [] }) {
   const headers = [
     `From: "${FROM_NAME.replace(/["\\]/g, "")}" <${FROM_ADDRESS}>`,
     `To: ${to}`,
@@ -320,18 +346,39 @@ function buildRawMessage({ to, subject, html, messageId }) {
   // one, Gmail mints a fresh ID per send and they look like separate mail.
   if (messageId) headers.push(`Message-ID: ${messageId}`);
 
-  headers.push(
-    "MIME-Version: 1.0",
-    'Content-Type: text/html; charset="UTF-8"',
-    "Content-Transfer-Encoding: base64"
-  );
+  const htmlBody = wrap76(Buffer.from(html, "utf8").toString("base64"));
+  let message;
 
-  const body = Buffer.from(html, "utf8")
-    .toString("base64")
-    .replace(/(.{76})/g, "$1\r\n");
+  if (!attachments.length) {
+    headers.push(
+      "MIME-Version: 1.0",
+      'Content-Type: text/html; charset="UTF-8"',
+      "Content-Transfer-Encoding: base64"
+    );
+    message = `${headers.join("\r\n")}\r\n\r\n${htmlBody}`;
+  } else {
+    // multipart/mixed: the HTML, then each file. "=_" can't occur in base64,
+    // so the boundary can never turn up inside a part.
+    const boundary = `=_tjs_${crypto.randomBytes(12).toString("hex")}`;
+    headers.push("MIME-Version: 1.0", `Content-Type: multipart/mixed; boundary="${boundary}"`);
+    const parts = [
+      ['Content-Type: text/html; charset="UTF-8"', "Content-Transfer-Encoding: base64", "", htmlBody],
+      ...attachments.map((a) => [
+        `Content-Type: ${a.contentType}; name="${a.filename}"`,
+        `Content-Disposition: attachment; filename="${a.filename}"`,
+        "Content-Transfer-Encoding: base64",
+        "",
+        wrap76(a.contentBase64),
+      ]),
+    ];
+    message =
+      `${headers.join("\r\n")}\r\n\r\n` +
+      parts.map((p) => `--${boundary}\r\n${p.join("\r\n")}\r\n`).join("") +
+      `--${boundary}--`;
+  }
 
   // Gmail's `raw` field wants unpadded base64url.
-  return Buffer.from(`${headers.join("\r\n")}\r\n\r\n${body}`, "utf8")
+  return Buffer.from(message, "utf8")
     .toString("base64")
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
@@ -402,11 +449,12 @@ async function sendMessage(options) {
   return promise;
 }
 
-async function performSend({ to, subject, html, idempotencyKey }) {
+async function performSend({ to, subject, html, attachments, idempotencyKey }) {
   const raw = buildRawMessage({
     to,
     subject,
     html,
+    attachments,
     messageId: idempotencyKey ? `<${idempotencyKey}@${SEND_DOMAIN}>` : null,
   });
   await takeRateLimitSlot();
@@ -542,7 +590,7 @@ const server = http.createServer(async (req, res) => {
       return respond(res, 400, { error: "Body must be valid JSON." });
     }
 
-    const { to, subject, html, idempotencyKey } = payload ?? {};
+    const { to, subject, html, attachments = [], idempotencyKey } = payload ?? {};
     if (typeof to !== "string" || !ADDRESS.test(to)) {
       return respond(res, 400, {
         error: "`to` must be a single valid email address.",
@@ -553,6 +601,17 @@ const server = http.createServer(async (req, res) => {
     }
     if (typeof html !== "string" || !html) {
       return respond(res, 400, { error: "`html` is required." });
+    }
+    if (
+      !Array.isArray(attachments) ||
+      attachments.length > MAX_ATTACHMENTS ||
+      !attachments.every(validAttachment)
+    ) {
+      return respond(res, 400, {
+        error:
+          `\`attachments\` must be at most ${MAX_ATTACHMENTS} of { filename ` +
+          "(printable ASCII, no quotes), contentType, contentBase64 }.",
+      });
     }
     // Goes into a Message-ID header, so it must not be able to break out of it.
     if (
@@ -565,14 +624,19 @@ const server = http.createServer(async (req, res) => {
       });
     }
 
-    const result = await sendMessage({ to, subject, html, idempotencyKey });
+    const result = await sendMessage({ to, subject, html, attachments, idempotencyKey });
     console.log(
-      `sent id=${result.id} to=${to}${result.deduplicated ? " (deduplicated)" : ""}`
+      `sent id=${result.id} to=${to}` +
+        (attachments.length ? ` with ${attachments.length} attachment(s)` : "") +
+        (result.deduplicated ? " (deduplicated)" : "")
     );
+    // Says how many files went out, so the app can tell this version from an
+    // older one, which would have sent the email without them.
     return respond(res, 200, {
       id: result.id,
       threadId: result.threadId,
       deduplicated: Boolean(result.deduplicated),
+      attachments: attachments.length,
     });
   } catch (err) {
     const status = err instanceof SendError ? err.status : 500;
