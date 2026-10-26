@@ -4,9 +4,11 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
    ACTIVE PANEL STATUS
    A participant may only attend a session while they are an *active* panel
    member — the "Active" column in the admin participants table, which reads
-   `jury_participants.reactivation_status` (set by the "are you still
-   interested?" campaign). Only an explicit "yes" counts; "pending", "no" and
-   NULL all mean we have no current confirmation that they still participate.
+   `jury_participants.reactivation_status`. It is "yes" from signup (the
+   jury_participants_protect_admin_fields trigger sets it on a new profile) and
+   is otherwise set by the "are you still interested?" campaign. Only an
+   explicit "yes" counts; "pending", "no" and NULL all mean we have no current
+   confirmation that they still participate.
 
    Enforced in three places, all of which import from here so the rule has one
    definition:
