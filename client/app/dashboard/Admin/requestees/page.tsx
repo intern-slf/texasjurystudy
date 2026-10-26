@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import BackButton from "@/components/BackButton";
 import AddTimeSlotsButton from "@/components/AddTimeSlotsButton";
+import { isInvoiceable } from "@/lib/invoice";
 import RequesteesTable, {
   type RequesteeCase,
   type RequesteeRow,
@@ -70,7 +71,7 @@ export default async function RequesteesPage() {
      FETCH REQUESTEES, AGREEMENTS, CASES
   ========================= */
 
-  const [roles, agreements, cases] = await Promise.all([
+  const [roles, agreements, cases, bookings] = await Promise.all([
     fetchAllRows<{ user_id: string; email: string | null; created_at: string | null }>(
       "roles",
       (from, to) =>
@@ -96,7 +97,7 @@ export default async function RequesteesPage() {
         .range(from, to)
     ),
 
-    fetchAllRows<RequesteeCase & { user_id: string; requestee_id: string | null }>(
+    fetchAllRows<Omit<RequesteeCase, "invoiceable"> & { user_id: string; requestee_id: string | null }>(
       "cases",
       (from, to) =>
         supabase
@@ -105,7 +106,19 @@ export default async function RequesteesPage() {
           .order("created_at", { ascending: false })
           .range(from, to)
     ),
+
+    // Whether each firm holds (or held) a time: that bills its case too, so
+    // the case has an invoice to email. Admin-only table, read via service role.
+    fetchAllRows<{ case_id: string; held_since: string | null; paid_at: string | null }>("bookings", (from, to) =>
+      supabaseAdmin
+        .from("requestee_slot_bookings")
+        .select("case_id, held_since, paid_at")
+        .order("case_id")
+        .range(from, to)
+    ),
   ]);
+
+  const bookingByCase = new Map(bookings.map((b) => [b.case_id, b]));
 
   const agreementByUser = new Map(agreements.map((a) => [a.user_id, a]));
 
@@ -121,6 +134,7 @@ export default async function RequesteesPage() {
       admin_status: c.admin_status,
       created_at: c.created_at,
       deleted_at: c.deleted_at,
+      invoiceable: isInvoiceable(c, bookingByCase.get(c.id) ?? null),
     });
     casesByUser.set(ownerId, list);
   }

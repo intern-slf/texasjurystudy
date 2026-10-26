@@ -10,6 +10,9 @@ import CaseLineagePanel from "@/components/CaseLineagePanel";
 import CaseSessionsPanel from "@/components/CaseSessionsPanel";
 import CaseBookingPanel from "@/components/CaseBookingPanel";
 import BackButton from "@/components/BackButton";
+import EmailInvoiceButton from "@/components/EmailInvoiceButton";
+import { isInvoiceable } from "@/lib/invoice";
+import { getBookingsForCases } from "@/lib/slotBookingData";
 import { caseSessionTime, type CaseSessionRow } from "@/lib/case/caseSessionTime";
 import { formatCentralDate, formatCentralDateTime, formatSessionDate } from "@/lib/timezone";
 
@@ -51,6 +54,7 @@ interface CaseInfo {
   requestee_id: string | null;
   user_id: string;
   admin_status: string | null;
+  deleted_at: string | null;
   schedule_status: string | null;
   created_at: string | null;
   approved_at: string | null;
@@ -105,6 +109,7 @@ export default async function AdminCaseDetailPage({
       requestee_id,
       user_id,
       admin_status,
+      deleted_at,
       schedule_status,
       created_at,
       approved_at,
@@ -193,6 +198,16 @@ export default async function AdminCaseDetailPage({
 
     requesteeProfile = { id: requesteeUserId, email, full_name };
   }
+
+  // Approved, or the firm holds a time: billed, so there's an invoice to email.
+  // Unreadable bookings only hide the button; the invoice page still has it.
+  const booking = await getBookingsForCases([caseInfo.id])
+    .then((bookings) => bookings.get(caseInfo.id) ?? null)
+    .catch((err) => {
+      console.error("[admin case page] couldn't read the booking:", err);
+      return null;
+    });
+  const invoiceable = isInvoiceable(caseInfo, booking);
 
   /* =========================
      UI
@@ -413,9 +428,12 @@ export default async function AdminCaseDetailPage({
       <section>
         <div className="mb-4 flex items-center justify-between gap-3">
           <h3 className="text-xl font-bold">Receipt</h3>
-          <Link href={`/invoice/${caseInfo.id}`} className="text-sm font-medium text-primary hover:underline">
-            Open invoice →
-          </Link>
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            {invoiceable && <EmailInvoiceButton caseId={caseInfo.id} to={requesteeProfile?.email} />}
+            <Link href={`/invoice/${caseInfo.id}`} className="text-sm font-medium text-primary hover:underline">
+              Open invoice →
+            </Link>
+          </div>
         </div>
         <ReceiptPricingPreview
           filters={caseInfo.filters}

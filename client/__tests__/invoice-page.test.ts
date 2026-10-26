@@ -84,6 +84,9 @@ vi.mock("@/lib/invoiceData", () => ({ syncInvoice: mocks.syncInvoice }));
 vi.mock("@/components/PrintInvoiceButton", () => ({
   default: ({ fileName }: { fileName: string }) => `[print: ${fileName}]`,
 }));
+vi.mock("@/components/EmailInvoiceButton", () => ({
+  default: ({ to }: { to: string }) => `[email to: ${to}]`,
+}));
 
 describe("invoice page", () => {
   const params = Promise.resolve({ caseId: CASE_ID });
@@ -120,6 +123,20 @@ describe("invoice page", () => {
     mocks.role.current = "admin";
     mocks.syncInvoice.mockResolvedValue(data({ ownerIds: ["firm-2"] }));
     expect(await render()).toContain(`/dashboard/Admin/${CASE_ID}`);
+  });
+
+  it("offers an admin, and only an admin, to email the invoice to the firm", async () => {
+    expect(await render()).not.toContain("[email to:");
+    mocks.user.current = { id: "admin-1" };
+    mocks.role.current = "admin";
+    expect(await render()).toContain("[email to: jane@firm.com]");
+  });
+
+  it("doesn't offer to email a void invoice", async () => {
+    mocks.user.current = { id: "admin-1" };
+    mocks.role.current = "admin";
+    mocks.syncInvoice.mockResolvedValue(data({ voidedAt: heldSince }));
+    expect(await render()).not.toContain("[email to:");
   });
 
   it("turns away participants and signed-out visitors before reading anything", async () => {
