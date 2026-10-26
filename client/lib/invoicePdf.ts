@@ -1,5 +1,12 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage, type RGB } from "pdf-lib";
-import { INVOICE_STATUS_LABEL, invoiceFooterNote, invoiceTotalLabel, type InvoiceStatus, type InvoiceView } from "@/lib/invoice";
+import {
+  INVOICE_STATUS_LABEL,
+  invoiceCheckPayable,
+  invoiceFooterNote,
+  invoiceTotalLabel,
+  type InvoiceStatus,
+  type InvoiceView,
+} from "@/lib/invoice";
 import { formatCents } from "@/lib/receipt-pricing";
 import { formatDeadline } from "@/lib/slotBooking";
 import { formatCentralDate } from "@/lib/timezone";
@@ -8,8 +15,9 @@ import { LEGAL_ENTITY, MAILING_ADDRESS, SUPPORT_EMAIL } from "@/lib/legal-consta
 /**
  * The invoice as a PDF, attached to the email an admin sends the firm
  * (lib/invoiceEmail.ts). Drawn to match app/invoice/[caseId]: the navy band
- * with our logo, who it's billed to, the receipt's rows and the total. One
- * Letter page, continued onto more only if a case has very many filters.
+ * with our logo, who it's billed to, the receipt's rows, the total and, while
+ * it's owed, who to make a check out to. One Letter page, continued onto more
+ * only if a case has very many filters.
  *
  * Uses the PDF standard fonts, which only cover Windows-1252, so any other
  * character a firm typed (an emoji in a case title) prints as "?" instead of
@@ -277,8 +285,10 @@ export async function renderInvoicePdf(invoice: InvoiceView): Promise<Uint8Array
     pen.line(MARGIN, RIGHT, top, C.slate200);
   }
 
-  /* TOTAL */
-  if (top + 24 + 56 > FOOTER_TOP - 16) {
+  /* TOTAL, then where to mail a check, kept on one page together */
+  const checks = invoiceCheckPayable(invoice.status);
+  const checksHeight = checks ? 30 + 17 + checks.addressLines.length * 14 : 0;
+  if (top + 24 + 56 + checksHeight > FOOTER_TOP - 16) {
     pen = new Pen(doc.addPage([PAGE_W, PAGE_H]), fonts);
     top = MARGIN;
   }
@@ -294,6 +304,13 @@ export async function renderInvoicePdf(invoice: InvoiceView): Promise<Uint8Array
     opacity: voided ? 0.6 : undefined,
   });
   if (voided) pen.line(RIGHT - 22 - totalWidth, RIGHT - 22, top + 29, C.navy, 1.5);
+
+  if (checks) {
+    let y = top + 56 + 30;
+    pen.text("Please make checks payable to:", MARGIN, y, { size: 10, color: C.slate600 });
+    pen.text(checks.payee, MARGIN, (y += 17), { size: 12, font: bold, color: C.navy });
+    for (const l of checks.addressLines) pen.text(l, MARGIN, (y += 14), { size: 10, color: C.slate700 });
+  }
 
   /* FOOTER, on the last page */
   pen.line(MARGIN, RIGHT, FOOTER_TOP, C.slate200);

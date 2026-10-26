@@ -4,7 +4,13 @@ import { notFound, redirect } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { syncInvoice } from "@/lib/invoiceData";
-import { INVOICE_STATUS_LABEL, invoiceFooterNote, invoiceTotalLabel, type InvoiceStatus } from "@/lib/invoice";
+import {
+  INVOICE_STATUS_LABEL,
+  invoiceCheckPayable,
+  invoiceFooterNote,
+  invoiceTotalLabel,
+  type InvoiceStatus,
+} from "@/lib/invoice";
 import { formatCents } from "@/lib/receipt-pricing";
 import { formatDeadline } from "@/lib/slotBooking";
 import { formatCentralDate } from "@/lib/timezone";
@@ -31,8 +37,9 @@ export const metadata: Metadata = { title: `Invoice – ${LEGAL_ENTITY}` };
 
 /**
  * A case's invoice, laid out after the one Heritage Plaza sends us: one page,
- * a navy band with our logo, who it's billed to, the receipt's rows and the
- * total. "Download PDF" prints it; the print styles in globals.css drop
+ * a navy band with our logo, who it's billed to, the receipt's rows, the
+ * total and, while it's owed, who to make a check out to. "Download PDF"
+ * prints it; the print styles in globals.css drop
  * everything but the sheet.
  *
  * Shared by the firm and admins. Shows the invoice kept in public.invoices,
@@ -87,6 +94,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ caseId
 
   const paid = invoice.status === "paid";
   const voided = invoice.status === "void";
+  const checks = invoiceCheckPayable(invoice.status);
 
   return (
     <div className="mx-auto w-full max-w-[8.5in] space-y-4 print:max-w-none print:space-y-0">
@@ -172,6 +180,16 @@ export default async function InvoicePage({ params }: { params: Promise<{ caseId
               {formatCents(invoice.totalCents)}
             </p>
           </div>
+
+          {checks && (
+            <div className="mt-8 text-sm text-slate-700">
+              <p className="text-slate-600">Please make checks payable to:</p>
+              <p className="mt-1 text-base font-bold text-brand-navy">{checks.payee}</p>
+              {checks.addressLines.map((l) => (
+                <p key={l}>{l}</p>
+              ))}
+            </div>
+          )}
         </section>
 
         {/* FOOTER */}

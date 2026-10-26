@@ -1,6 +1,6 @@
 import { calculateReceiptPrice, formatCents } from "@/lib/receipt-pricing";
 import { bookingState, firmLabel, formatDeadline, paymentDueAt, type SlotBookingRow } from "@/lib/slotBooking";
-import { SUPPORT_EMAIL } from "@/lib/legal-constants";
+import { LEGAL_ENTITY, MAILING_ADDRESS, SUPPORT_EMAIL } from "@/lib/legal-constants";
 import {
   SLOT_TIME_ZONE_LABEL,
   formatDateKey,
@@ -109,6 +109,19 @@ export function invoiceFooterNote(invoice: Pick<InvoiceView, "status" | "dueAt">
   }
   if (invoice.dueAt) return `Payment is due by ${formatDeadline(invoice.dueAt)}. Questions? Email ${SUPPORT_EMAIL}.`;
   return `Questions about this invoice? Email ${SUPPORT_EMAIL}.`;
+}
+
+/**
+ * Who a check is made out to and where to mail it, the street and the city a
+ * line each, while payment is owed. Null once paid or void, or with no
+ * MAILING_ADDRESS. Shared by the page, the PDF and the email.
+ */
+export function invoiceCheckPayable(status: InvoiceStatus): { payee: string; addressLines: string[] } | null {
+  if (status === "paid" || status === "void" || !MAILING_ADDRESS) return null;
+  // "402 Simonton St, Conroe, TX 77301" splits at its first comma.
+  const comma = MAILING_ADDRESS.indexOf(", ");
+  const addressLines = comma < 0 ? [MAILING_ADDRESS] : [MAILING_ADDRESS.slice(0, comma), MAILING_ADDRESS.slice(comma + 2)];
+  return { payee: LEGAL_ENTITY, addressLines };
 }
 
 /** Rejected or archived: it can't run, so nothing is owed unless it was already paid. */
