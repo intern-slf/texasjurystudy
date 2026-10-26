@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
+  invoiceCheckPayable,
   invoiceContent,
   invoiceView,
   isInvoiceable,
@@ -193,6 +194,19 @@ describe("invoiceView: the kept invoice, with where payment stands now", () => {
     expect(invoiceView({ record, booking: null, slot: null, nowMs: 0 }).billedTo).toEqual({ name: "Jane Doe", email: "jane@firm.com" });
     const noName = aRecord({ ...contentFor(), billed_to_name: null });
     expect(invoiceView({ record: noName, booking: null, slot: null, nowMs: 0 }).billedTo.name).toBe("jane@firm.com");
+  });
+});
+
+describe("invoiceCheckPayable: who to make a check out to", () => {
+  it("names Texas Jury Study at its mailing address while payment is owed", () => {
+    const checks = { payee: "Texas Jury Study", addressLines: ["402 Simonton St", "Conroe, TX 77301"] };
+    expect(invoiceCheckPayable("unpaid")).toEqual(checks);
+    expect(invoiceCheckPayable("overdue")).toEqual(checks);
+  });
+
+  it("is left off once paid or void", () => {
+    expect(invoiceCheckPayable("paid")).toBeNull();
+    expect(invoiceCheckPayable("void")).toBeNull();
   });
 });
 

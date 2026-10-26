@@ -103,6 +103,8 @@ describe("emailInvoice", () => {
     expect(html).toContain("Unpaid");
     expect(html).toContain(`/invoice/${CASE_ID}`);
     expect(html).toContain("A PDF copy is attached");
+    expect(html).toContain("Please make checks payable to:");
+    expect(html).toContain("Conroe, TX 77301");
 
     const { attachments } = mocks.sendEmail.mock.calls[0][0];
     expect(attachments).toHaveLength(1);
@@ -172,6 +174,7 @@ describe("emailInvoice", () => {
     const { html } = mocks.sendEmail.mock.calls[0][0];
     expect(html).toContain("Total paid");
     expect(html).toContain("paid in full");
+    expect(html).not.toContain("checks payable");
     expect(html).not.toContain("<b>Doe</b>");
     expect(html).toContain("&lt;b&gt;Doe&lt;/b&gt; &amp; Co");
   });

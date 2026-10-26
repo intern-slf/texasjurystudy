@@ -1,6 +1,6 @@
 import { emailWrapper, escHtml, sendEmail } from "@/lib/mail";
 import { SUPPORT_EMAIL } from "@/lib/legal-constants";
-import { INVOICE_STATUS_LABEL, type InvoiceView } from "@/lib/invoice";
+import { INVOICE_STATUS_LABEL, invoiceCheckPayable, type InvoiceView } from "@/lib/invoice";
 import { formatCents } from "@/lib/receipt-pricing";
 import { formatDeadline } from "@/lib/slotBooking";
 import { formatCentralDate } from "@/lib/timezone";
@@ -57,6 +57,16 @@ export function invoiceEmailHtml(caseId: string, invoice: InvoiceView): string {
         ? `Please pay it by <strong>${escHtml(formatDeadline(invoice.dueAt))}</strong>.`
         : "";
 
+  const checks = invoiceCheckPayable(invoice.status);
+  const checksBlock = checks
+    ? `
+    <div style="margin:0 0 24px;">
+      <p style="margin:0 0 4px;font-size:14px;color:#475569;">Please make checks payable to:</p>
+      <p style="margin:0;font-size:15px;font-weight:700;color:#1e3a8a;">${escHtml(checks.payee)}</p>
+      ${checks.addressLines.map((l) => `<p style="margin:0;font-size:14px;color:#334155;">${escHtml(l)}</p>`).join("")}
+    </div>`
+    : "";
+
   return emailWrapper(`
     <h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#1e3a8a;">Your Invoice from Texas Jury Study</h2>
     <p style="margin:0 0 20px;font-size:15px;color:#475569;">
@@ -91,6 +101,7 @@ export function invoiceEmailHtml(caseId: string, invoice: InvoiceView): string {
         <td style="padding:16px 20px;text-align:right;font-size:22px;font-weight:700;color:#2563eb;">${formatCents(invoice.totalCents)}</td>
       </tr>
     </table>
+${checksBlock}
 
     <p style="margin:0 0 24px;font-size:14px;color:#475569;">
       ${closing}${closing ? " " : ""}Questions? Email us at <a href="mailto:${SUPPORT_EMAIL}" style="color:#1e3a8a;">${SUPPORT_EMAIL}</a>.

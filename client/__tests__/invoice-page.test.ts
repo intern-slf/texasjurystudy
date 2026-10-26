@@ -111,6 +111,8 @@ describe("invoice page", () => {
     expect(html).toContain("Amount due");
     expect(html).toContain("[print: Invoice INV-2026-0007 – Texas Jury Study]");
     expect(html).toContain(`/dashboard/requestee/${CASE_ID}`);
+    expect(html).toContain("Please make checks payable to:");
+    expect(html).toContain("402 Simonton St");
   });
 
   it("hides another firm's case as if it didn't exist", async () => {
@@ -157,6 +159,7 @@ describe("invoice page", () => {
     const html = await render();
     expect(html).toContain("Total paid");
     expect(html).toContain("paid in full");
+    expect(html).not.toContain("checks payable");
   });
 
   it("says void once voided", async () => {
@@ -164,5 +167,6 @@ describe("invoice page", () => {
     const html = await render();
     expect(html).toContain("Void");
     expect(html).toContain("nothing is owed");
+    expect(html).not.toContain("checks payable");
   });
 });
