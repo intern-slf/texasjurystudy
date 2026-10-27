@@ -8,6 +8,8 @@ import LoomEmbed from "@/components/LoomEmbed";
 import BackButton from "@/components/BackButton";
 import CaseDocumentUploader from "@/components/CaseDocumentUploader";
 import ReceiptPricingPreview from "@/components/ReceiptPricingPreview";
+import PromoCodeField, { type CheckedPromoCode } from "@/components/PromoCodeField";
+import { applyPromoCode } from "@/lib/actions/requesteePromoCode";
 import {
   DEFAULT_DELIVERY_MODE,
   normalizeDeliveryMode,
@@ -187,6 +189,12 @@ export default function NewCasePage() {
   const [booking, setBooking] = useState<
     { ok: true; slot: TimeSlot; paid: boolean; dueAt: string | null } | { ok: false; error: string } | null
   >(null);
+  // A promo code, checked but not yet held: it's applied straight after the
+  // case is saved, like the time.
+  const [promo, setPromo] = useState<CheckedPromoCode | null>(null);
+  const [promoResult, setPromoResult] = useState<
+    { ok: true; percentOff: number } | { ok: false; error: string } | null
+  >(null);
   const hoursForSlot = form.hours_requested ? Number(form.hours_requested) : null;
   const pickedSlot = openSlots?.find((s) => s.id === slotId) ?? null;
   // Slots are for online focus groups; picking one replaces the timing questions.
@@ -342,6 +350,17 @@ export default function NewCasePage() {
         await chooseTimeSlot(data.id, slotId).catch(() => ({
           ok: false as const,
           error: "We couldn't hold that time.",
+        }))
+      );
+    }
+
+    // Checked again now: if the code ran out or expired in the meantime, the
+    // case is still saved and the firm can try another on the case page.
+    if (promo) {
+      setPromoResult(
+        await applyPromoCode(data.id, promo.code).catch(() => ({
+          ok: false as const,
+          error: "We couldn't apply your promo code.",
         }))
       );
     }
@@ -817,7 +836,10 @@ export default function NewCasePage() {
                   availability: filters.socioeconomic.availability,
                 },
               } as CaseFilters}
-            />
+              discountPercent={promo?.percentOff ?? null}
+            >
+              <PromoCodeField value={promo} onChange={setPromo} disabled={loading} />
+            </ReceiptPricingPreview>
 
             {/* SAVE BUTTON */}
             <button onClick={createCaseAndUpload} disabled={loading} className="w-full py-5 bg-primary text-primary-foreground rounded-2xl font-bold text-lg shadow-xl hover:brightness-110 active:scale-[0.98] transition-all disabled:opacity-50">
@@ -853,6 +875,27 @@ export default function NewCasePage() {
                       {booking.error}{" "}
                       <Link href={`/dashboard/requestee/${caseId}`} className="font-medium underline">
                         Pick another time on your case page
+                      </Link>
+                      .
+                    </p>
+                  </div>
+                ))}
+              {promoResult &&
+                (promoResult.ok ? (
+                  <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-left">
+                    <p className="font-semibold text-emerald-900">
+                      Promo code applied: {promoResult.percentOff}% off your case&apos;s total.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-left">
+                    <p className="font-semibold text-amber-900">
+                      Your case is saved, but we couldn&apos;t apply your promo code.
+                    </p>
+                    <p className="mt-1 text-sm text-amber-800">
+                      {promoResult.error}{" "}
+                      <Link href={`/dashboard/requestee/${caseId}`} className="font-medium underline">
+                        Try a code on your case page
                       </Link>
                       .
                     </p>

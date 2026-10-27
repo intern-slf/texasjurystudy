@@ -12,6 +12,7 @@ import { normalizeDeliveryMode, type DeliveryMode } from "@/lib/case/deliveryMod
 import { OFFLINE_VENUE } from "@/lib/constants/offline-catchment";
 import type { CaseSessionTime } from "@/lib/case/caseSessionTime";
 import type { CaseFilters } from "@/lib/filter-utils";
+import { discountLabel } from "@/lib/promoCode";
 
 /**
  * The invoice a law firm gets for a case (app/invoice/[caseId]), kept in
@@ -20,7 +21,8 @@ import type { CaseFilters } from "@/lib/filter-utils";
  *
  * Every amount comes from calculateReceiptPrice, the same numbers the firm saw
  * in "Receipt Value" when it created the case, row for row: the base hours at
- * the case's rate, then one row per filter.
+ * the case's rate, then one row per filter, then the promo discount, if the
+ * case has one (lib/promoCode.ts), as a negative amount.
  *
  * An invoice is issued once the case is approved or its firm holds a time. It
  * follows the case while unpaid, so it keeps matching the receipt, and is
@@ -45,6 +47,7 @@ export type InvoiceLine = {
   details: string[];
   /** "2 hours × $850.00/hr", as the receipt words it. Null for a flat fee. */
   quantity: string | null;
+  /** Negative for the discount. */
   amountCents: number;
 };
 
@@ -146,13 +149,21 @@ export function invoiceContent({
   slot,
   sessionTime,
   firm,
+  discountPercent = null,
 }: {
   theCase: InvoiceCase;
   slot: Pick<TimeSlot, "starts_at" | "ends_at"> | null;
   sessionTime: Pick<CaseSessionTime, "sessionDate" | "time"> | null;
   firm: { name: string | null; email: string | null };
+  /** The case's promo discount (public.case_discounts), or null for none. */
+  discountPercent?: number | null;
 }): InvoiceContent {
-  const breakdown = calculateReceiptPrice(theCase.filters, theCase.hours_requested, theCase.delivery_mode);
+  const breakdown = calculateReceiptPrice(
+    theCase.filters,
+    theCase.hours_requested,
+    theCase.delivery_mode,
+    discountPercent
+  );
   const offline = breakdown.deliveryMode === "offline";
 
   // The exact time once the case is in a session, else the time the firm holds:
@@ -180,6 +191,14 @@ export function invoiceContent({
       amountCents: item.costCents,
     })),
   ];
+  if (breakdown.discountPercent) {
+    lines.push({
+      description: discountLabel(breakdown.discountPercent),
+      details: [],
+      quantity: null,
+      amountCents: -breakdown.discountCents,
+    });
+  }
 
   return {
     case_title: theCase.title,

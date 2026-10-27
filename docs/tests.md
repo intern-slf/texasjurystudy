@@ -602,6 +602,34 @@ Also: in [firm-slot-booking.test.ts](../client/__tests__/firm-slot-booking.test.
 
 Not covered: the Build Session and sessions pages and the Reschedule dialog themselves, which use these functions.
 
+### 3.32 [promo-code.test.ts](../client/__tests__/promo-code.test.ts) — a percentage off a case
+
+**Subject:** [lib/promoCode](../client/lib/promoCode.ts), the discount in `calculateReceiptPrice` and `formatCents` ([lib/receipt-pricing](../client/lib/receipt-pricing.ts)), and the discount line in `invoiceContent` / `planInvoice` ([lib/invoice](../client/lib/invoice.ts)). Pure; nothing is mocked.
+
+| `describe` | Coverage |
+|---|---|
+| a code as it's typed | Matched trimmed and in capitals; 3 to 32 letters, digits, `-` or `_`, starting with a letter or digit. |
+| the percentage | Whole numbers 1 to 99 only, so a case is never free; whole cents off, rounded. |
+| the receipt | Unchanged without a discount; the percentage comes off the whole total, filters included, at either rate; an out-of-range percentage is ignored, not priced from; the discount prints as `-$190.00`, a hyphen the PDF's standard fonts can draw. |
+| the invoice | A "Discount (10% off)" line after the filters, never naming the code; the lines add up to the total; no line without a discount; adding, changing or removing a discount revises an unpaid invoice, and a paid one is left alone. |
+| what a refused code says | A firm gets one message for a code that doesn't exist, is switched off, or is another firm's, so it learns nothing about either; an admin gets the actual reason. |
+| the admin's list and form | Active until switched off, past its last day (the last day itself still counts) or fully used; the form's input saved in capitals, with its limits, and refused for each kind of bad value. |
+
+### 3.33 [promo-code-actions.test.ts](../client/__tests__/promo-code-actions.test.ts) — who can apply a code, and what they're told
+
+**Subject:** the real actions in [lib/actions/requesteePromoCode](../client/lib/actions/requesteePromoCode.ts) and [lib/actions/adminPromoCode](../client/lib/actions/adminPromoCode.ts), over the in-memory database ([helpers/fakeSupabase](../client/__tests__/helpers/fakeSupabase.ts), which keeps `promo_codes.code` unique), with `requireRequestee` / `requireAdmin` reading `roles`. The database functions of `20261027_promo_codes.sql` are a recording stand-in: their rules (limits, use counts, the lock, nothing once paid) are checked by the migration's own self-check, so here it's what the actions send them and pass back.
+
+| Case | Coverage |
+|---|---|
+| Who | The firm's actions refuse admins, participants and signed-out callers; the admin's refuse firms, participants and signed-out callers; neither calls the database or writes anything. |
+| Checking a code | Sent in capitals for the caller's firm, saving nothing; not-found, switched-off and another firm's code read the same; anything that can't be a code never reaches the database. |
+| Applying | For the case's firm (`requestee_id`, else the creator) and as the firm, then the invoice is synced; another firm's case reads as missing; a paid case or a refused code changes nothing and syncs nothing. |
+| Removing | Any discount on its unpaid case, an admin's included; refused once paid; never another firm's case. |
+| Codes | Created in capitals, open to every firm or to chosen firms (each checked to be a firm); a duplicate in any letter case refused; editing brings the firm list in line and keeps the firms still on it; switching off and on. |
+| An admin on a case | A code is held to its limits for the case's firm, with the actual reason when refused; an own percentage (1 to 99, checked before the database); nothing on a paid case; removing. |
+
+Not covered: the SQL itself (run the migration: its self-check rolls everything back if a rule doesn't hold), and the pages and the code boxes, which only call these actions.
+
 ---
 
 ## 4. Mocking patterns used across the suite

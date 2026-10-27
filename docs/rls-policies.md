@@ -460,6 +460,44 @@ Which case holds hours in which time slot, and whether the firm has paid (`20261
 
 ---
 
+### 🟩 `promo_codes`, `promo_code_firms` — RLS enabled (2026-10-27)
+
+The promo codes an admin creates, and the firms a `firms_only` code is for (`20261027_promo_codes.sql`).
+
+**Code access:**
+- Admin: the Promo Codes page (`client/app/dashboard/Admin/requestees/promo-codes/page.tsx`) and the sidebar count in `client/app/dashboard/Admin/layout.tsx` read through the signed-in admin's client. `client/lib/actions/adminPromoCode.ts` (`savePromoCode`, `setPromoCodeActive`) writes through it too, after `requireAdmin()`, so the policies below check every write again. The page reads firm names from `confidentiality_agreements_requestee` with the service role, after `requireAdminPage()`.
+- Firms: never these tables. A code is checked and applied by the database functions below, through the app's server.
+
+**Policies (created by the migration):**
+
+| Policy | Cmd | Role | USING | WITH CHECK |
+|---|---|---|---|---|
+| admin can manage promo_codes | ALL | authenticated | `(SELECT public.is_admin())` | `(SELECT public.is_admin())` |
+| admin can manage promo_code_firms | ALL | authenticated | `(SELECT public.is_admin())` | `(SELECT public.is_admin())` |
+
+**Grants:** explicit. `promo_codes`: `authenticated` has SELECT, INSERT and UPDATE, **no DELETE** (a code is switched off, so the cases that held it still say which it was). `promo_code_firms`: `authenticated` has SELECT, INSERT and DELETE. `service_role` has all four on both; `anon` has nothing.
+
+---
+
+### 🟩 `case_discounts` — RLS enabled (2026-10-27)
+
+The discount on a case, one row per case (`20261027_promo_codes.sql`). Holds money, like `requestee_slot_bookings.paid_at`, so **nothing writes it directly**: only `apply_promo_code`, `set_case_discount` and `remove_case_discount`, which refuse any change once the case's booking is paid. `check_promo_code` reads for the new-case form. All four have EXECUTE for `service_role` only.
+
+**Code access:**
+- Firms: `client/lib/actions/requesteePromoCode.ts` (`checkPromoCode`, `applyPromoCode`, `removePromoCode`) calls the functions with the service role after `requireRequestee()` and after checking the case is the caller's own (`user_id` or `requestee_id`); another firm's case gets the same answer as a missing one. A code the firm can't use (switched off, or another firm's) reads the same as one that doesn't exist. The firm's case page reads its discount with the service role (`client/lib/caseDiscountData.ts`) only for the case its own user-scoped query returned.
+- Admin: `client/lib/actions/adminPromoCode.ts` (`adminApplyPromoCode`, `adminSetCaseDiscount`, `adminRemoveCaseDiscount`) calls the functions with the service role after `requireAdmin()`. A code an admin applies is still held to its limits for the case's firm. The admin case page and the Promo Codes page read discounts; `syncInvoice` (`client/lib/invoiceData.ts`) reads one with the service role.
+- Why not a column on `cases`: firms can write their own `cases` row until it is approved (see `cases_protect_admin_fields`), so a discount there could be set from the browser.
+
+**Policies (created by the migration):**
+
+| Policy | Cmd | Role | USING | WITH CHECK |
+|---|---|---|---|---|
+| admin can read case_discounts | SELECT | authenticated | `(SELECT public.is_admin())` | — |
+
+**Grants:** explicit. `authenticated` has SELECT only; `service_role` has SELECT, INSERT, UPDATE and DELETE; `anon` has nothing.
+
+---
+
 ## Storage buckets (added 2026-06-09)
 
 The original audit covered **tables only**. Storage was first dumped 2026-06-09 — see F23. RLS lives on `storage.objects` (single table backing all buckets); per-bucket scoping is done inside each policy via `bucket_id = '<name>'`. Policies are **permissive/OR'd**, so a broad `bucket_id`-only policy shadows any narrower owner/role policy on the same bucket.
