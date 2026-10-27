@@ -4,6 +4,8 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminPage } from "@/lib/requireAdmin";
 import { CaseFilters } from "@/lib/filter-utils";
 import ReceiptPricingPreview from "@/components/ReceiptPricingPreview";
+import CaseDiscountControl from "@/components/CaseDiscountControl";
+import { getCaseDiscountState } from "@/lib/caseDiscountData";
 import { deliveryModeLabel } from "@/lib/case/deliveryMode";
 import { baseRatePerHourCents, formatCents } from "@/lib/receipt-pricing";
 import CaseLineagePanel from "@/components/CaseLineagePanel";
@@ -208,6 +210,13 @@ export default async function AdminCaseDetailPage({
       return null;
     });
   const invoiceable = isInvoiceable(caseInfo, booking);
+
+  // The discount on the receipt, and whether it can still change. Unreadable,
+  // the receipt shows no discount and the box says so.
+  const discountState = await getCaseDiscountState(caseInfo.id).catch((err) => {
+    console.error("[admin case page] couldn't read the discount:", err);
+    return null;
+  });
 
   /* =========================
      UI
@@ -439,7 +448,16 @@ export default async function AdminCaseDetailPage({
           filters={caseInfo.filters}
           hoursRequested={caseInfo.hours_requested}
           deliveryMode={caseInfo.delivery_mode}
-        />
+          discountPercent={discountState?.discount?.percentOff ?? null}
+        >
+          <CaseDiscountControl
+            caseId={caseInfo.id}
+            audience="admin"
+            discount={discountState?.discount ?? null}
+            paid={discountState?.paid ?? false}
+            unavailable={!discountState}
+          />
+        </ReceiptPricingPreview>
       </section>
 
       {/* PARTICIPANT FILTERS */}

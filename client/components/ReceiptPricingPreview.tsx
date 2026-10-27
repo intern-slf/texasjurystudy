@@ -10,22 +10,29 @@ import {
   formatCents,
 } from "@/lib/receipt-pricing";
 import { deliveryModeLabel, isOffline } from "@/lib/case/deliveryMode";
+import { discountLabel } from "@/lib/promoCode";
 
 export default function ReceiptPricingPreview({
   filters,
   hoursRequested,
   /** Omitted means online — the historical behaviour and the column default. */
   deliveryMode,
+  discountPercent,
   invoiceHref,
+  children,
 }: {
   filters: CaseFilters | null | undefined;
   hoursRequested?: number | null;
   deliveryMode?: string | null;
+  /** The case's promo discount, a whole percentage off the total. Omitted, none. */
+  discountPercent?: number | null;
   /** Where this receipt's invoice is, once the case has one. Omitted, no link. */
   invoiceHref?: string;
+  /** Shown under the receipt, inside its box: the promo code controls. */
+  children?: React.ReactNode;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const breakdown = calculateReceiptPrice(filters, hoursRequested, deliveryMode);
+  const breakdown = calculateReceiptPrice(filters, hoursRequested, deliveryMode, discountPercent);
   const offline = isOffline(breakdown.deliveryMode);
 
   return (
@@ -56,8 +63,18 @@ export default function ReceiptPricingPreview({
             >
               {deliveryModeLabel(breakdown.deliveryMode)}
             </span>
+            {breakdown.discountPercent && (
+              <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded text-emerald-700 bg-emerald-100 border border-emerald-200">
+                {breakdown.discountPercent}% off
+              </span>
+            )}
           </div>
           <p className="text-lg font-semibold text-slate-900">
+            {breakdown.discountPercent ? (
+              <span className="mr-2 text-sm font-normal text-slate-400 line-through">
+                {formatCents(breakdown.subtotalCents)}
+              </span>
+            ) : null}
             {formatCents(breakdown.totalCostCents)}
           </p>
         </div>
@@ -100,6 +117,14 @@ export default function ReceiptPricingPreview({
                   </td>
                 </tr>
               ))}
+              {breakdown.discountPercent && (
+                <tr className={`border-b ${offline ? "border-green-100" : "border-blue-100"}`}>
+                  <td className="py-1.5 text-emerald-700">{discountLabel(breakdown.discountPercent)}</td>
+                  <td className="py-1.5 text-right text-emerald-700">
+                    {formatCents(-breakdown.discountCents)}
+                  </td>
+                </tr>
+              )}
               <tr className="font-semibold">
                 <td className="pt-2 text-slate-700">Total</td>
                 <td className="pt-2 text-right text-slate-900">
@@ -109,6 +134,10 @@ export default function ReceiptPricingPreview({
             </tbody>
           </table>
         </div>
+      )}
+
+      {children && (
+        <div className={`mt-3 border-t pt-3 ${offline ? "border-green-200" : "border-blue-200"}`}>{children}</div>
       )}
 
       {invoiceHref && (

@@ -8,6 +8,8 @@ import CaseFilterEditor from "@/components/CaseFilterEditor";
 import RequesteeParticipantHistory from "@/components/RequesteeParticipantHistory";
 import AddParticipantRequestee from "@/components/AddParticipantRequestee";
 import ReceiptPricingPreview from "@/components/ReceiptPricingPreview";
+import CaseDiscountControl from "@/components/CaseDiscountControl";
+import { getCaseDiscountState } from "@/lib/caseDiscountData";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import BackButton from "@/components/BackButton";
@@ -86,6 +88,14 @@ export default async function RequesteeCaseDetailPage({
   }
 
   const { status, admin_status, schedule_status } = c;
+
+  // The query above only returns the firm's own case, so its discount can be
+  // read with the service role. Unreadable, the receipt shows no discount and
+  // the promo code box says so.
+  const discountState = await getCaseDiscountState(c.id).catch((err) => {
+    console.error("[requestee case page] couldn't read the discount:", err);
+    return null;
+  });
 
   const backTab =
     status === "previous"
@@ -328,8 +338,17 @@ export default async function RequesteeCaseDetailPage({
                 filters={filters}
                 hoursRequested={c.hours_requested}
                 deliveryMode={c.delivery_mode as string | null}
+                discountPercent={discountState?.discount?.percentOff ?? null}
                 invoiceHref={hasInvoice ? `/invoice/${c.id}` : undefined}
-              />
+              >
+                <CaseDiscountControl
+                  caseId={c.id}
+                  audience="firm"
+                  discount={discountState?.discount ?? null}
+                  paid={discountState?.paid ?? false}
+                  unavailable={!discountState}
+                />
+              </ReceiptPricingPreview>
             </section>
           )}
 

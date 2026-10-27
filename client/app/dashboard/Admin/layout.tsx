@@ -50,6 +50,7 @@ export default async function AdminLayout({
     { count: blacklistedParticipantsCount },
     { count: requesteesCount },
     { count: timeSlotsCount },
+    { count: promoCodesCount },
   ] = await Promise.all([
     // Only the statuses the badge counts below care about — avoids transferring
     // the entire cases table (rejected/other rows) just to count two badges.
@@ -94,6 +95,13 @@ export default async function AdminLayout({
       .from("requestee_time_slots")
       .select("*", { count: "exact", head: true })
       .gte("starts_at", new Date().toISOString()),
+
+    // Count promo codes switched on and not past their last day
+    supabase
+      .from("promo_codes")
+      .select("*", { count: "exact", head: true })
+      .eq("active", true)
+      .or(`expires_on.is.null,expires_on.gte.${centralToday()}`),
   ]);
 
   // Match the Approved Cases page filter: include "approved" + "submitted",
@@ -121,6 +129,7 @@ export default async function AdminLayout({
     blacklistedParticipants: blacklistedParticipantsCount || 0,
     requestees: requesteesCount || 0,
     timeSlots: timeSlotsCount || 0,
+    promoCodes: promoCodesCount || 0,
   };
 
   return (

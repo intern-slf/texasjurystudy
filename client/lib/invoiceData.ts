@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getBookingsForCases } from "@/lib/slotBookingData";
+import { getCaseDiscount } from "@/lib/caseDiscountData";
 import { caseSessionTime, type CaseSessionRow } from "@/lib/case/caseSessionTime";
 import {
   invoiceContent,
@@ -52,8 +53,10 @@ export async function syncInvoice(caseId: string, nowMs: number = Date.now()): P
 
   // The firm the case belongs to: requestee_id when set, else the creator.
   const firmId = theCase.requestee_id || theCase.user_id;
-  const [bookings, { data: agreement }, { data: role }, { data: stored, error: invoiceError }] = await Promise.all([
+  // A discount that can't be read throws, rather than revising the invoice without it.
+  const [bookings, discount, { data: agreement }, { data: role }, { data: stored, error: invoiceError }] = await Promise.all([
     getBookingsForCases([caseId]),
+    getCaseDiscount(caseId),
     supabaseAdmin
       .from("confidentiality_agreements_requestee")
       .select("first_name, last_name")
@@ -74,6 +77,7 @@ export async function syncInvoice(caseId: string, nowMs: number = Date.now()): P
       name: agreement ? `${agreement.first_name ?? ""} ${agreement.last_name ?? ""}`.trim() || null : null,
       email: (role?.email as string | null) ?? null,
     },
+    discountPercent: discount?.percentOff ?? null,
   });
 
   let record = (stored as InvoiceRecord | null) ?? null;

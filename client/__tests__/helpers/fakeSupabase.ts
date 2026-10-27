@@ -10,6 +10,9 @@
  *   booked case's hours rising past it, gets 23514 "requestee_slot_full", as
  *   the triggers in 20261017_shared_slot_hours.sql give.
  *
+ *   promo_codes: code is unique (23505 on promo_codes_code_key), and an
+ *   insert without an id gets one, as its DEFAULT gen_random_uuid() gives.
+ *
  * select() understands one embed, `cases(...)` on requestee_slot_bookings,
  * which brings the booked case's row along as `cases`.
  *
@@ -67,6 +70,10 @@ export class FakeDb {
         if (left !== null && after > left) return full;
       }
       return null;
+    }
+    if (table === "promo_codes") {
+      const taken = this.rows(table).some((r) => r !== ignore && r.code === candidate.code);
+      return taken ? { code: "23505", message: 'duplicate key value violates unique constraint "promo_codes_code_key"' } : null;
     }
     if (table !== "requestee_slot_bookings") return null;
     const others = this.rows(table).filter((r) => r !== ignore);
@@ -197,6 +204,7 @@ class Query implements PromiseLike<Result> {
           return { data: null, error };
         }
         const copy = { ...row };
+        if (this.table === "promo_codes" && copy.id == null) copy.id = crypto.randomUUID();
         table.push(copy);
         added.push(copy);
       }

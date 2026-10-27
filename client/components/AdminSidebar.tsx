@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useSearchParams, usePathname } from "next/navigation";
+import { PROMO_CODES_PATH } from "@/lib/promoCode";
 
 type Counts = {
   requested: number;
@@ -12,6 +13,7 @@ type Counts = {
   blacklistedParticipants: number;
   requestees: number;
   timeSlots: number;
+  promoCodes: number;
 };
 
 const caseItems = [
@@ -29,6 +31,7 @@ const participantItems = [
 const requesteeItems = [
   { id: "requestees", label: "All Requestees", countKey: "requestees" },
   { id: "time_slots", label: "Time Slots", countKey: "timeSlots" },
+  { id: "promo_codes", label: "Promo Codes", countKey: "promoCodes" },
 ] as const;
 
 const modes = [
@@ -51,6 +54,8 @@ function getHref(id: string) {
       return "/dashboard/Admin/requestees";
     case "time_slots":
       return "/dashboard/Admin/requestees/time-slots";
+    case "promo_codes":
+      return PROMO_CODES_PATH;
     default:
       return `/dashboard/Admin?tab=${id}`;
   }
@@ -66,11 +71,13 @@ function isActive(id: string, pathname: string, currentTab: string) {
       return pathname.startsWith("/dashboard/Admin/participants") && currentTab !== "new" && currentTab !== "blacklisted";
     case "blacklisted":
       return pathname.startsWith("/dashboard/Admin/participants") && currentTab === "blacklisted";
-    // Exact match: Time Slots lives under /requestees too.
+    // Exact match: Time Slots and Promo Codes live under /requestees too.
     case "requestees":
       return pathname === "/dashboard/Admin/requestees";
     case "time_slots":
       return pathname.startsWith("/dashboard/Admin/requestees/time-slots");
+    case "promo_codes":
+      return pathname.startsWith(PROMO_CODES_PATH);
     default:
       return pathname === "/dashboard/Admin" && currentTab === id;
   }

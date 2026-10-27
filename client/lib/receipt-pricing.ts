@@ -4,6 +4,7 @@ import {
   normalizeDeliveryMode,
   type DeliveryMode,
 } from "./case/deliveryMode";
+import { discountCents, isValidPercentOff } from "./promoCode";
 
 const DEFAULT_AGE_MIN = 18;
 const DEFAULT_AGE_MAX = 99;
@@ -27,6 +28,13 @@ export interface ReceiptPriceBreakdown {
   baseCostCents: number;
   filterItems: FilterLineItem[];
   filterCostCents: number;
+  /** Base plus filters, before any discount. */
+  subtotalCents: number;
+  /** The case's discount, a whole percentage, or null for none (lib/promoCode.ts). */
+  discountPercent: number | null;
+  /** What the discount takes off, as a positive number; 0 without one. */
+  discountCents: number;
+  /** What the firm pays: the subtotal less the discount. */
   totalCostCents: number;
 }
 
@@ -70,11 +78,20 @@ export function billableHours(hoursRequested?: number | null): number {
   return hoursRequested && hoursRequested > 0 ? hoursRequested : 1;
 }
 
+/** The subtotal, discount and total, from what the case costs before the discount. */
+function withDiscount(subtotalCents: number, discountPercent: number | null | undefined) {
+  const percent = isValidPercentOff(discountPercent) ? discountPercent : null;
+  const off = percent ? discountCents(subtotalCents, percent) : 0;
+  return { subtotalCents, discountPercent: percent, discountCents: off, totalCostCents: subtotalCents - off };
+}
+
 export function calculateReceiptPrice(
   filters: CaseFilters | null | undefined,
   hoursRequested?: number | null,
   /** Omitted means online — the historical behaviour and the column default. */
-  deliveryMode?: DeliveryMode | string | null
+  deliveryMode?: DeliveryMode | string | null,
+  /** The case's promo discount, a whole percentage off the total. Omitted, none. */
+  discountPercent?: number | null
 ): ReceiptPriceBreakdown {
   const mode = deliveryMode ? normalizeDeliveryMode(deliveryMode) : DEFAULT_DELIVERY_MODE;
   const ratePerHour = baseRatePerHourCents(mode);
@@ -90,7 +107,7 @@ export function calculateReceiptPrice(
       baseCostCents,
       filterItems,
       filterCostCents: 0,
-      totalCostCents: baseCostCents,
+      ...withDiscount(baseCostCents, discountPercent),
     };
   }
 
@@ -193,10 +210,13 @@ export function calculateReceiptPrice(
     baseCostCents,
     filterItems,
     filterCostCents,
-    totalCostCents: baseCostCents + filterCostCents,
+    ...withDiscount(baseCostCents + filterCostCents, discountPercent),
   };
 }
 
+/** "$1,700.00", and "-$170.00" for the discount line. */
 export function formatCents(cents: number): string {
-  return `$${(cents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const amount = `$${(Math.abs(cents) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  // A plain hyphen, not a minus sign: the invoice PDF's standard fonts can't draw U+2212.
+  return cents < 0 ? `-${amount}` : amount;
 }
