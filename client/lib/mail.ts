@@ -962,8 +962,11 @@ export async function sendZoomLinkEmail(
             <tr><td style="padding:0 0 6px;font-size:14px;color:#854d0e;">&bull;&nbsp; Camera must stay on for the entire session</td></tr>
             <tr><td style="padding:0 0 6px;font-size:14px;color:#854d0e;">&bull;&nbsp; Microphone and speakers must work so you can be heard and hear others</td></tr>
             <tr><td style="padding:0 0 6px;font-size:14px;color:#854d0e;">&bull;&nbsp; Test your camera and audio in Zoom <strong>before</strong> the session starts</td></tr>
-            <tr><td style="padding:0;font-size:14px;color:#854d0e;">&bull;&nbsp; Join on time from a quiet place with a stable internet connection</td></tr>
+            <tr><td style="padding:0;font-size:14px;color:#854d0e;">&bull;&nbsp; Join on time from a quiet place</td></tr>
           </table>
+          <p style="margin:0 0 10px;font-size:14px;color:#854d0e;">
+            To participate in this Zoom session, you must have a <strong>stable Wi-Fi connection</strong>, and your <strong>camera and audio must be turned on throughout</strong>. If you are unable to establish a reliable connection <strong>within the first 15 minutes</strong>, you will be removed from the session to avoid disrupting the presenters and other participants. You will then be considered for the next focus group.
+          </p>
           <p style="margin:0;font-size:14px;font-weight:700;color:#854d0e;">
             If you cannot join from a computer with working camera and audio, you will lose your spot in the session and will not receive payment.
           </p>
