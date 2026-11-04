@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { sendEmail, emailWrapper, venueAddressBlock } from "@/lib/mail";
+import { sendEmail, emailWrapper, venueAddressBlock, ZOOM_CONNECTION_NOTICE } from "@/lib/mail";
 import { generateEmailActionToken } from "@/lib/emailActionToken";
 import { ACTIVE_STATUS, isActiveStatus } from "@/lib/participant/activeStatus";
 import {
@@ -436,6 +436,17 @@ async function inviteToSessionInner(
               </td>
             </tr>
           </table>` : ''}
+
+          ${offline ? '' : `
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#fef9c3;border-left:4px solid #ca8a04;border-radius:6px;margin:0 0 24px;">
+            <tr>
+              <td style="padding:14px 20px;">
+                <p style="margin:0;font-size:14px;color:#854d0e;">
+                  ${ZOOM_CONNECTION_NOTICE}
+                </p>
+              </td>
+            </tr>
+          </table>`}
 
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f8fafc;border-left:4px solid #94a3b8;border-radius:6px;margin:0 0 24px;">
             <tr>
