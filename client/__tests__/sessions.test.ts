@@ -206,6 +206,7 @@ vi.mock("@/lib/mail", async (importOriginal) => ({
   // The real block, not a stand-in: the invitation tests below check that the
   // admin-typed address is escaped, and only the real one can show that.
   venueAddressBlock: (await importOriginal<typeof import("@/lib/mail")>()).venueAddressBlock,
+  ZOOM_CONNECTION_NOTICE: (await importOriginal<typeof import("@/lib/mail")>()).ZOOM_CONNECTION_NOTICE,
   sendEmail: (args: SendEmailArgs) => sendEmailSpy(args),
   sendRescheduleEmail: (...args: unknown[]) =>
     sendRescheduleEmailSpy(...(args as [])),

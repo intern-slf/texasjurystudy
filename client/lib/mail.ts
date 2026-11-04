@@ -905,6 +905,16 @@ export async function sendSessionFullEmail(
   });
 }
 
+/**
+ * The connection rule for an online session, in the team's own words. It goes in
+ * the Zoom link email and in the online invitation (lib/participant/invite.ts), so
+ * people know it before they accept, not just when the link arrives. Kept in one
+ * place so the two can't drift apart. Not in the waitlist emails: waitlisters hold
+ * in the waiting room on their own terms and are paid for waiting.
+ */
+export const ZOOM_CONNECTION_NOTICE =
+  `To participate in this Zoom session, you must have a <strong>stable Wi-Fi connection</strong>, and your <strong>camera and audio must be turned on throughout</strong>. If you are unable to establish a reliable connection <strong>within the first 15 minutes</strong>, you will be removed from the session to avoid disrupting the presenters and other participants. You will then be considered for the next focus group.`;
+
 export async function sendZoomLinkEmail(
   to: string,
   firstName: string,
@@ -965,7 +975,7 @@ export async function sendZoomLinkEmail(
             <tr><td style="padding:0;font-size:14px;color:#854d0e;">&bull;&nbsp; Join on time from a quiet place</td></tr>
           </table>
           <p style="margin:0 0 10px;font-size:14px;color:#854d0e;">
-            To participate in this Zoom session, you must have a <strong>stable Wi-Fi connection</strong>, and your <strong>camera and audio must be turned on throughout</strong>. If you are unable to establish a reliable connection <strong>within the first 15 minutes</strong>, you will be removed from the session to avoid disrupting the presenters and other participants. You will then be considered for the next focus group.
+            ${ZOOM_CONNECTION_NOTICE}
           </p>
           <p style="margin:0;font-size:14px;font-weight:700;color:#854d0e;">
             If you cannot join from a computer with working camera and audio, you will lose your spot in the session and will not receive payment.
