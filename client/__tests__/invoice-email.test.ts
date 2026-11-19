@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { inflateSync } from "node:zlib";
 import { invoiceContent, invoiceView, type InvoiceRecord } from "@/lib/invoice";
 
 /* ---------------------------------------------------------------------------
@@ -57,6 +58,7 @@ function data({
 const mocks = vi.hoisted(() => ({
   isAdmin: { current: true },
   syncInvoice: vi.fn(),
+  payments: vi.fn(),
   sendEmail: vi.fn<
     (opts: {
       to: string;
@@ -74,6 +76,7 @@ vi.mock("@/lib/requireAdmin", () => ({
   },
 }));
 vi.mock("@/lib/invoiceData", () => ({ syncInvoice: mocks.syncInvoice }));
+vi.mock("@/lib/invoicePaymentData", () => ({ getInvoicePayments: mocks.payments }));
 vi.mock("@/lib/mail", async () => ({
   ...(await vi.importActual<typeof import("@/lib/mail")>("@/lib/mail")),
   sendEmail: mocks.sendEmail,
@@ -88,6 +91,8 @@ describe("emailInvoice", () => {
     mocks.syncInvoice.mockResolvedValue(data());
     mocks.sendEmail.mockReset();
     mocks.sendEmail.mockResolvedValue({ id: "m-1", threadId: "t-1", attachments: 1 });
+    mocks.payments.mockReset();
+    mocks.payments.mockResolvedValue([]);
   });
 
   it("emails the invoice to the address it's billed to, with the PDF attached", async () => {
@@ -177,5 +182,45 @@ describe("emailInvoice", () => {
     expect(html).not.toContain("checks payable");
     expect(html).not.toContain("<b>Doe</b>");
     expect(html).toContain("&lt;b&gt;Doe&lt;/b&gt; &amp; Co");
+  });
+
+  // pdf-lib deflates each page's drawing and writes each line of text in it as hex.
+  const pdfHas = (text: string) => {
+    const { attachments } = mocks.sendEmail.mock.calls[0][0];
+    const pdf = Buffer.from(attachments![0].contentBase64, "base64");
+    const hex = `<${Buffer.from(text, "latin1").toString("hex").toUpperCase()}>`;
+    const raw = pdf.toString("latin1");
+    for (let at = raw.indexOf("stream\n"); at !== -1; at = raw.indexOf("stream\n", at + 1)) {
+      const end = raw.indexOf("endstream", at);
+      try {
+        if (inflateSync(pdf.subarray(at + 7, end)).toString("latin1").includes(hex)) return true;
+      } catch {
+        // not a deflated stream
+      }
+    }
+    return false;
+  };
+
+  it("says on a paid invoice's PDF what it was paid with", async () => {
+    mocks.syncInvoice.mockResolvedValue(data({ paidAt: ct("2026-10-21", "16:00") }));
+    mocks.payments.mockResolvedValue([
+      { status: "expired", method_type: null, method_brand: null, method_last4: null },
+      { status: "succeeded", method_type: "card", method_brand: "visa", method_last4: "4242" },
+    ]);
+    expect(await emailInvoice(CASE_ID)).toEqual({ ok: true, sentTo: "jane@firm.com" });
+    expect(pdfHas("Visa ending in 4242")).toBe(true);
+  });
+
+  it("still sends a paid invoice when its payments can't be read, without the line", async () => {
+    mocks.syncInvoice.mockResolvedValue(data({ paidAt: ct("2026-10-21", "16:00") }));
+    mocks.payments.mockRejectedValue(new Error("db down"));
+    expect(await emailInvoice(CASE_ID)).toEqual({ ok: true, sentTo: "jane@firm.com" });
+    expect(pdfHas("Total paid")).toBe(true);
+    expect(pdfHas("Visa ending in 4242")).toBe(false);
+  });
+
+  it("doesn't look up payments for an unpaid invoice", async () => {
+    await emailInvoice(CASE_ID);
+    expect(mocks.payments).not.toHaveBeenCalled();
   });
 });

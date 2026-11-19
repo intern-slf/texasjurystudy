@@ -1,0 +1,134 @@
+"use server";
+
+import { requireRequestee } from "@/lib/requireRequestee";
+import { syncInvoice } from "@/lib/invoiceData";
+import { getInvoicePayments, moveInvoicePayment } from "@/lib/invoicePaymentData";
+import { CHECKOUT_INTEGRATION_ID, CHECKOUT_TTL_MINUTES, onlinePaymentBlock } from "@/lib/invoicePayment";
+import { getStripe, onlinePaymentEnabled } from "@/lib/stripe";
+import { supabaseAdmin } from "@/lib/supabase/admin";
+
+// A firm's action, so it starts with requireRequestee(): as a server action it
+// can be called by anyone signed in, with any arguments. It then checks the
+// case is this firm's, since it reads with the service role.
+
+type Result = { ok: true; url: string } | { ok: false; error: string };
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const fail = (error: string): Result => ({ ok: false, error });
+
+/**
+ * Where Stripe sends the firm back to. A Vercel preview shares production's
+ * NEXT_PUBLIC_APP_URL, so on a preview it's the preview's own address instead,
+ * or testing a branch would land the payer on the live site.
+ */
+const returnUrl = () =>
+  process.env.VERCEL_ENV === "preview" && process.env.VERCEL_URL
+    ? `https://${process.env.VERCEL_URL}`
+    : (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "");
+
+const BLOCKED: Record<NonNullable<ReturnType<typeof onlinePaymentBlock>>, string> = {
+  paid: "This invoice is already paid.",
+  void: "This invoice is void, so nothing is owed.",
+  processing: "A bank payment for this invoice is already on its way. It usually clears in 4 working days.",
+  too_small: "This invoice is too small to pay online. Email us and we'll sort it out.",
+};
+
+/**
+ * Opens a Stripe Checkout session for the case's invoice and returns its URL,
+ * for the firm's Pay online button. Card or bank (ACH), whichever the Stripe
+ * Dashboard has turned on. The webhook marks the case paid; the page Stripe
+ * sends the firm back to only shows where it stands.
+ *
+ * One session at a time per case, so two tabs can't both pay: an open session
+ * for the same amount is reused, and any other open one is expired first.
+ */
+export async function startInvoicePayment(caseId: string): Promise<Result> {
+  const firmId = await requireRequestee();
+  if (!onlinePaymentEnabled()) return fail("Online payment isn't available yet. Please pay by check.");
+  if (typeof caseId !== "string" || !UUID_RE.test(caseId)) return fail("That invoice doesn't exist.");
+
+  let data;
+  let payments;
+  try {
+    [data, payments] = await Promise.all([syncInvoice(caseId), getInvoicePayments(caseId)]);
+  } catch (err) {
+    console.error("[startInvoicePayment] couldn't read the invoice:", err);
+    return fail("Couldn't read the invoice. Refresh the page and try again.");
+  }
+  // Another firm's case reads as no case at all.
+  if (!data || !data.ownerIds.includes(firmId)) return fail("That invoice doesn't exist.");
+  const { invoice } = data;
+  if (!invoice) return fail("This case has no invoice yet.");
+
+  const block = onlinePaymentBlock(invoice, payments);
+  if (block) return fail(BLOCKED[block]);
+
+  const stripe = getStripe();
+
+  try {
+    for (const p of payments.filter((p) => p.status === "open")) {
+      const session = await stripe.checkout.sessions.retrieve(p.stripe_checkout_session_id);
+      if (session.status === "open" && session.amount_total === invoice.totalCents && session.url) {
+        return { ok: true, url: session.url };
+      }
+      // Paid (or a bank payment started) but the webhook hasn't recorded it yet.
+      if (session.status === "complete") {
+        return fail("We've received your payment and are recording it. Refresh the page in a minute.");
+      }
+      if (session.status === "open") await stripe.checkout.sessions.expire(session.id);
+      await moveInvoicePayment(session.id, "expired");
+    }
+
+    const { data: invoiceRow, error: invoiceError } = await supabaseAdmin
+      .from("invoices")
+      .select("id")
+      .eq("case_id", caseId)
+      .maybeSingle();
+    if (invoiceError) throw new Error(`Couldn't read the invoice id: ${invoiceError.message}`);
+
+    const metadata = { case_id: caseId, invoice_number: invoice.number };
+    const session = await stripe.checkout.sessions.create({
+      mode: "payment",
+      integration_identifier: CHECKOUT_INTEGRATION_ID,
+      line_items: [
+        {
+          quantity: 1,
+          price_data: {
+            currency: "usd",
+            unit_amount: invoice.totalCents,
+            product_data: {
+              name: `Invoice ${invoice.number}`,
+              description: `Texas Jury Study focus group: ${invoice.caseTitle}`.slice(0, 500),
+            },
+          },
+        },
+      ],
+      ...(invoice.billedTo.email ? { customer_email: invoice.billedTo.email } : {}),
+      client_reference_id: caseId,
+      metadata,
+      payment_intent_data: { metadata, description: `Invoice ${invoice.number}` },
+      expires_at: Math.floor(Date.now() / 1000) + CHECKOUT_TTL_MINUTES * 60,
+      success_url: `${returnUrl()}/invoice/${caseId}?payment=done`,
+      cancel_url: `${returnUrl()}/invoice/${caseId}?payment=cancelled`,
+    });
+    if (!session.url) throw new Error("Stripe returned a session with no URL");
+
+    const { error: insertError } = await supabaseAdmin.from("invoice_payments").insert({
+      case_id: caseId,
+      invoice_id: (invoiceRow?.id as string | undefined) ?? null,
+      stripe_checkout_session_id: session.id,
+      amount_cents: invoice.totalCents,
+      created_by: firmId,
+    });
+    if (insertError) {
+      // Without the row the webhook couldn't tie the payment to the case, so don't send them to pay.
+      await stripe.checkout.sessions.expire(session.id).catch(() => undefined);
+      throw new Error(`Couldn't record the payment: ${insertError.message}`);
+    }
+
+    return { ok: true, url: session.url };
+  } catch (err) {
+    console.error("[startInvoicePayment] couldn't open Checkout:", err);
+    return fail("Couldn't start the payment. Try again in a minute, or email us.");
+  }
+}

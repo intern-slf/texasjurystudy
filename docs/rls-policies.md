@@ -498,6 +498,24 @@ The discount on a case, one row per case (`20261027_promo_codes.sql`). Holds mon
 
 ---
 
+### 🟩 `invoice_payments` — RLS enabled (2026-11-19)
+
+One row per Stripe Checkout session opened to pay a case's invoice (`20261119_invoice_payments.sql`). Holds money, so **only the server writes it**, with the service role.
+
+**Code access:**
+- Firms: `client/lib/actions/requesteeInvoicePayment.ts` (`startInvoicePayment`) reads and inserts rows after `requireRequestee()` and after `syncInvoice` shows the case is the caller's own (`user_id` or `requestee_id`); another firm's case gets the same answer as a missing one. The invoice page reads the case's rows with the service role (`getInvoicePayments`) only after its own owner check.
+- Stripe: `client/app/api/stripe/webhook/route.ts` is public (under `/api/`), so it refuses any request whose `stripe-signature` doesn't verify against `STRIPE_WEBHOOK_SECRET`, then updates rows and sets `requestee_slot_bookings.paid_at` with the service role. It only acts on sessions that already have a row here, so an event for anything else on the Stripe account changes nothing.
+
+**Policies (created by the migration):**
+
+| Policy | Cmd | Role | USING | WITH CHECK |
+|---|---|---|---|---|
+| admin can read invoice payments | SELECT | authenticated | `(SELECT public.is_admin())` | — |
+
+**Grants:** explicit. `authenticated` has SELECT only; `service_role` has SELECT, INSERT and UPDATE; `anon` has nothing.
+
+---
+
 ## Storage buckets (added 2026-06-09)
 
 The original audit covered **tables only**. Storage was first dumped 2026-06-09 — see F23. RLS lives on `storage.objects` (single table backing all buckets); per-bucket scoping is done inside each policy via `bucket_id = '<name>'`. Policies are **permissive/OR'd**, so a broad `bucket_id`-only policy shadows any narrower owner/role policy on the same bucket.

@@ -15,3 +15,6 @@ desktop.ini
 
 # Logs (at repo root)
 *.log
+
+# Supabase CLI local link state
+supabase/.temp/
