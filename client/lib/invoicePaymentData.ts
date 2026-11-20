@@ -1,17 +1,20 @@
 import type Stripe from "stripe";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { syncInvoice } from "@/lib/invoiceData";
+import type { InvoiceView } from "@/lib/invoice";
 import { emailWrapper, escHtml, sendEmail } from "@/lib/mail";
 import { SUPPORT_EMAIL } from "@/lib/legal-constants";
 import { formatCents } from "@/lib/receipt-pricing";
-import { getStripe } from "@/lib/stripe";
+import { getStripe, onlinePaymentEnabled, stripeKeyIsLive } from "@/lib/stripe";
 import {
   canMoveTo,
   checkoutEventOutcome,
   paymentMethodLabel,
+  settleOutcome,
   type InvoicePaymentRow,
   type InvoicePaymentStatus,
   type PaymentMethodInfo,
+  type ReviewReason,
 } from "@/lib/invoicePayment";
 
 /**
@@ -22,7 +25,7 @@ import {
  */
 
 const PAYMENT_COLUMNS =
-  "id, case_id, invoice_id, stripe_checkout_session_id, stripe_payment_intent_id, amount_cents, status, created_at, succeeded_at, method_type, method_brand, method_last4";
+  "id, case_id, invoice_id, stripe_checkout_session_id, stripe_payment_intent_id, amount_cents, livemode, status, created_at, succeeded_at, method_type, method_brand, method_last4";
 
 const appUrl = () => (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "");
 
@@ -133,14 +136,63 @@ export async function markCasePaidOnline(caseId: string, paidAt: string): Promis
 }
 
 /**
+ * Expires the case's open Checkout sessions (all but `keep`), so a payment
+ * page left open in another tab can't be paid once the case is paid or its
+ * amount is about to change. Returns `in_flight` when money is already on its
+ * way: a bank payment processing, or a session paid whose webhook hasn't been
+ * recorded yet. Throws when Stripe or the database can't be reached.
+ */
+export async function closeOpenPayments(caseId: string, keep?: string): Promise<"clear" | "in_flight"> {
+  const payments = (await getInvoicePayments(caseId)).filter((p) => p.stripe_checkout_session_id !== keep);
+  let inFlight = payments.some((p) => p.status === "processing");
+  const open = payments.filter((p) => p.status === "open");
+  if (!open.length) return inFlight ? "in_flight" : "clear";
+  // Online payment turned off since: nothing here can expire them, so treat them as under way.
+  if (!onlinePaymentEnabled()) return "in_flight";
+
+  const stripe = getStripe();
+  for (const p of open) {
+    const id = p.stripe_checkout_session_id;
+    let session = await stripe.checkout.sessions.retrieve(id);
+    if (session.status === "open") {
+      try {
+        await stripe.checkout.sessions.expire(id);
+      } catch (err) {
+        // The firm finished paying between the two calls.
+        session = await stripe.checkout.sessions.retrieve(id);
+        if (session.status !== "complete") throw err;
+      }
+    }
+    if (session.status === "complete") inFlight = true;
+    else await moveInvoicePayment(id, "expired");
+  }
+  return inFlight ? "in_flight" : "clear";
+}
+
+/** closeOpenPayments, for after the case is settled: only logs a failure, since nothing is waiting on it. */
+export async function closeOpenPaymentsQuietly(caseId: string, keep?: string): Promise<void> {
+  try {
+    await closeOpenPayments(caseId, keep);
+  } catch (err) {
+    console.error("[invoicePayment] couldn't close the case's other open payments:", err);
+  }
+}
+
+/**
  * Applies a verified Checkout webhook event. Returns what it did, for the log.
  * Safe to run twice for the same event: rows only move forward, and paying an
  * already-paid case changes nothing. Throws on a failed write, so the webhook
  * answers 500 and Stripe retries.
+ *
+ * Money only marks the case paid when it's exactly what the invoice says now
+ * (settleOutcome). Otherwise the row goes to `review`, the case stays unpaid,
+ * and info@ is told why.
  */
 export async function applyCheckoutEvent(event: Stripe.Event): Promise<string> {
   const outcome = checkoutEventOutcome(event.type, (event.data.object as { payment_status?: string }).payment_status);
   if (!outcome) return "ignored";
+  // A sandbox event never touches a live payment, nor a live one a sandbox's.
+  if (event.livemode !== stripeKeyIsLive()) return "ignored (test/live mismatch)";
   const session = event.data.object as Stripe.Checkout.Session;
 
   const { data: row, error } = await supabaseAdmin
@@ -152,57 +204,73 @@ export async function applyCheckoutEvent(event: Stripe.Event): Promise<string> {
   // Not one of ours (another integration on the account), or its case is gone.
   if (!row) return "unknown session";
   const payment = row as InvoicePaymentRow;
+  if (payment.livemode !== event.livemode) return "ignored (test/live mismatch)";
 
   const paymentIntentId =
     typeof session.payment_intent === "string" ? session.payment_intent : (session.payment_intent?.id ?? null);
-
   // A bank transfer has its charge (and so its bank and last 4) from the start.
   const method = outcome === "paid" || outcome === "processing" ? await readPaymentMethod(paymentIntentId) : {};
 
   if (outcome === "paid") {
-    if (!payment.case_id) return "case deleted";
     const paidAt = new Date(event.created * 1000).toISOString();
+    const charged = session.amount_total ?? payment.amount_cents;
+    const settled = { stripe_payment_intent_id: paymentIntentId, amount_cents: charged, ...method };
+
+    // The invoice as it stands now: the case may have changed since Checkout opened.
+    const invoice = payment.case_id ? ((await syncInvoice(payment.case_id))?.invoice ?? null) : null;
+    const verdict = settleOutcome(invoice, charged, paidAt);
+
+    if (verdict !== "pay") {
+      const moved = await moveInvoicePayment(session.id, "review", settled);
+      if (moved) await notifyAdminQuietly(moved, verdict, invoice);
+      if (payment.case_id) await closeOpenPaymentsQuietly(payment.case_id, session.id);
+      return moved ? `review (${verdict})` : `no change (${payment.status})`;
+    }
+
+    const caseId = payment.case_id!;
     // The case first: if this fails, the row stays unpaid and Stripe's retry does both.
-    await markCasePaidOnline(payment.case_id, paidAt);
-    const moved = await moveInvoicePayment(session.id, "succeeded", {
-      stripe_payment_intent_id: paymentIntentId,
-      amount_cents: session.amount_total ?? payment.amount_cents,
-      succeeded_at: paidAt,
-      ...method,
-    });
-    if (moved) await notifyAdminQuietly(moved, "paid");
+    await markCasePaidOnline(caseId, paidAt);
+    const moved = await moveInvoicePayment(session.id, "succeeded", { ...settled, succeeded_at: paidAt });
+    if (moved) await notifyAdminQuietly(moved, "paid", invoice);
+    await closeOpenPaymentsQuietly(caseId, session.id);
     return moved ? "paid" : "already paid";
   }
 
   const moved = await moveInvoicePayment(session.id, outcome, { stripe_payment_intent_id: paymentIntentId, ...method });
-  if (moved && outcome === "failed") await notifyAdminQuietly(moved, "failed");
+  if (moved && outcome === "failed") await notifyAdminQuietly(moved, "failed", null);
   return moved ? outcome : `no change (${payment.status})`;
 }
 
-/**
- * Tells info@ that money arrived, or that a bank payment bounced. Says so when
- * the amount differs from the invoice (revised after the firm opened Checkout).
- * Only logs a failure: the payment is recorded either way.
- */
-async function notifyAdminQuietly(payment: InvoicePaymentRow, kind: "paid" | "failed"): Promise<void> {
-  try {
-    let title = "a case";
-    let invoiceLine = "";
-    let mismatch = "";
-    if (payment.case_id) {
-      const data = await syncInvoice(payment.case_id);
-      const invoice = data?.invoice;
-      if (invoice) {
-        title = invoice.caseTitle;
-        invoiceLine = `Invoice ${escHtml(invoice.number)}, billed to ${escHtml(invoice.billedTo.name)}.`;
-        if (kind === "paid" && invoice.totalCents !== payment.amount_cents) {
-          mismatch = `<p style="margin:0 0 16px;font-size:14px;color:#b91c1c;"><strong>Check this one:</strong> the firm paid ${formatCents(
-            payment.amount_cents
-          )}, but the invoice now says ${formatCents(invoice.totalCents)}. It was revised after they started paying.</p>`;
-        }
-      }
-    }
+/** What info@ is told when money arrived but didn't mark the case paid. */
+function reviewText(reason: ReviewReason, paid: string, owed: string | null): string {
+  switch (reason) {
+    case "amount":
+      return `The firm paid ${paid}, but the invoice now says ${owed}: the case changed after they opened the payment page (a discount, hours or filters). Mark it paid if that's fine, or refund the payment in Stripe and ask them to pay again.`;
+    case "already_paid":
+      return `The invoice was already marked paid, so this may be a second payment. If so, refund it in Stripe.`;
+    case "void":
+      return `The invoice is void, so nothing was owed. Refund the payment in Stripe.`;
+    case "no_invoice":
+      return `The case or its invoice no longer exists. Match the payment up by hand, or refund it in Stripe.`;
+  }
+}
 
+/**
+ * Tells info@ that money arrived, that a payment needs checking before the
+ * case counts as paid, or that a bank payment bounced. Only logs a failure:
+ * the payment is recorded either way.
+ */
+async function notifyAdminQuietly(
+  payment: InvoicePaymentRow,
+  kind: "paid" | "failed" | ReviewReason,
+  invoice: InvoiceView | null
+): Promise<void> {
+  try {
+    const title = invoice?.caseTitle ?? "a case";
+    const invoiceLine = invoice
+      ? `Invoice ${escHtml(invoice.number)}, billed to ${escHtml(invoice.billedTo.name)}.`
+      : "";
+    const amount = formatCents(payment.amount_cents);
     const method = paymentMethodLabel(payment);
     const methodLine = method ? ` Paid with ${escHtml(method)}.` : "";
 
@@ -210,25 +278,38 @@ async function notifyAdminQuietly(payment: InvoicePaymentRow, kind: "paid" | "fa
       ? `<p style="margin:0;font-size:14px;"><a href="${appUrl()}/invoice/${encodeURIComponent(payment.case_id)}" style="color:#1e3a8a;">Open the invoice</a></p>`
       : "";
 
+    const [subject, heading, text] =
+      kind === "paid"
+        ? [
+            `Paid online: ${amount} for ${title}`,
+            "Invoice paid online",
+            `Stripe received <strong>${amount}</strong> for <strong>${escHtml(title)}</strong>. The case is now marked paid.`,
+          ]
+        : kind === "failed"
+          ? [
+              `Bank payment failed: ${title}`,
+              "A bank payment failed",
+              `The bank payment of <strong>${amount}</strong> for <strong>${escHtml(title)}</strong> did not go through. The invoice is still unpaid, and the firm can try again from it.`,
+            ]
+          : [
+              `Check this payment: ${amount} for ${title}`,
+              "A payment needs checking",
+              `Stripe received <strong>${amount}</strong> for <strong>${escHtml(title)}</strong>, but the case has <strong>not</strong> been marked paid. ${reviewText(
+                kind,
+                amount,
+                invoice ? formatCents(invoice.totalCents) : null
+              )}`,
+            ];
+
     await sendEmail({
       to: SUPPORT_EMAIL,
-      subject:
-        kind === "paid"
-          ? `Paid online: ${formatCents(payment.amount_cents)} for ${title}`
-          : `Bank payment failed: ${title}`,
+      subject,
       html: emailWrapper(`
-        <h2 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#1e3a8a;">${
-          kind === "paid" ? "Invoice paid online" : "A bank payment failed"
-        }</h2>
+        <h2 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#1e3a8a;">${heading}</h2>
         <p style="margin:0 0 16px;font-size:15px;color:#475569;">
-          ${
-            kind === "paid"
-              ? `Stripe received <strong>${formatCents(payment.amount_cents)}</strong> for <strong>${escHtml(title)}</strong>. The case is now marked paid.`
-              : `The bank payment of <strong>${formatCents(payment.amount_cents)}</strong> for <strong>${escHtml(title)}</strong> did not go through. The invoice is still unpaid, and the firm can try again from it.`
-          }
+          ${text}
           ${invoiceLine}${methodLine}
         </p>
-        ${mismatch}
         ${link}
       `),
     });

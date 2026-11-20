@@ -8,7 +8,7 @@ import type { InvoiceView } from "@/lib/invoice";
  */
 
 /** A row of public.invoice_payments (20261119_invoice_payments.sql). */
-export type InvoicePaymentStatus = "open" | "processing" | "succeeded" | "failed" | "expired";
+export type InvoicePaymentStatus = "open" | "processing" | "succeeded" | "failed" | "expired" | "review";
 
 export type InvoicePaymentRow = {
   id: string;
@@ -17,6 +17,8 @@ export type InvoicePaymentRow = {
   stripe_checkout_session_id: string;
   stripe_payment_intent_id: string | null;
   amount_cents: number;
+  /** Made with a live key; a test (sandbox) payment never counts as a live one (20261121). */
+  livemode: boolean;
   status: InvoicePaymentStatus;
   created_at: string;
   succeeded_at: string | null;
@@ -46,9 +48,10 @@ export const CHECKOUT_INTEGRATION_ID = "tjs_invoice_pay_kqwhrzvm";
 export function onlinePaymentBlock(
   invoice: Pick<InvoiceView, "status" | "totalCents">,
   payments: Pick<InvoicePaymentRow, "status">[]
-): "paid" | "void" | "processing" | "too_small" | null {
+): "paid" | "void" | "review" | "processing" | "too_small" | null {
   if (invoice.status === "paid" || payments.some((p) => p.status === "succeeded")) return "paid";
   if (invoice.status === "void") return "void";
+  if (payments.some((p) => p.status === "review")) return "review";
   if (payments.some((p) => p.status === "processing")) return "processing";
   if (invoice.totalCents < STRIPE_MIN_CHARGE_CENTS) return "too_small";
   return null;
@@ -92,9 +95,36 @@ export function canMoveTo(next: InvoicePaymentStatus): InvoicePaymentStatus[] {
       return ["open", "processing"];
     case "expired":
       return ["open"];
+    case "review":
+      return ["open", "processing", "failed", "expired"];
     case "open":
       return [];
   }
+}
+
+/** Why money that arrived didn't mark the case paid, for an admin to sort out. */
+export type ReviewReason = "amount" | "already_paid" | "void" | "no_invoice";
+
+/**
+ * Whether money Stripe received (`chargedCents`, at `paidAt`) pays the
+ * invoice as it stands now, or needs an admin to look first. The amount was
+ * fixed when Checkout opened, and the case can change after that (a discount
+ * removed, hours added) until it's paid, so a payment only marks the case paid
+ * when it's exactly what's owed. `pay` also when this same payment already
+ * marked it paid (a retried event).
+ */
+export function settleOutcome(
+  invoice: Pick<InvoiceView, "status" | "totalCents" | "paidAt"> | null,
+  chargedCents: number,
+  paidAt: string
+): "pay" | ReviewReason {
+  if (!invoice) return "no_invoice";
+  if (invoice.status === "paid") {
+    return invoice.paidAt && Date.parse(invoice.paidAt) === Date.parse(paidAt) ? "pay" : "already_paid";
+  }
+  if (invoice.status === "void") return "void";
+  if (invoice.totalCents !== chargedCents) return "amount";
+  return "pay";
 }
 
 const CARD_BRANDS: Record<string, string> = {

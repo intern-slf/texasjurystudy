@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
-import { getStripe } from "@/lib/stripe";
+import { getStripe, onlinePaymentEnabled } from "@/lib/stripe";
 import { applyCheckoutEvent } from "@/lib/invoicePaymentData";
 
 export const runtime = "nodejs";
@@ -22,8 +22,8 @@ export const runtime = "nodejs";
  */
 export async function POST(req: NextRequest) {
   const secret = process.env.STRIPE_WEBHOOK_SECRET?.trim();
-  if (!secret || !process.env.STRIPE_SECRET_KEY?.trim()) {
-    console.error("[stripe-webhook] STRIPE_WEBHOOK_SECRET or STRIPE_SECRET_KEY is not set");
+  if (!secret || !onlinePaymentEnabled()) {
+    console.error("[stripe-webhook] STRIPE_WEBHOOK_SECRET or STRIPE_SECRET_KEY is not set, or production has a test key");
     return NextResponse.json({ error: "Not configured" }, { status: 500 });
   }
 
@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
     console.log(`[stripe-webhook] ${event.type} ${event.id}: ${result}`);
 
     const caseId = (event.data.object as { metadata?: Record<string, string> | null }).metadata?.case_id;
-    if (caseId && result !== "ignored") {
+    if (caseId && !result.startsWith("ignored")) {
       revalidatePath(`/invoice/${caseId}`);
       revalidatePath(`/dashboard/requestee/${caseId}`);
       revalidatePath(`/dashboard/Admin/${caseId}`);

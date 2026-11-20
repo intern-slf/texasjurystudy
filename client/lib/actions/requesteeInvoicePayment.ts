@@ -29,6 +29,7 @@ const returnUrl = () =>
 const BLOCKED: Record<NonNullable<ReturnType<typeof onlinePaymentBlock>>, string> = {
   paid: "This invoice is already paid.",
   void: "This invoice is void, so nothing is owed.",
+  review: "We've received a payment for this invoice and are checking it. We'll be in touch.",
   processing: "A bank payment for this invoice is already on its way. It usually clears in 4 working days.",
   too_small: "This invoice is too small to pay online. Email us and we'll sort it out.",
 };
@@ -40,7 +41,9 @@ const BLOCKED: Record<NonNullable<ReturnType<typeof onlinePaymentBlock>>, string
  * sends the firm back to only shows where it stands.
  *
  * One session at a time per case, so two tabs can't both pay: an open session
- * for the same amount is reused, and any other open one is expired first.
+ * for the same amount is reused, and any other open one is expired first. The
+ * database holds it to that too (one open or processing row per case,
+ * 20261121), so two clicks racing each other can't both open one.
  */
 export async function startInvoicePayment(caseId: string): Promise<Result> {
   const firmId = await requireRequestee();
@@ -119,7 +122,13 @@ export async function startInvoicePayment(caseId: string): Promise<Result> {
       stripe_checkout_session_id: session.id,
       amount_cents: invoice.totalCents,
       created_by: firmId,
+      livemode: session.livemode,
     });
+    if (insertError?.code === "23505") {
+      // Another tab or click opened one a moment ago; that one stands.
+      await stripe.checkout.sessions.expire(session.id).catch(() => undefined);
+      return fail("A payment for this invoice was just started in another window. Refresh the page and try again.");
+    }
     if (insertError) {
       // Without the row the webhook couldn't tie the payment to the case, so don't send them to pay.
       await stripe.checkout.sessions.expire(session.id).catch(() => undefined);

@@ -8,6 +8,7 @@ import { TIME_SLOTS_PATH, describeSlot, type TimeSlot } from "@/lib/requesteeTim
 import { firmLabel, formatDeadline, isSlotFullError, paymentDueAt } from "@/lib/slotBooking";
 import { getBookingsForCases } from "@/lib/slotBookingData";
 import { syncInvoiceQuietly } from "@/lib/invoiceData";
+import { closeOpenPaymentsQuietly } from "@/lib/invoicePaymentData";
 import {
   sendSlotHeldEmail,
   sendSlotMovedEmail,
@@ -150,6 +151,9 @@ export async function markBookingPaid(caseId: string): Promise<Result> {
     return fail("Couldn't mark it paid. Try again.");
   }
   if (!data?.length) return fail("Nothing changed. Refresh the page: it may already be marked paid.");
+
+  // A payment page the firm left open can't be paid now that it's settled.
+  await closeOpenPaymentsQuietly(caseId);
 
   revalidateBooking(caseId);
   return { ok: true };

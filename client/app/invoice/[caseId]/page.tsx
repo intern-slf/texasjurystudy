@@ -122,26 +122,32 @@ export default async function InvoicePage({
   const block = payments ? onlinePaymentBlock(invoice, payments) : "unavailable";
   const paidWith = paid ? invoicePaidWith(payments) : null;
   const processing = block === "processing";
+  const inReview = block === "review";
   // Paid by card but not recorded yet: the webhook usually lands within seconds,
   // so PaymentNotice refreshes the page until it does.
-  const recording = !paid && !processing && returnedFrom === "done";
+  const recording = !paid && !processing && !inReview && returnedFrom === "done";
   const notice = paid
     ? returnedFrom === "done"
       ? { tone: "success" as const, text: "Thank you — your payment was received." }
       : null
-    : processing
+    : inReview
       ? {
           tone: "info" as const,
-          text: "A bank payment for this invoice is on its way. Bank transfers usually take about 4 working days to clear; this invoice will show as paid once it does.",
+          text: `Thank you — we've received your payment and are checking it against this invoice before marking it paid. We'll be in touch; questions? Email ${SUPPORT_EMAIL}.`,
         }
-      : recording
+      : processing
         ? {
             tone: "info" as const,
-            text: `Thank you — we're recording your payment. This page updates on its own; if it still says unpaid after a few minutes, email ${SUPPORT_EMAIL}.`,
+            text: "A bank payment for this invoice is on its way. Bank transfers usually take about 4 working days to clear; this invoice will show as paid once it does.",
           }
-        : returnedFrom === "cancelled"
-          ? { tone: "neutral" as const, text: "Payment cancelled. Nothing was charged." }
-          : null;
+        : recording
+          ? {
+              tone: "info" as const,
+              text: `Thank you — we're recording your payment. This page updates on its own; if it still says unpaid after a few minutes, email ${SUPPORT_EMAIL}.`,
+            }
+          : returnedFrom === "cancelled"
+            ? { tone: "neutral" as const, text: "Payment cancelled. Nothing was charged." }
+            : null;
 
   return (
     <div className="mx-auto w-full max-w-[8.5in] space-y-4 print:max-w-none print:space-y-0">

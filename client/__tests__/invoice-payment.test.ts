@@ -6,6 +6,7 @@ import {
   invoicePaidWith,
   onlinePaymentBlock,
   paymentMethodLabel,
+  settleOutcome,
 } from "@/lib/invoicePayment";
 
 /* ---------------------------------------------------------------------------
@@ -23,6 +24,7 @@ const db = new FakeDb();
 const mocks = vi.hoisted(() => ({
   firm: { current: "firm-1" as string | null },
   enabled: { current: true },
+  live: { current: false },
   syncInvoice: vi.fn(),
   sendEmail: vi.fn(async () => ({ attachments: 0 })),
   stripe: {
@@ -48,6 +50,7 @@ vi.mock("@/lib/supabase/admin", () => ({ supabaseAdmin: { from: (t: string) => d
 vi.mock("@/lib/invoiceData", () => ({ syncInvoice: mocks.syncInvoice }));
 vi.mock("@/lib/stripe", () => ({
   onlinePaymentEnabled: () => mocks.enabled.current,
+  stripeKeyIsLive: () => mocks.live.current,
   getStripe: () => mocks.stripe,
 }));
 vi.mock("@/lib/mail", () => ({
@@ -57,14 +60,19 @@ vi.mock("@/lib/mail", () => ({
 }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 
-function invoiceData({ status = "unpaid", totalCents = 150000, ownerIds = [FIRM] } = {}) {
+function invoiceData({
+  status = "unpaid",
+  totalCents = 150000,
+  ownerIds = [FIRM],
+  paidAt = null as string | null,
+} = {}) {
   return {
     invoice: {
       number: "INV-2026-0007",
       caseTitle: "Smith v. Jones",
       issuedAt: "2026-11-01T15:00:00.000Z",
       dueAt: null,
-      paidAt: null,
+      paidAt,
       status,
       billedTo: { name: "Jane Doe", email: "jane@firm.com" },
       lines: [],
@@ -82,6 +90,7 @@ function payment(overrides: Record<string, unknown> = {}) {
     stripe_checkout_session_id: "cs_old",
     stripe_payment_intent_id: null,
     amount_cents: 150000,
+    livemode: false,
     status: "open",
     created_at: "2026-11-19T10:00:00.000Z",
     succeeded_at: null,
@@ -97,6 +106,7 @@ function event(type: string, session: Record<string, unknown>) {
     id: "evt_1",
     type,
     created: Date.parse("2026-11-19T12:00:00.000Z") / 1000,
+    livemode: false,
     data: { object: { id: "cs_old", metadata: { case_id: CASE_ID }, amount_total: 150000, ...session } },
   };
 }
@@ -110,8 +120,13 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.firm.current = FIRM;
   mocks.enabled.current = true;
+  mocks.live.current = false;
+  mocks.stripe.checkout.sessions.create.mockImplementation(async () => ({
+    id: "cs_new",
+    url: "https://checkout.stripe.com/c/pay/cs_new",
+    livemode: false,
+  }));
   mocks.syncInvoice.mockResolvedValue(invoiceData());
-  mocks.stripe.checkout.sessions.create.mockResolvedValue({ id: "cs_new", url: "https://checkout.stripe.com/c/pay/cs_new" });
   mocks.stripe.paymentIntents.retrieve.mockResolvedValue(charged({ type: "card", card: { brand: "visa", last4: "4242" } }));
   db.reset({ invoices: [{ id: "inv-1", case_id: CASE_ID }], invoice_payments: [], requestee_slot_bookings: [] });
   process.env.NEXT_PUBLIC_APP_URL = "https://app.example.com";
@@ -190,6 +205,29 @@ describe("paymentMethodLabel", () => {
   });
 });
 
+describe("settleOutcome", () => {
+  const at = "2026-11-19T12:00:00.000Z";
+  const invoice = (status: string, totalCents = 150000, paidAt: string | null = null) =>
+    ({ status, totalCents, paidAt }) as never;
+
+  it("pays only when the money is exactly what the invoice says now", () => {
+    expect(settleOutcome(invoice("unpaid"), 150000, at)).toBe("pay");
+    expect(settleOutcome(invoice("overdue"), 150000, at)).toBe("pay");
+    expect(settleOutcome(invoice("unpaid", 170000), 150000, at)).toBe("amount");
+    expect(settleOutcome(invoice("unpaid", 120000), 150000, at)).toBe("amount");
+  });
+
+  it("sends a payment on a paid, void or missing invoice for review", () => {
+    expect(settleOutcome(invoice("paid", 150000, "2026-11-18T09:00:00.000Z"), 150000, at)).toBe("already_paid");
+    expect(settleOutcome(invoice("void"), 150000, at)).toBe("void");
+    expect(settleOutcome(null, 150000, at)).toBe("no_invoice");
+  });
+
+  it("knows a retry of the payment that already paid it", () => {
+    expect(settleOutcome(invoice("paid", 150000, "2026-11-19T12:00:00+00:00"), 150000, at)).toBe("pay");
+  });
+});
+
 describe("startInvoicePayment", () => {
   async function start() {
     const { startInvoicePayment } = await import("@/lib/actions/requesteeInvoicePayment");
@@ -209,8 +247,33 @@ describe("startInvoicePayment", () => {
     // Dynamic payment methods: card and ACH come from the Dashboard, not the code.
     expect(params).not.toHaveProperty("payment_method_types");
     expect(db.rows("invoice_payments")).toMatchObject([
-      { case_id: CASE_ID, invoice_id: "inv-1", stripe_checkout_session_id: "cs_new", amount_cents: 150000, created_by: FIRM },
+      {
+        case_id: CASE_ID,
+        invoice_id: "inv-1",
+        stripe_checkout_session_id: "cs_new",
+        amount_cents: 150000,
+        created_by: FIRM,
+        livemode: false,
+      },
     ]);
+  });
+
+  it("lets only one of two racing clicks open a session", async () => {
+    // The other click's row lands between our check and our insert.
+    mocks.stripe.checkout.sessions.create.mockImplementation(async () => {
+      db.rows("invoice_payments").push(payment({ stripe_checkout_session_id: "cs_other" }));
+      return { id: "cs_new", url: "https://checkout.stripe.com/c/pay/cs_new", livemode: false };
+    });
+
+    expect(await start()).toEqual({ ok: false, error: expect.stringContaining("just started in another window") });
+    expect(mocks.stripe.checkout.sessions.expire).toHaveBeenCalledWith("cs_new");
+    expect(db.rows("invoice_payments").map((p) => p.stripe_checkout_session_id)).toEqual(["cs_other"]);
+  });
+
+  it("won't take another payment while one is being checked", async () => {
+    db.reset({ invoices: [{ id: "inv-1", case_id: CASE_ID }], invoice_payments: [payment({ status: "review" })] });
+    expect(await start()).toEqual({ ok: false, error: expect.stringContaining("checking it") });
+    expect(mocks.stripe.checkout.sessions.create).not.toHaveBeenCalled();
   });
 
   it("sends a preview's payers back to the preview, not the live site", async () => {
@@ -375,12 +438,113 @@ describe("applyCheckoutEvent", () => {
     expect(db.rows("invoice_payments")[0]).toMatchObject({ method_brand: "visa", method_last4: null });
   });
 
-  it("flags a payment that no longer matches a revised invoice", async () => {
+  it("holds a payment that no longer matches the invoice for review, and leaves the case unpaid", async () => {
+    // Checkout opened at a discount; the discount was removed before paying.
     db.reset({ invoice_payments: [payment({ amount_cents: 120000 })], requestee_slot_bookings: [] });
 
-    await apply("checkout.session.completed", { payment_status: "paid", amount_total: 120000 });
-    const mail = (mocks.sendEmail.mock.calls[0] as unknown as [{ html: string }])[0];
-    expect(mail.html).toContain("Check this one");
+    expect(await apply("checkout.session.completed", { payment_status: "paid", amount_total: 120000 })).toBe(
+      "review (amount)"
+    );
+    expect(db.rows("invoice_payments")[0]).toMatchObject({ status: "review", amount_cents: 120000, succeeded_at: null });
+    expect(db.rows("requestee_slot_bookings")).toEqual([]);
+    const mail = (mocks.sendEmail.mock.calls[0] as unknown as [{ subject: string; html: string }])[0];
+    expect(mail.subject).toContain("Check this payment");
+    expect(mail.html).toContain("not</strong> been marked paid");
+    expect(mail.html).toContain("$1,500.00");
+  });
+
+  it("holds a bank payment for review when the case changed while it cleared", async () => {
+    db.reset({ invoice_payments: [payment({ status: "processing" })], requestee_slot_bookings: [] });
+    mocks.syncInvoice.mockResolvedValue(invoiceData({ totalCents: 190000 }));
+
+    expect(await apply("checkout.session.async_payment_succeeded", { payment_status: "paid" })).toBe("review (amount)");
+    expect(db.rows("requestee_slot_bookings")).toEqual([]);
+  });
+
+  it("holds a second payment for an invoice already paid by hand", async () => {
+    db.reset({
+      invoice_payments: [payment()],
+      requestee_slot_bookings: [{ case_id: CASE_ID, paid_at: "2026-11-18T09:00:00.000Z", paid_by: "admin-1" }],
+    });
+    mocks.syncInvoice.mockResolvedValue(invoiceData({ status: "paid", paidAt: "2026-11-18T09:00:00.000Z" }));
+
+    expect(await apply("checkout.session.completed", { payment_status: "paid" })).toBe("review (already_paid)");
+    expect(db.rows("requestee_slot_bookings")[0]).toMatchObject({ paid_by: "admin-1" });
+  });
+
+  it("holds a payment on a void invoice for review", async () => {
+    db.reset({ invoice_payments: [payment()], requestee_slot_bookings: [] });
+    mocks.syncInvoice.mockResolvedValue(invoiceData({ status: "void" }));
+    expect(await apply("checkout.session.completed", { payment_status: "paid" })).toBe("review (void)");
+  });
+
+  it("ignores a sandbox event while running live, and a live one while in the sandbox", async () => {
+    db.reset({ invoice_payments: [payment()], requestee_slot_bookings: [] });
+
+    mocks.live.current = true;
+    expect(await apply("checkout.session.completed", { payment_status: "paid" })).toBe("ignored (test/live mismatch)");
+    mocks.live.current = false;
+    const live = { ...event("checkout.session.completed", { payment_status: "paid" }), livemode: true };
+    const { applyCheckoutEvent } = await import("@/lib/invoicePaymentData");
+    expect(await applyCheckoutEvent(live as never)).toBe("ignored (test/live mismatch)");
+
+    expect(db.rows("invoice_payments")[0].status).toBe("open");
+    expect(db.rows("requestee_slot_bookings")).toEqual([]);
+  });
+
+  it("ignores an event whose mode doesn't match the payment's own", async () => {
+    db.reset({ invoice_payments: [payment({ livemode: true })], requestee_slot_bookings: [] });
+    expect(await apply("checkout.session.completed", { payment_status: "paid" })).toBe("ignored (test/live mismatch)");
+    expect(db.rows("requestee_slot_bookings")).toEqual([]);
+  });
+
+  it("closes the case's other open payment pages once it's paid", async () => {
+    db.reset({
+      invoice_payments: [payment(), payment({ id: "pay-2", stripe_checkout_session_id: "cs_tab2", status: "expired" })],
+      requestee_slot_bookings: [],
+    });
+    // The database keeps it to one open page per case; this one is from before that rule.
+    db.rows("invoice_payments")[1].status = "open";
+    mocks.stripe.checkout.sessions.retrieve.mockResolvedValue({ id: "cs_tab2", status: "open" });
+
+    expect(await apply("checkout.session.completed", { payment_status: "paid" })).toBe("paid");
+    expect(mocks.stripe.checkout.sessions.expire).toHaveBeenCalledWith("cs_tab2");
+    expect(db.rows("invoice_payments").find((p) => p.id === "pay-2")?.status).toBe("expired");
+  });
+});
+
+describe("closeOpenPayments", () => {
+  async function close() {
+    const { closeOpenPayments } = await import("@/lib/invoicePaymentData");
+    return closeOpenPayments(CASE_ID);
+  }
+
+  it("expires a payment page left open, so it can't be paid at the old amount", async () => {
+    db.reset({ invoice_payments: [payment()] });
+    mocks.stripe.checkout.sessions.retrieve.mockResolvedValue({ id: "cs_old", status: "open" });
+
+    expect(await close()).toBe("clear");
+    expect(mocks.stripe.checkout.sessions.expire).toHaveBeenCalledWith("cs_old");
+    expect(db.rows("invoice_payments")[0].status).toBe("expired");
+  });
+
+  it("says money is on its way: a bank payment clearing, or a page paid but not yet recorded", async () => {
+    db.reset({ invoice_payments: [payment({ status: "processing" })] });
+    expect(await close()).toBe("in_flight");
+
+    db.reset({ invoice_payments: [payment()] });
+    mocks.stripe.checkout.sessions.retrieve.mockResolvedValue({ id: "cs_old", status: "complete" });
+    expect(await close()).toBe("in_flight");
+    expect(db.rows("invoice_payments")[0].status).toBe("open");
+  });
+
+  it("catches a firm finishing payment just as the page is closed", async () => {
+    db.reset({ invoice_payments: [payment()] });
+    mocks.stripe.checkout.sessions.retrieve
+      .mockResolvedValueOnce({ id: "cs_old", status: "open" })
+      .mockResolvedValueOnce({ id: "cs_old", status: "complete" });
+    mocks.stripe.checkout.sessions.expire.mockRejectedValueOnce(new Error("session is not open"));
+    expect(await close()).toBe("in_flight");
   });
 });
 
