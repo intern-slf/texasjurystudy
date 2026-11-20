@@ -5,12 +5,15 @@ import { formatCents } from "@/lib/receipt-pricing";
 import { formatDeadline } from "@/lib/slotBooking";
 import { formatCentralDate } from "@/lib/timezone";
 import { invoicePdfFileName } from "@/lib/invoicePdf";
+import { STRIPE_MIN_CHARGE_CENTS } from "@/lib/invoicePayment";
+import { onlinePaymentEnabled } from "@/lib/stripe";
 
 /**
  * The invoice, emailed to the firm by an admin (lib/actions/adminInvoice.ts),
  * with the PDF attached (lib/invoicePdf.ts). The email also carries the
  * invoice itself, the same rows and total as app/invoice/[caseId], and links
- * to that page. Every value a firm typed is escaped.
+ * to that page, where the firm can pay it online while it's owed (once Stripe
+ * is set up). Every value a firm typed is escaped.
  */
 
 const appUrl = () => (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "");
@@ -24,6 +27,10 @@ export function invoiceEmailSubject(invoice: Pick<InvoiceView, "number" | "caseT
 export function invoiceEmailHtml(caseId: string, invoice: InvoiceView): string {
   const paid = invoice.status === "paid";
   const overdue = invoice.status === "overdue";
+  const payable =
+    onlinePaymentEnabled() &&
+    (invoice.status === "unpaid" || overdue) &&
+    invoice.totalCents >= STRIPE_MIN_CHARGE_CENTS;
 
   const facts: Array<[label: string, value: string]> = [
     ["Invoice #", invoice.number],
@@ -104,7 +111,7 @@ export function invoiceEmailHtml(caseId: string, invoice: InvoiceView): string {
 ${checksBlock}
 
     <p style="margin:0 0 24px;font-size:14px;color:#475569;">
-      ${closing}${closing ? " " : ""}Questions? Email us at <a href="mailto:${SUPPORT_EMAIL}" style="color:#1e3a8a;">${SUPPORT_EMAIL}</a>.
+      ${closing}${closing ? " " : ""}${payable ? "You can pay online by card or bank transfer, or by check. " : ""}Questions? Email us at <a href="mailto:${SUPPORT_EMAIL}" style="color:#1e3a8a;">${SUPPORT_EMAIL}</a>.
     </p>
 
     <table role="presentation" cellpadding="0" cellspacing="0">
@@ -112,7 +119,7 @@ ${checksBlock}
         <td style="border-radius:6px;background-color:#2563eb;">
           <a href="${appUrl()}/invoice/${encodeURIComponent(caseId)}"
              style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:6px;">
-            View Invoice Online
+            ${payable ? "View &amp; Pay Online" : "View Invoice Online"}
           </a>
         </td>
       </tr>

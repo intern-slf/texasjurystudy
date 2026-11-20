@@ -45,6 +45,9 @@ vi.mock("@/lib/slotBookingEmails", () => ({
 // What issues or updates the case's invoice; tested in invoice.test.ts.
 const syncInvoiceQuietly = vi.hoisted(() => vi.fn<(caseId: string) => Promise<void>>(async () => {}));
 vi.mock("@/lib/invoiceData", () => ({ syncInvoiceQuietly }));
+// Expires payment pages left open; tested in invoice-payment.test.ts.
+const closeOpenPaymentsQuietly = vi.hoisted(() => vi.fn<(caseId: string) => Promise<void>>(async () => {}));
+vi.mock("@/lib/invoicePaymentData", () => ({ closeOpenPaymentsQuietly }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 
 const ADMIN = "0a000000-0000-4000-8000-000000000001";
@@ -164,6 +167,8 @@ describe("payment", () => {
     expect(bookingOf(CASE)).toMatchObject({ paid_at: NOW, paid_by: ADMIN });
     // Brought up to date before payment freezes it.
     expect(syncInvoiceQuietly).toHaveBeenCalledWith(CASE);
+    // A payment page the firm left open can't be paid as well.
+    expect(closeOpenPaymentsQuietly).toHaveBeenCalledWith(CASE);
     await expect(actions.markBookingPaid(CASE)).resolves.toMatchObject({ ok: false });
   });
 

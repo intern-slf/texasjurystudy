@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { requireRequestee } from "@/lib/requireRequestee";
 import { syncInvoiceQuietly } from "@/lib/invoiceData";
+import { closeOpenPayments } from "@/lib/invoicePaymentData";
 import { PAID_MESSAGE, firmPromoMessage, isValidPromoCode, normalizePromoCode } from "@/lib/promoCode";
 
 // A law firm's own promo code actions. Every export starts with
@@ -39,6 +40,24 @@ async function ownCaseFirm(caseId: string, userId: string): Promise<string | nul
     .maybeSingle();
   if (!data || (data.user_id !== userId && data.requestee_id !== userId)) return null;
   return (data.requestee_id as string | null) || (data.user_id as string);
+}
+
+const PAYING_MESSAGE =
+  "A payment for this invoice is already under way, so its discount can't change now. Email us if it needs changing.";
+
+/**
+ * Before the discount changes: closes any payment page the firm left open, so
+ * it can't be paid at the old amount, and says whether money is already on its
+ * way (then the discount stays as it is). Null when it's fine to change, else
+ * what to tell the firm.
+ */
+async function paymentHold(caseId: string): Promise<string | null> {
+  try {
+    return (await closeOpenPayments(caseId)) === "in_flight" ? PAYING_MESSAGE : null;
+  } catch (err) {
+    console.error("[promo code] couldn't check the case's online payments:", err);
+    return "Couldn't change the discount right now. Try again in a minute.";
+  }
 }
 
 function revalidateCase(caseId: string) {
@@ -87,6 +106,9 @@ export async function applyPromoCode(
   const normalized = normalizePromoCode(code);
   if (!isValidPromoCode(normalized)) return fail(firmPromoMessage("not_found"));
 
+  const hold = await paymentHold(caseId);
+  if (hold) return fail(hold);
+
   const { data, error } = await supabaseAdmin
     .rpc("apply_promo_code", {
       p_case_id: caseId,
@@ -116,6 +138,9 @@ export async function removePromoCode(caseId: string): Promise<{ ok: true } | Fa
   const userId = await requireRequestee();
   if (!isUuid(caseId)) return fail(NO_CASE);
   if (!(await ownCaseFirm(caseId, userId))) return fail(NO_CASE);
+
+  const hold = await paymentHold(caseId);
+  if (hold) return fail(hold);
 
   const { data, error } = await supabaseAdmin.rpc("remove_case_discount", { p_case_id: caseId });
   if (error) {

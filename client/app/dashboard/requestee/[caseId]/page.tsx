@@ -10,6 +10,7 @@ import AddParticipantRequestee from "@/components/AddParticipantRequestee";
 import ReceiptPricingPreview from "@/components/ReceiptPricingPreview";
 import CaseDiscountControl from "@/components/CaseDiscountControl";
 import { getCaseDiscountState } from "@/lib/caseDiscountData";
+import { onlinePaymentEnabled } from "@/lib/stripe";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import BackButton from "@/components/BackButton";
@@ -28,6 +29,7 @@ import {
   LinkIcon,
   AlertCircle,
   Briefcase,
+  CreditCard,
   Hourglass,
   MapPin,
   Receipt,
@@ -107,6 +109,8 @@ export default async function RequesteeCaseDetailPage({
   const filters = c.filters as CaseFilters | null;
   // The invoice is linked once the case is approved.
   const hasInvoice = admin_status === "approved" || admin_status === "submitted";
+  // Paying happens on the invoice page, so the firm sees what it's paying for first.
+  const canPayOnline = hasInvoice && onlinePaymentEnabled() && discountState?.paid === false;
 
   function StatusBadge() {
     if (status === "previous") return <Badge variant="secondary">Past</Badge>;
@@ -141,18 +145,27 @@ export default async function RequesteeCaseDetailPage({
             <div className="flex items-center gap-2 flex-wrap mb-2">
               <StatusBadge />
               <ScheduleBadge />
+              {hasInvoice && discountState?.paid && <Badge className="bg-green-600 text-white">Invoice paid</Badge>}
             </div>
             <div className="flex flex-wrap items-start justify-between gap-3">
               <h1 className="text-3xl font-bold tracking-tight">{c.title}</h1>
               {/* Once approved, in person or online. A held time links to it from its own box too. */}
               {hasInvoice && (
-                <Link
-                  href={`/invoice/${c.id}`}
-                  className={buttonVariants({ variant: "outline", size: "sm" })}
-                >
-                  <Receipt className="h-4 w-4" aria-hidden="true" />
-                  View invoice
-                </Link>
+                <div className="flex flex-wrap gap-2">
+                  {canPayOnline && (
+                    <Link href={`/invoice/${c.id}`} className={buttonVariants({ size: "sm" })}>
+                      <CreditCard className="h-4 w-4" aria-hidden="true" />
+                      Pay invoice
+                    </Link>
+                  )}
+                  <Link
+                    href={`/invoice/${c.id}`}
+                    className={buttonVariants({ variant: "outline", size: "sm" })}
+                  >
+                    <Receipt className="h-4 w-4" aria-hidden="true" />
+                    View invoice
+                  </Link>
+                </div>
               )}
             </div>
             <p className="text-sm text-muted-foreground mt-1">

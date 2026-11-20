@@ -18,6 +18,11 @@ import { LEGAL_ENTITY, MAILING_ADDRESS, SUPPORT_EMAIL } from "@/lib/legal-consta
 import Logo from "@/components/Logo";
 import PrintInvoiceButton from "@/components/PrintInvoiceButton";
 import EmailInvoiceButton from "@/components/EmailInvoiceButton";
+import PayInvoiceButton from "@/components/PayInvoiceButton";
+import PaymentNotice from "@/components/PaymentNotice";
+import { getInvoicePayments } from "@/lib/invoicePaymentData";
+import { invoicePaidWith, onlinePaymentBlock, type InvoicePaymentRow } from "@/lib/invoicePayment";
+import { onlinePaymentEnabled } from "@/lib/stripe";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -48,9 +53,20 @@ export const metadata: Metadata = { title: `Invoice – ${LEGAL_ENTITY}` };
  * the service role, so it checks for itself, by public.roles, that the caller
  * is an admin or the firm whose case it is. Admins can also email it to the
  * firm from here (EmailInvoiceButton), unless it's void.
+ *
+ * While it's owed, the firm can pay it online (PayInvoiceButton → Stripe
+ * Checkout), once STRIPE_SECRET_KEY is set. Stripe sends them back here with
+ * ?payment=done or ?payment=cancelled; the webhook, not this page, marks it paid.
  */
-export default async function InvoicePage({ params }: { params: Promise<{ caseId: string }> }) {
+export default async function InvoicePage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ caseId: string }>;
+  searchParams?: Promise<{ payment?: string }>;
+}) {
   const { caseId } = await params;
+  const { payment: returnedFrom } = (await searchParams) ?? {};
   const supabase = await createClient();
   const {
     data: { user },
@@ -96,6 +112,43 @@ export default async function InvoicePage({ params }: { params: Promise<{ caseId
   const voided = invoice.status === "void";
   const checks = invoiceCheckPayable(invoice.status);
 
+  const payOnline = onlinePaymentEnabled();
+  // Read even with online payment off, so a paid invoice still says what it was paid with.
+  // A failed read only hides the Pay button and that line: the invoice itself still shows.
+  const payments: InvoicePaymentRow[] | null = await getInvoicePayments(caseId).catch((err) => {
+    console.error("[invoice page] couldn't read online payments:", err);
+    return null;
+  });
+  const block = payments ? onlinePaymentBlock(invoice, payments) : "unavailable";
+  const paidWith = paid ? invoicePaidWith(payments) : null;
+  const processing = block === "processing";
+  const inReview = block === "review";
+  // Paid by card but not recorded yet: the webhook usually lands within seconds,
+  // so PaymentNotice refreshes the page until it does.
+  const recording = !paid && !processing && !inReview && returnedFrom === "done";
+  const notice = paid
+    ? returnedFrom === "done"
+      ? { tone: "success" as const, text: "Thank you — your payment was received." }
+      : null
+    : inReview
+      ? {
+          tone: "info" as const,
+          text: `Thank you — we've received your payment and are checking it against this invoice before marking it paid. We'll be in touch; questions? Email ${SUPPORT_EMAIL}.`,
+        }
+      : processing
+        ? {
+            tone: "info" as const,
+            text: "A bank payment for this invoice is on its way. Bank transfers usually take about 4 working days to clear; this invoice will show as paid once it does.",
+          }
+        : recording
+          ? {
+              tone: "info" as const,
+              text: `Thank you — we're recording your payment. This page updates on its own; if it still says unpaid after a few minutes, email ${SUPPORT_EMAIL}.`,
+            }
+          : returnedFrom === "cancelled"
+            ? { tone: "neutral" as const, text: "Payment cancelled. Nothing was charged." }
+            : null;
+
   return (
     <div className="mx-auto w-full max-w-[8.5in] space-y-4 print:max-w-none print:space-y-0">
       <div className="flex items-center justify-between gap-3 print:hidden">
@@ -104,9 +157,18 @@ export default async function InvoicePage({ params }: { params: Promise<{ caseId
           {role === "admin" && !voided && invoice.billedTo.email && (
             <EmailInvoiceButton caseId={caseId} to={invoice.billedTo.email} />
           )}
+          {role === "requestee" && payOnline && !block && (
+            <PayInvoiceButton caseId={caseId} amountLabel={formatCents(invoice.totalCents)} />
+          )}
           <PrintInvoiceButton fileName={`Invoice ${invoice.number} – ${LEGAL_ENTITY}`} />
         </div>
       </div>
+
+      <PaymentNotice
+        notice={notice}
+        focusOnLoad={returnedFrom === "done" || returnedFrom === "cancelled"}
+        waitForPaid={recording}
+      />
 
       {/* The sheet keeps its own light colors, so the paper looks the same in dark mode. */}
       <article className="invoice-sheet flex min-h-[11in] flex-col bg-white text-slate-900 shadow-lg ring-1 ring-slate-200 print:min-h-[10.9in] print:shadow-none print:ring-0">
@@ -141,6 +203,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ caseId
             </p>
             <p>Issued {formatCentralDate(invoice.issuedAt)}</p>
             {paid && invoice.paidAt && <p>Paid {formatCentralDate(invoice.paidAt)}</p>}
+            {paidWith && <p>{paidWith}</p>}
             {!paid && invoice.dueAt && <p>Due {formatDeadline(invoice.dueAt)}</p>}
           </div>
         </section>
