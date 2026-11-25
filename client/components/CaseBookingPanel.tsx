@@ -130,7 +130,7 @@ export default async function CaseBookingPanel({ caseId }: { caseId: string }) {
     content = (
       <div className="space-y-3">
         <p className="text-sm text-slate-600">
-          No time held.{record?.held_since ? " The firm's payment clock is still running from an earlier hold." : ""}
+          No time held.
         </p>
         {openSlotsNote ?? (
           <AssignSlotControl

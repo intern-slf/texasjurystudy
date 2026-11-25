@@ -27,9 +27,11 @@ export function invoiceEmailSubject(invoice: Pick<InvoiceView, "number" | "caseT
 export function invoiceEmailHtml(caseId: string, invoice: InvoiceView): string {
   const paid = invoice.status === "paid";
   const overdue = invoice.status === "overdue";
+  // Only once the case is scheduled: before that the invoice has no due date.
   const payable =
     onlinePaymentEnabled() &&
     (invoice.status === "unpaid" || overdue) &&
+    !!invoice.dueAt &&
     invoice.totalCents >= STRIPE_MIN_CHARGE_CENTS;
 
   const facts: Array<[label: string, value: string]> = [
@@ -62,9 +64,11 @@ export function invoiceEmailHtml(caseId: string, invoice: InvoiceView): string {
       ? `Payment was due ${escHtml(formatDeadline(invoice.dueAt))}. Please pay it as soon as you can.`
       : invoice.dueAt
         ? `Please pay it by <strong>${escHtml(formatDeadline(invoice.dueAt))}</strong>.`
-        : "";
+        : invoice.status === "unpaid"
+          ? "Nothing is due yet: payment will be due on the day of your focus group, once it's scheduled."
+          : "";
 
-  const checks = invoiceCheckPayable(invoice.status);
+  const checks = invoiceCheckPayable(invoice);
   const checksBlock = checks
     ? `
     <div style="margin:0 0 24px;">

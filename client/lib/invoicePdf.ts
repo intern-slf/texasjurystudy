@@ -291,7 +291,7 @@ export async function renderInvoicePdf(invoice: InvoiceView, paidWith: string | 
   }
 
   /* TOTAL, then where to mail a check, kept on one page together */
-  const checks = invoiceCheckPayable(invoice.status);
+  const checks = invoiceCheckPayable(invoice);
   const checksHeight = checks ? 30 + 17 + checks.addressLines.length * 14 : 0;
   if (top + 24 + 56 + checksHeight > FOOTER_TOP - 16) {
     pen = new Pen(doc.addPage([PAGE_W, PAGE_H]), fonts);

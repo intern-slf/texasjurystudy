@@ -115,8 +115,8 @@ export async function listOpenTimeSlots(): Promise<{ ok: true; slots: TimeSlot[]
 
 /* =========================
    BOOK, OR SWITCH TO, A TIME
-   A first booking starts the payment clock. Switching, or booking again after
-   cancelling, keeps the clock and any payment: payment belongs to the case.
+   Payment falls due at the end of the booked time's day. Switching, or booking
+   again after cancelling, keeps any payment: payment belongs to the case.
 ========================= */
 
 export async function chooseTimeSlot(
@@ -164,7 +164,7 @@ export async function chooseTimeSlot(
   const existing = (await getBookingsForCases([caseId])).get(caseId);
   const paid = !!existing?.paid_at;
   const heldSince = existing?.held_since ?? new Date(now).toISOString();
-  const due = paid ? null : paymentDueAt(heldSince).toISOString();
+  const due = paid ? null : paymentDueAt({ slot })!.toISOString();
   if (existing?.slot_id === slotId) return { ok: true, slot, paid, dueAt: due };
 
   // Its session's participants are invited, so the panel is chosen for the
@@ -215,7 +215,7 @@ export async function chooseTimeSlot(
         caseId,
         caseTitle: theCase.title,
         slot,
-        dueAt: paymentDueAt(heldSince),
+        dueAt: paymentDueAt({ slot })!,
         paid,
         hoursRequested: theCase.hours_requested,
       });
@@ -234,7 +234,7 @@ export async function chooseTimeSlot(
         ["Case", theCase.title],
         ["Time", describeSlot(slot)],
         ...(switched ? ([["Previous time", describeSlot(switched)]] as Array<[string, string]>) : []),
-        ["Payment", paid ? "Already paid" : `Due ${formatDeadline(paymentDueAt(heldSince))}`],
+        ["Payment", paid ? "Already paid" : `Due ${formatDeadline(paymentDueAt({ slot })!)}`],
       ],
     });
   } catch (err) {

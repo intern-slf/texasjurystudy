@@ -188,7 +188,7 @@ export function toBookingView(detail: BookingDetail, slot: TimeSlot, nowMs: numb
     firm: firmLabel(detail.firm.name, detail.firm.email),
     state: state === "open" ? "unpaid" : state,
     paidAt: detail.paid_at,
-    dueAt: detail.held_since ? paymentDueAt(detail.held_since).toISOString() : null,
+    dueAt: paymentDueAt({ slot })!.toISOString(),
     warnings,
     approved: detail.case.admin_status === "approved" || detail.case.admin_status === "submitted",
   };

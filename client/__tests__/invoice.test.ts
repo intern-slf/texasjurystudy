@@ -11,7 +11,6 @@ import {
   type InvoiceRecord,
 } from "@/lib/invoice";
 import { calculateReceiptPrice } from "@/lib/receipt-pricing";
-import { paymentDueAt } from "@/lib/slotBooking";
 import type { CaseFilters } from "@/lib/filter-utils";
 
 // October 2026 is Central Daylight Time (UTC-5).
@@ -158,55 +157,63 @@ describe("planInvoice: issue, revise while unpaid, void, freeze once paid", () =
 describe("invoiceView: the kept invoice, with where payment stands now", () => {
   const record = aRecord();
   const at = (date: string, time: string) => Date.parse(ct(date, time));
+  const booking = { held_since: heldSince, paid_at: null };
+  const view = (over: Partial<Parameters<typeof invoiceView>[0]> = {}) =>
+    invoiceView({ record, booking, slot, sessionTime: null, nowMs: at("2026-10-22", "09:00"), ...over });
 
-  it("is unpaid, due 24 working hours after the hold", () => {
-    const view = invoiceView({ record, booking: { held_since: heldSince, paid_at: null }, slot, nowMs: at("2026-10-22", "09:00") });
-    expect(view).toMatchObject({ number: "INV-2026-0007", issuedAt: heldSince, status: "unpaid", totalCents: 170_000 });
-    expect(view.dueAt).toBe(paymentDueAt(heldSince).toISOString());
+  it("is unpaid, due at the end of the held time's day", () => {
+    expect(view()).toMatchObject({ number: "INV-2026-0007", issuedAt: heldSince, status: "unpaid", totalCents: 170_000 });
+    expect(view().dueAt).toBe(new Date(ct("2026-10-29", "23:59")).toISOString());
   });
 
-  it("is overdue once the deadline passes, or the time comes unpaid", () => {
-    const booking = { held_since: heldSince, paid_at: null };
-    expect(invoiceView({ record, booking, slot, nowMs: at("2026-10-22", "15:00") }).status).toBe("overdue");
-    expect(invoiceView({ record, booking, slot, nowMs: at("2026-10-29", "09:00") }).status).toBe("overdue");
+  it("is due at the end of the session's day once the case is in one", () => {
+    expect(view({ sessionTime: { sessionDate: "2026-10-30" } }).dueAt).toBe(new Date(ct("2026-10-30", "23:59")).toISOString());
+    expect(view({ booking: null, slot: null, sessionTime: { sessionDate: "2026-10-30" } }).dueAt).toBe(
+      new Date(ct("2026-10-30", "23:59")).toISOString()
+    );
+  });
+
+  it("is still unpaid on the day itself, and overdue once it's over", () => {
+    expect(view({ nowMs: at("2026-10-29", "13:00") }).status).toBe("unpaid");
+    expect(view({ nowMs: at("2026-10-29", "23:59") }).status).toBe("overdue");
   });
 
   it("is paid once an admin marks it, with no due date", () => {
-    const view = invoiceView({ record, booking: { held_since: heldSince, paid_at: ct("2026-10-21", "16:00") }, slot, nowMs: 0 });
-    expect(view).toMatchObject({ status: "paid", paidAt: ct("2026-10-21", "16:00"), dueAt: null });
+    const paid = view({ booking: { held_since: heldSince, paid_at: ct("2026-10-21", "16:00") }, nowMs: 0 });
+    expect(paid).toMatchObject({ status: "paid", paidAt: ct("2026-10-21", "16:00"), dueAt: null });
   });
 
   it("is void, with nothing due, once voided", () => {
-    const view = invoiceView({
-      record: aRecord(contentFor(), { voided_at: heldSince }),
-      booking: { held_since: heldSince, paid_at: null },
-      slot,
-      nowMs: at("2026-10-23", "09:00"),
+    expect(view({ record: aRecord(contentFor(), { voided_at: heldSince }), nowMs: at("2026-10-23", "09:00") })).toMatchObject({
+      status: "void",
+      dueAt: null,
     });
-    expect(view).toMatchObject({ status: "void", dueAt: null });
   });
 
-  it("is unpaid with no due date without a held time", () => {
-    expect(invoiceView({ record, booking: null, slot: null, nowMs: 0 })).toMatchObject({ status: "unpaid", dueAt: null });
+  it("is unpaid with no due date until the case is scheduled", () => {
+    expect(view({ booking: null, slot: null, nowMs: 0 })).toMatchObject({ status: "unpaid", dueAt: null });
   });
 
   it("bills the firm by name, else by email", () => {
-    expect(invoiceView({ record, booking: null, slot: null, nowMs: 0 }).billedTo).toEqual({ name: "Jane Doe", email: "jane@firm.com" });
+    expect(view({ booking: null, slot: null }).billedTo).toEqual({ name: "Jane Doe", email: "jane@firm.com" });
     const noName = aRecord({ ...contentFor(), billed_to_name: null });
-    expect(invoiceView({ record: noName, booking: null, slot: null, nowMs: 0 }).billedTo.name).toBe("jane@firm.com");
+    expect(view({ record: noName, booking: null, slot: null }).billedTo.name).toBe("jane@firm.com");
   });
 });
 
 describe("invoiceCheckPayable: who to make a check out to", () => {
-  it("names Texas Jury Study at its mailing address while payment is owed", () => {
+  const due = ct("2026-10-29", "23:59");
+
+  it("names Texas Jury Study at its mailing address while payment is asked for", () => {
     const checks = { payee: "Texas Jury Study", addressLines: ["402 Simonton St", "Conroe, TX 77301"] };
-    expect(invoiceCheckPayable("unpaid")).toEqual(checks);
-    expect(invoiceCheckPayable("overdue")).toEqual(checks);
+    expect(invoiceCheckPayable({ status: "unpaid", dueAt: due })).toEqual(checks);
+    expect(invoiceCheckPayable({ status: "overdue", dueAt: due })).toEqual(checks);
   });
 
-  it("is left off once paid or void", () => {
-    expect(invoiceCheckPayable("paid")).toBeNull();
-    expect(invoiceCheckPayable("void")).toBeNull();
+  it("is left off before the case is scheduled, and once paid or void", () => {
+    expect(invoiceCheckPayable({ status: "unpaid", dueAt: null })).toBeNull();
+    expect(invoiceCheckPayable({ status: "paid", dueAt: null })).toBeNull();
+    expect(invoiceCheckPayable({ status: "void", dueAt: null })).toBeNull();
   });
 });
 

@@ -65,13 +65,15 @@ function invoiceData({
   totalCents = 150000,
   ownerIds = [FIRM],
   paidAt = null as string | null,
+  // Scheduled: the case holds a time, so payment is asked for.
+  dueAt = "2026-11-20T05:59:00.000Z" as string | null,
 } = {}) {
   return {
     invoice: {
       number: "INV-2026-0007",
       caseTitle: "Smith v. Jones",
       issuedAt: "2026-11-01T15:00:00.000Z",
-      dueAt: null,
+      dueAt,
       paidAt,
       status,
       billedTo: { name: "Jane Doe", email: "jane@firm.com" },
@@ -133,7 +135,7 @@ beforeEach(() => {
 });
 
 describe("onlinePaymentBlock", () => {
-  const owed = { status: "unpaid" as const, totalCents: 150000 };
+  const owed = { status: "unpaid" as const, totalCents: 150000, dueAt: "2026-10-30T04:59:00.000Z" };
 
   it("lets an unpaid or overdue invoice be paid", () => {
     expect(onlinePaymentBlock(owed, [])).toBeNull();
@@ -146,6 +148,12 @@ describe("onlinePaymentBlock", () => {
     expect(onlinePaymentBlock({ ...owed, status: "void" }, [])).toBe("void");
     expect(onlinePaymentBlock(owed, [{ status: "processing" }])).toBe("processing");
     expect(onlinePaymentBlock({ ...owed, totalCents: 49 }, [])).toBe("too_small");
+  });
+
+  it("refuses an invoice whose case isn't scheduled yet: it has no due date", () => {
+    expect(onlinePaymentBlock({ ...owed, dueAt: null }, [])).toBe("not_scheduled");
+    // Already paid still reads as paid.
+    expect(onlinePaymentBlock({ ...owed, status: "paid", dueAt: null }, [])).toBe("paid");
   });
 });
 
@@ -292,6 +300,12 @@ describe("startInvoicePayment", () => {
   it("refuses another firm's case without touching Stripe", async () => {
     mocks.syncInvoice.mockResolvedValue(invoiceData({ ownerIds: ["someone-else"] }));
     expect(await start()).toEqual({ ok: false, error: "That invoice doesn't exist." });
+    expect(mocks.stripe.checkout.sessions.create).not.toHaveBeenCalled();
+  });
+
+  it("refuses before the case is scheduled, without touching Stripe", async () => {
+    mocks.syncInvoice.mockResolvedValue(invoiceData({ dueAt: null }));
+    expect(await start()).toEqual({ ok: false, error: "You can pay once your focus group is scheduled." });
     expect(mocks.stripe.checkout.sessions.create).not.toHaveBeenCalled();
   });
 

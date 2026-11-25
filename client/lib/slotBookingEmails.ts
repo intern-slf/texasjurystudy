@@ -64,8 +64,9 @@ function caseButton(caseId: string, label: string): string {
 }
 
 /**
- * To the firm: its time is held, and payment is due by the deadline. `paid` when
- * the case was already paid for (an admin re-booking it), so it isn't asked again.
+ * To the firm: its time is held, and payment is due by the end of that day.
+ * `paid` when the case was already paid for (an admin re-booking it), so it
+ * isn't asked again.
  */
 export async function sendSlotHeldEmail(args: {
   to: string;
@@ -92,8 +93,7 @@ export async function sendSlotHeldEmail(args: {
       args.paid
         ? ""
         : notice(
-            `An invoice will follow from our team. Please pay it by <strong>${escHtml(formatDeadline(args.dueAt))}</strong> to keep this time; if payment hasn't reached us by then, we may release it to another firm.`,
-            "warn"
+            `Please pay the invoice by <strong>${escHtml(formatDeadline(args.dueAt))}</strong>, the end of your focus group's day. You can view and pay it from your case page.`
           )
     }
     ${notice(

@@ -183,11 +183,11 @@ export async function markBookingUnpaid(caseId: string): Promise<Result> {
 
 /* =========================
    RELEASE A HOLD
-   "unpaid": payment didn't arrive by the deadline. The clock stops, so if the
-   firm books again it gets a fresh working day. Refused before the deadline,
-   or once paid, so the firm is never told it didn't pay when it still could.
-   "other": any other reason (the firm asked, the time fell through). The
-   payment clock and any payment stay with the case.
+   "unpaid": payment didn't arrive by the deadline, the end of the slot's day.
+   Refused before then, or once paid, so the firm is never told it didn't pay
+   when it still could.
+   "other": any other reason (the firm asked, the time fell through). Any
+   payment stays with the case.
 ========================= */
 
 export async function cancelBooking(
@@ -204,10 +204,8 @@ export async function cancelBooking(
 
   if (reason === "unpaid") {
     if (booking.paid_at) return fail("This booking is marked paid, so it can't be released for non-payment.");
-    const due = booking.held_since ? paymentDueAt(booking.held_since) : null;
-    if (!due || Date.now() < due.getTime()) {
-      return fail(due ? `Payment isn't due until ${formatDeadline(due)}.` : "This hold has no payment deadline.");
-    }
+    const due = paymentDueAt({ slot: booking.slot })!;
+    if (Date.now() < due.getTime()) return fail(`Payment isn't due until ${formatDeadline(due)}.`);
   }
 
   const supabase = await createClient();
@@ -261,7 +259,7 @@ export async function cancelBooking(
 
 /* =========================
    MOVE A BOOKING
-   Keeps the payment clock and any payment. The new slot only has to be free and
+   Keeps any payment; payment falls due at the end of the new slot's day. The new slot only has to be free and
    in the future: an admin may knowingly pick a shorter one, and the case page
    warns about it.
 ========================= */
@@ -375,7 +373,7 @@ export async function assignSlot(caseId: string, slotId: string): Promise<Result
 
   const firmEmail = await emailOf(theCase.owner_id);
   const paid = !!existing?.paid_at;
-  const dueAt = paymentDueAt(heldSince);
+  const dueAt = paymentDueAt({ slot })!;
   const warning = await notify(
     firmEmail,
     (to) =>

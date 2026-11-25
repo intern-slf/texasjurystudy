@@ -6,6 +6,7 @@ import {
   SLOT_TIME_ZONE_LABEL,
   addDays,
   formatDateKey,
+  slotDateKey,
   type TimeSlot,
 } from "@/lib/requesteeTimeSlots";
 
@@ -14,18 +15,17 @@ import {
  * Nothing here touches the database, so the server actions, the screens and the
  * tests share them.
  *
- * Deadlines count working hours: Monday to Friday on the Central Time clock, so
- * a booking made on Friday afternoon is due on Monday afternoon, and one made at
- * the weekend counts from Monday 00:00. US holidays count as working days.
+ * Payment is due by the end of the day the case runs (paymentDueAt): nothing
+ * is owed before it's scheduled, by a held slot or a session.
+ *
+ * The booking lead counts working hours: Monday to Friday on the Central Time
+ * clock, so a slot booked on Friday afternoon must start after Tuesday
+ * afternoon. US holidays count as working days.
  */
 
-/** Payment is due this many working hours after the hold starts. */
-export const PAYMENT_DUE_WORKING_HOURS = 24;
-
 /**
- * A firm can only book a slot starting at least this many working hours ahead:
- * payment falls due a working day before the session, and the admin has a
- * working day to invite participants.
+ * A firm can only book a slot starting at least this many working hours ahead,
+ * so the admin has time to build the session and invite participants.
  */
 export const BOOKING_LEAD_WORKING_HOURS = 48;
 
@@ -37,8 +37,8 @@ export type SlotBookingRow = {
   paid_at: string | null;
 };
 
-/** open: nobody holds it. past: held, unpaid, and its time has come. */
-export type BookingState = "open" | "unpaid" | "overdue" | "paid" | "past";
+/** open: nobody holds it. overdue: held, unpaid, and the end of its day has gone by. */
+export type BookingState = "open" | "unpaid" | "overdue" | "paid";
 
 /** What the admin screens show about one booked slot. */
 export type BookingView = {
@@ -50,7 +50,7 @@ export type BookingView = {
   firm: string;
   state: Exclude<BookingState, "open">;
   paidAt: string | null;
-  /** When payment is (or was) due. Null when no clock is running. */
+  /** When payment is (or was) due: the end of the slot's day. */
   dueAt: string | null;
   /** Things the admin should look at: a rejected or archived case, a slot shorter than the case needs. */
   warnings: string[];
@@ -72,7 +72,6 @@ export const BOOKING_STATE_LABEL: Record<BookingState, string> = {
   unpaid: "Unpaid",
   overdue: "Payment overdue",
   paid: "Paid",
-  past: "Unpaid, time passed",
 };
 
 const MS_PER_HOUR = 60 * 60 * 1000;
@@ -136,8 +135,20 @@ export function addWorkingHours(from: string | number | Date, hours: number): Da
   return fromCentralWallClock(date, msOfDay + remaining);
 }
 
-export function paymentDueAt(heldSince: string | number | Date): Date {
-  return addWorkingHours(heldSince, PAYMENT_DUE_WORKING_HOURS);
+/**
+ * When payment is due: 11:59 PM Central on the day the case runs. That's the
+ * day of its session once it's in one, else the day of the slot its firm
+ * holds. Null while it has neither: it isn't scheduled, so nothing is owed yet.
+ */
+export function paymentDueAt({
+  slot,
+  sessionDate,
+}: {
+  slot?: Pick<TimeSlot, "starts_at"> | null;
+  sessionDate?: string | null;
+}): Date | null {
+  const day = sessionDate || (slot ? slotDateKey(slot.starts_at) : null);
+  return day ? fromCentralWallClock(day, MS_PER_DAY - 60_000) : null;
 }
 
 export function earliestBookableStart(now: string | number | Date): Date {
@@ -201,8 +212,7 @@ export function bookingState(
 ): BookingState {
   if (!booking) return "open";
   if (booking.paid_at) return "paid";
-  if (Date.parse(slot.starts_at) <= nowMs) return "past";
-  if (booking.held_since && nowMs >= paymentDueAt(booking.held_since).getTime()) return "overdue";
+  if (nowMs >= paymentDueAt({ slot })!.getTime()) return "overdue";
   return "unpaid";
 }
 

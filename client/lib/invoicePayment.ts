@@ -42,17 +42,19 @@ export const CHECKOUT_TTL_MINUTES = 60;
 export const CHECKOUT_INTEGRATION_ID = "tjs_invoice_pay_kqwhrzvm";
 
 /**
- * Whether a firm can pay this invoice online now: it's owed, not tiny, and no
- * bank payment for it is already on its way. Returns why not, for the page.
+ * Whether a firm can pay this invoice online now: it's owed, the case is
+ * scheduled (so the invoice has a due date), it's not tiny, and no bank payment
+ * for it is already on its way. Returns why not, for the page.
  */
 export function onlinePaymentBlock(
-  invoice: Pick<InvoiceView, "status" | "totalCents">,
+  invoice: Pick<InvoiceView, "status" | "totalCents" | "dueAt">,
   payments: Pick<InvoicePaymentRow, "status">[]
-): "paid" | "void" | "review" | "processing" | "too_small" | null {
+): "paid" | "void" | "review" | "processing" | "not_scheduled" | "too_small" | null {
   if (invoice.status === "paid" || payments.some((p) => p.status === "succeeded")) return "paid";
   if (invoice.status === "void") return "void";
   if (payments.some((p) => p.status === "review")) return "review";
   if (payments.some((p) => p.status === "processing")) return "processing";
+  if (!invoice.dueAt) return "not_scheduled";
   if (invoice.totalCents < STRIPE_MIN_CHARGE_CENTS) return "too_small";
   return null;
 }

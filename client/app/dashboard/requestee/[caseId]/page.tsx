@@ -10,6 +10,8 @@ import AddParticipantRequestee from "@/components/AddParticipantRequestee";
 import ReceiptPricingPreview from "@/components/ReceiptPricingPreview";
 import CaseDiscountControl from "@/components/CaseDiscountControl";
 import { getCaseDiscountState } from "@/lib/caseDiscountData";
+import { getBookingsForCases } from "@/lib/slotBookingData";
+import { paymentDueAt } from "@/lib/slotBooking";
 import { onlinePaymentEnabled } from "@/lib/stripe";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
@@ -109,8 +111,23 @@ export default async function RequesteeCaseDetailPage({
   const filters = c.filters as CaseFilters | null;
   // The invoice is linked once the case is approved.
   const hasInvoice = admin_status === "approved" || admin_status === "submitted";
+  // Payment is only asked for once the case is scheduled: a held slot or a
+  // session. Unreadable, the booking just doesn't count, so Pay stays hidden
+  // unless the case is in a session.
+  const booking = hasInvoice
+    ? await getBookingsForCases([c.id])
+        .then((bookings) => bookings.get(c.id) ?? null)
+        .catch((err) => {
+          console.error("[requestee case page] couldn't read the booking:", err);
+          return null;
+        })
+    : null;
+  const scheduled = !!paymentDueAt({
+    slot: booking?.slot,
+    sessionDate: caseSessionTime(c.session_cases as CaseSessionRow[] | null | undefined)?.sessionDate,
+  });
   // Paying happens on the invoice page, so the firm sees what it's paying for first.
-  const canPayOnline = hasInvoice && onlinePaymentEnabled() && discountState?.paid === false;
+  const canPayOnline = hasInvoice && scheduled && onlinePaymentEnabled() && discountState?.paid === false;
 
   function StatusBadge() {
     if (status === "previous") return <Badge variant="secondary">Past</Badge>;

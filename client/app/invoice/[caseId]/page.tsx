@@ -110,7 +110,7 @@ export default async function InvoicePage({
 
   const paid = invoice.status === "paid";
   const voided = invoice.status === "void";
-  const checks = invoiceCheckPayable(invoice.status);
+  const checks = invoiceCheckPayable(invoice);
 
   const payOnline = onlinePaymentEnabled();
   // Read even with online payment off, so a paid invoice still says what it was paid with.

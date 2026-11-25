@@ -31,6 +31,7 @@ const BLOCKED: Record<NonNullable<ReturnType<typeof onlinePaymentBlock>>, string
   void: "This invoice is void, so nothing is owed.",
   review: "We've received a payment for this invoice and are checking it. We'll be in touch.",
   processing: "A bank payment for this invoice is already on its way. It usually clears in 4 working days.",
+  not_scheduled: "You can pay once your focus group is scheduled.",
   too_small: "This invoice is too small to pay online. Email us and we'll sort it out.",
 };
 

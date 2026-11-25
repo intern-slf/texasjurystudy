@@ -47,6 +47,7 @@ function data({ paidAt = null as string | null, voidedAt = null as string | null
       record: record({ voided_at: voidedAt }),
       booking: { held_since: heldSince, paid_at: paidAt },
       slot,
+      sessionTime: null,
       nowMs: Date.parse(ct("2026-10-22", "09:00")),
     }),
     ownerIds,

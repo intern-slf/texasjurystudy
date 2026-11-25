@@ -8,7 +8,6 @@ export const BOOKING_STATE_CLASSES: Record<BookingState, string> = {
   unpaid: "bg-amber-50 text-amber-800 ring-amber-400/40",
   overdue: "bg-red-50 text-red-700 ring-red-400/40",
   paid: "bg-green-50 text-green-700 ring-green-400/40",
-  past: "bg-slate-100 text-slate-600 ring-slate-400/30",
 };
 
 export function BookingStateBadge({ state }: { state: BookingState }) {
@@ -46,7 +45,7 @@ export default function BookingSummary({ booking, showCaseLink = true }: { booki
         {booking.state === "paid" && booking.paidAt
           ? `Paid · marked ${formatDeadline(booking.paidAt)}`
           : booking.dueAt
-            ? `${booking.state === "overdue" || booking.state === "past" ? "Payment was due" : "Payment due"} ${formatDeadline(booking.dueAt)}`
+            ? `${booking.state === "overdue" ? "Payment was due" : "Payment due"} ${formatDeadline(booking.dueAt)}`
             : "No payment deadline"}
       </p>
 
