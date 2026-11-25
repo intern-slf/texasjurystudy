@@ -187,8 +187,8 @@ describe("invoice page", () => {
       mocks.payOnline.current = true;
     });
 
-    it("offers the firm, and only the firm, to pay an owed invoice", async () => {
-      expect(await render()).toContain("[pay: $1,700.00]");
+    it("offers the firm, and only the firm, to pay an owed invoice, at the top and under the invoice", async () => {
+      expect((await render()).match(/\[pay: \$1,700\.00\]/g)).toHaveLength(2);
       mocks.role.current = "admin";
       expect(await render()).not.toContain("[pay:");
     });

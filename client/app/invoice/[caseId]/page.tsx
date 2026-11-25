@@ -268,6 +268,13 @@ export default async function InvoicePage({
           </p>
         </footer>
       </article>
+
+      {/* The same button again where the invoice ends, so it's there once the firm has read it. */}
+      {role === "requestee" && payOnline && !block && (
+        <div className="flex justify-center pt-2 print:hidden">
+          <PayInvoiceButton caseId={caseId} amountLabel={formatCents(invoice.totalCents)} placement="footer" />
+        </div>
+      )}
     </div>
   );
 }

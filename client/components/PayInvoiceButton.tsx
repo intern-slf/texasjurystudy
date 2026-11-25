@@ -20,7 +20,17 @@ const CHECKOUT_ORIGIN = "https://checkout.stripe.com";
  * message put into it is announced. Pointing at or focusing the button opens a
  * connection to Stripe early, so the hand-off is quicker.
  */
-export default function PayInvoiceButton({ caseId, amountLabel }: { caseId: string; amountLabel: string }) {
+export default function PayInvoiceButton({
+  caseId,
+  amountLabel,
+  placement = "toolbar",
+}: {
+  caseId: string;
+  amountLabel: string;
+  /** toolbar: small, at the top right. footer: larger, centered under the invoice. */
+  placement?: "toolbar" | "footer";
+}) {
+  const footer = placement === "footer";
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState("");
   // Stays set once the browser is on its way to Stripe, so a second click can't open another session.
@@ -51,13 +61,13 @@ export default function PayInvoiceButton({ caseId, amountLabel }: { caseId: stri
   }
 
   return (
-    <div className="flex flex-wrap items-center justify-end gap-2">
+    <div className={footer ? "flex flex-col-reverse items-center gap-2" : "flex flex-wrap items-center justify-end gap-2"}>
       <p role="status" aria-live="polite" className="text-sm text-red-600">
         {error}
       </p>
       <Button
         type="button"
-        size="sm"
+        size={footer ? "lg" : "sm"}
         aria-disabled={busy}
         aria-busy={busy}
         className="aria-disabled:cursor-progress aria-disabled:opacity-70"
