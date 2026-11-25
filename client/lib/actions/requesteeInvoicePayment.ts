@@ -21,13 +21,25 @@ const fail = (error: string): Result => ({ ok: false, error });
  * Where Stripe sends the firm back to. A Vercel preview shares production's
  * NEXT_PUBLIC_APP_URL, so on a preview it's the preview address the firm is
  * on: the one it clicked Pay from, where it's logged in, which may be an alias
- * rather than the deployment's own VERCEL_URL. Only a *.vercel.app host is
- * taken from the request; anything else falls back to VERCEL_URL.
+ * rather than the deployment's own VERCEL_URL.
+ *
+ * The request's host is only used when it exactly matches one of this
+ * preview's own addresses: VERCEL_URL, VERCEL_BRANCH_URL, or one listed in
+ * PREVIEW_RETURN_HOSTS (comma-separated, e.g. an alias). Not a pattern like
+ * *.vercel.app: that's a public suffix, so it matches every Vercel customer's
+ * site. Anything else falls back to VERCEL_URL.
  */
 async function returnUrl(): Promise<string> {
   if (process.env.VERCEL_ENV === "preview") {
-    const host = (await headers()).get("host");
-    if (host && /^[a-z0-9-]+\.vercel\.app$/i.test(host)) return `https://${host}`;
+    const ownHosts = [
+      process.env.VERCEL_URL,
+      process.env.VERCEL_BRANCH_URL,
+      ...(process.env.PREVIEW_RETURN_HOSTS ?? "").split(","),
+    ]
+      .map((h) => h?.trim().toLowerCase())
+      .filter(Boolean);
+    const host = (await headers()).get("host")?.toLowerCase();
+    if (host && ownHosts.includes(host)) return `https://${host}`;
     if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
   }
   return (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "");

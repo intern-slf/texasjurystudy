@@ -289,23 +289,30 @@ describe("startInvoicePayment", () => {
   it("sends a preview's payers back to the preview address they paid from, not the live site", async () => {
     process.env.VERCEL_ENV = "preview";
     process.env.VERCEL_URL = "texasjurystudy-abc123.vercel.app";
-    try {
-      // From an alias: back to the alias, where they're logged in.
-      mocks.host.current = "tjs-stripe-preview.vercel.app";
-      await start();
-      let params = mocks.stripe.checkout.sessions.create.mock.calls[0][0];
-      expect(params.success_url).toBe(`https://tjs-stripe-preview.vercel.app/invoice/${CASE_ID}?payment=done`);
-      expect(params.cancel_url).toBe(`https://tjs-stripe-preview.vercel.app/invoice/${CASE_ID}?payment=cancelled`);
-
-      // A host that isn't a Vercel address isn't trusted: the deployment's own.
+    process.env.VERCEL_BRANCH_URL = "texasjurystudy-git-feat-slf.vercel.app";
+    process.env.PREVIEW_RETURN_HOSTS = "tjs-stripe-preview.vercel.app, other-alias.vercel.app";
+    const backTo = async (host: string) => {
       db.reset({ invoices: [{ id: "inv-1", case_id: CASE_ID }], invoice_payments: [] });
-      mocks.host.current = "evil.example.com";
+      mocks.stripe.checkout.sessions.create.mockClear();
+      mocks.host.current = host;
       await start();
-      params = mocks.stripe.checkout.sessions.create.mock.calls[1][0];
-      expect(params.success_url).toBe(`https://texasjurystudy-abc123.vercel.app/invoice/${CASE_ID}?payment=done`);
+      const params = mocks.stripe.checkout.sessions.create.mock.calls[0][0];
+      expect(params.cancel_url).toBe(params.success_url.replace("payment=done", "payment=cancelled"));
+      return params.success_url.replace(`/invoice/${CASE_ID}?payment=done`, "");
+    };
+    try {
+      // Its own addresses, where the firm is logged in.
+      expect(await backTo("tjs-stripe-preview.vercel.app")).toBe("https://tjs-stripe-preview.vercel.app");
+      expect(await backTo("texasjurystudy-git-feat-slf.vercel.app")).toBe("https://texasjurystudy-git-feat-slf.vercel.app");
+      expect(await backTo("texasjurystudy-abc123.vercel.app")).toBe("https://texasjurystudy-abc123.vercel.app");
+      // Anything else, even another *.vercel.app site, gets the deployment's own address.
+      expect(await backTo("someone-else.vercel.app")).toBe("https://texasjurystudy-abc123.vercel.app");
+      expect(await backTo("evil.example.com")).toBe("https://texasjurystudy-abc123.vercel.app");
     } finally {
       delete process.env.VERCEL_ENV;
       delete process.env.VERCEL_URL;
+      delete process.env.VERCEL_BRANCH_URL;
+      delete process.env.PREVIEW_RETURN_HOSTS;
       mocks.host.current = "app.example.com";
     }
   });
