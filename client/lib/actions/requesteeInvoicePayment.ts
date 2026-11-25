@@ -1,5 +1,6 @@
 "use server";
 
+import { headers } from "next/headers";
 import { requireRequestee } from "@/lib/requireRequestee";
 import { syncInvoice } from "@/lib/invoiceData";
 import { getInvoicePayments, moveInvoicePayment } from "@/lib/invoicePaymentData";
@@ -18,13 +19,19 @@ const fail = (error: string): Result => ({ ok: false, error });
 
 /**
  * Where Stripe sends the firm back to. A Vercel preview shares production's
- * NEXT_PUBLIC_APP_URL, so on a preview it's the preview's own address instead,
- * or testing a branch would land the payer on the live site.
+ * NEXT_PUBLIC_APP_URL, so on a preview it's the preview address the firm is
+ * on: the one it clicked Pay from, where it's logged in, which may be an alias
+ * rather than the deployment's own VERCEL_URL. Only a *.vercel.app host is
+ * taken from the request; anything else falls back to VERCEL_URL.
  */
-const returnUrl = () =>
-  process.env.VERCEL_ENV === "preview" && process.env.VERCEL_URL
-    ? `https://${process.env.VERCEL_URL}`
-    : (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "");
+async function returnUrl(): Promise<string> {
+  if (process.env.VERCEL_ENV === "preview") {
+    const host = (await headers()).get("host");
+    if (host && /^[a-z0-9-]+\.vercel\.app$/i.test(host)) return `https://${host}`;
+    if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  }
+  return (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "");
+}
 
 const BLOCKED: Record<NonNullable<ReturnType<typeof onlinePaymentBlock>>, string> = {
   paid: "This invoice is already paid.",
@@ -68,11 +75,18 @@ export async function startInvoicePayment(caseId: string): Promise<Result> {
   if (block) return fail(BLOCKED[block]);
 
   const stripe = getStripe();
+  const back = await returnUrl();
 
   try {
     for (const p of payments.filter((p) => p.status === "open")) {
       const session = await stripe.checkout.sessions.retrieve(p.stripe_checkout_session_id);
-      if (session.status === "open" && session.amount_total === invoice.totalCents && session.url) {
+      // Reused only if it returns the firm to where it is now.
+      if (
+        session.status === "open" &&
+        session.amount_total === invoice.totalCents &&
+        session.cancel_url?.startsWith(`${back}/`) &&
+        session.url
+      ) {
         return { ok: true, url: session.url };
       }
       // Paid (or a bank payment started) but the webhook hasn't recorded it yet.
@@ -112,8 +126,8 @@ export async function startInvoicePayment(caseId: string): Promise<Result> {
       metadata,
       payment_intent_data: { metadata, description: `Invoice ${invoice.number}` },
       expires_at: Math.floor(Date.now() / 1000) + CHECKOUT_TTL_MINUTES * 60,
-      success_url: `${returnUrl()}/invoice/${caseId}?payment=done`,
-      cancel_url: `${returnUrl()}/invoice/${caseId}?payment=cancelled`,
+      success_url: `${back}/invoice/${caseId}?payment=done`,
+      cancel_url: `${back}/invoice/${caseId}?payment=cancelled`,
     });
     if (!session.url) throw new Error("Stripe returned a session with no URL");
 

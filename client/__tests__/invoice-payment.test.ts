@@ -22,6 +22,7 @@ const FIRM = "firm-1";
 const db = new FakeDb();
 
 const mocks = vi.hoisted(() => ({
+  host: { current: "app.example.com" },
   firm: { current: "firm-1" as string | null },
   enabled: { current: true },
   live: { current: false },
@@ -59,6 +60,7 @@ vi.mock("@/lib/mail", () => ({
   escHtml: (s: string) => s,
 }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+vi.mock("next/headers", () => ({ headers: async () => new Headers({ host: mocks.host.current }) }));
 
 function invoiceData({
   status = "unpaid",
@@ -284,17 +286,28 @@ describe("startInvoicePayment", () => {
     expect(mocks.stripe.checkout.sessions.create).not.toHaveBeenCalled();
   });
 
-  it("sends a preview's payers back to the preview, not the live site", async () => {
+  it("sends a preview's payers back to the preview address they paid from, not the live site", async () => {
     process.env.VERCEL_ENV = "preview";
     process.env.VERCEL_URL = "texasjurystudy-abc123.vercel.app";
     try {
+      // From an alias: back to the alias, where they're logged in.
+      mocks.host.current = "tjs-stripe-preview.vercel.app";
       await start();
+      let params = mocks.stripe.checkout.sessions.create.mock.calls[0][0];
+      expect(params.success_url).toBe(`https://tjs-stripe-preview.vercel.app/invoice/${CASE_ID}?payment=done`);
+      expect(params.cancel_url).toBe(`https://tjs-stripe-preview.vercel.app/invoice/${CASE_ID}?payment=cancelled`);
+
+      // A host that isn't a Vercel address isn't trusted: the deployment's own.
+      db.reset({ invoices: [{ id: "inv-1", case_id: CASE_ID }], invoice_payments: [] });
+      mocks.host.current = "evil.example.com";
+      await start();
+      params = mocks.stripe.checkout.sessions.create.mock.calls[1][0];
+      expect(params.success_url).toBe(`https://texasjurystudy-abc123.vercel.app/invoice/${CASE_ID}?payment=done`);
     } finally {
       delete process.env.VERCEL_ENV;
       delete process.env.VERCEL_URL;
+      mocks.host.current = "app.example.com";
     }
-    const params = mocks.stripe.checkout.sessions.create.mock.calls[0][0];
-    expect(params.success_url).toBe(`https://texasjurystudy-abc123.vercel.app/invoice/${CASE_ID}?payment=done`);
   });
 
   it("refuses another firm's case without touching Stripe", async () => {
@@ -329,11 +342,27 @@ describe("startInvoicePayment", () => {
       id: "cs_old",
       status: "open",
       amount_total: 150000,
+      cancel_url: `https://app.example.com/invoice/${CASE_ID}?payment=cancelled`,
       url: "https://checkout.stripe.com/c/pay/cs_old",
     });
 
     expect(await start()).toEqual({ ok: true, url: "https://checkout.stripe.com/c/pay/cs_old" });
     expect(mocks.stripe.checkout.sessions.create).not.toHaveBeenCalled();
+  });
+
+  it("opens a new session rather than reuse one that would return the firm to another address", async () => {
+    db.reset({ invoices: [{ id: "inv-1", case_id: CASE_ID }], invoice_payments: [payment()] });
+    mocks.stripe.checkout.sessions.retrieve.mockResolvedValue({
+      id: "cs_old",
+      status: "open",
+      amount_total: 150000,
+      cancel_url: `https://texasjurystudy-old.vercel.app/invoice/${CASE_ID}?payment=cancelled`,
+      url: "https://checkout.stripe.com/c/pay/cs_old",
+    });
+
+    expect((await start()).ok).toBe(true);
+    expect(mocks.stripe.checkout.sessions.expire).toHaveBeenCalledWith("cs_old");
+    expect(mocks.stripe.checkout.sessions.create).toHaveBeenCalledTimes(1);
   });
 
   it("expires an open session for an old amount before opening a new one", async () => {
