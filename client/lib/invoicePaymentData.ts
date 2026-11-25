@@ -40,6 +40,26 @@ export async function getInvoicePayments(caseId: string): Promise<InvoicePayment
   return (data ?? []) as InvoicePaymentRow[];
 }
 
+/**
+ * For the firm's dashboard: which of these cases have money on its way (a bank
+ * payment clearing) or held for review, so they aren't asked to pay again.
+ * Throws when the read fails.
+ */
+export async function getPaymentsUnderway(caseIds: string[]): Promise<Map<string, "processing" | "review">> {
+  const underway = new Map<string, "processing" | "review">();
+  if (!caseIds.length) return underway;
+  const { data, error } = await supabaseAdmin
+    .from("invoice_payments")
+    .select("case_id, status")
+    .in("case_id", caseIds)
+    .in("status", ["processing", "review"]);
+  if (error) throw new Error(`Couldn't read the cases' payments: ${error.message}`);
+  for (const row of (data ?? []) as { case_id: string; status: "processing" | "review" }[]) {
+    if (underway.get(row.case_id) !== "review") underway.set(row.case_id, row.status);
+  }
+  return underway;
+}
+
 /** Moves a row to `next`, only from a status that allows it. Returns the row if it moved, null if not. */
 export async function moveInvoicePayment(
   sessionId: string,

@@ -24,6 +24,10 @@ import { Calendar, Clock, AlertCircle, FileText, Upload, ArrowRight } from "luci
 import { caseSessionTime, type CaseSessionRow } from "@/lib/case/caseSessionTime";
 import { centralDateTimeInput, formatCentralDate, formatCentralDateTime, formatSessionDate } from "@/lib/timezone";
 import { getBookingsForCases } from "@/lib/slotBookingData";
+import { paymentDueAt } from "@/lib/slotBooking";
+import { getPaymentsUnderway } from "@/lib/invoicePaymentData";
+import { onlinePaymentEnabled } from "@/lib/stripe";
+import CasePaymentPrompt from "@/components/CasePaymentPrompt";
 import { describeSlot, type TimeSlot } from "@/lib/requesteeTimeSlots";
 import { SUPPORT_EMAIL } from "@/lib/legal-constants";
 import { TEXAS_COUNTIES } from "@/lib/constants/texas-counties";
@@ -186,6 +190,16 @@ export default async function RequesteeDashboard({
   } catch (err) {
     console.error("[requestee dashboard] bookings failed:", err);
   }
+
+  // Payments already on their way, so those cases aren't asked to pay again.
+  // Unreadable, a case just shows its due date and Pay; the invoice page
+  // says the rest.
+  const paymentsUnderway = await getPaymentsUnderway((cases ?? []).map((c) => c.id as string)).catch((err) => {
+    console.error("[requestee dashboard] payments failed:", err);
+    return new Map<string, "processing" | "review">();
+  });
+  const payOnline = onlinePaymentEnabled();
+  const nowMs = Date.now();
 
 
   /* ===========================
@@ -518,6 +532,15 @@ export default async function RequesteeDashboard({
                             </form>
                           </div>
                         )}
+
+                      <CasePaymentPrompt
+                        caseId={c.id}
+                        dueAt={paymentDueAt({ slot: heldSlotByCase.get(c.id), sessionDate: sessionTimeOf(c)?.sessionDate })}
+                        paid={paidCaseIds.has(c.id)}
+                        underway={paymentsUnderway.get(c.id) ?? null}
+                        payOnline={payOnline}
+                        nowMs={nowMs}
+                      />
 
                     </div>
                     </div>
