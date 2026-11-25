@@ -47,6 +47,7 @@ function data({ paidAt = null as string | null, voidedAt = null as string | null
       record: record({ voided_at: voidedAt }),
       booking: { held_since: heldSince, paid_at: paidAt },
       slot,
+      sessionTime: null,
       nowMs: Date.parse(ct("2026-10-22", "09:00")),
     }),
     ownerIds,
@@ -60,9 +61,12 @@ const mocks = vi.hoisted(() => ({
   user: { current: null as { id: string } | null },
   role: { current: null as string | null },
   syncInvoice: vi.fn(),
+  payOnline: { current: false },
+  payments: { current: [] as Record<string, unknown>[] },
 }));
 
 vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: vi.fn() }),
   redirect: (url: string) => {
     throw new RedirectError(url);
   },
@@ -87,6 +91,11 @@ vi.mock("@/components/PrintInvoiceButton", () => ({
 vi.mock("@/components/EmailInvoiceButton", () => ({
   default: ({ to }: { to: string }) => `[email to: ${to}]`,
 }));
+vi.mock("@/components/PayInvoiceButton", () => ({
+  default: ({ amountLabel }: { amountLabel: string }) => `[pay: ${amountLabel}]`,
+}));
+vi.mock("@/lib/stripe", () => ({ onlinePaymentEnabled: () => mocks.payOnline.current }));
+vi.mock("@/lib/invoicePaymentData", () => ({ getInvoicePayments: async () => mocks.payments.current }));
 
 describe("invoice page", () => {
   const params = Promise.resolve({ caseId: CASE_ID });
@@ -96,11 +105,14 @@ describe("invoice page", () => {
     mocks.role.current = "requestee";
     mocks.syncInvoice.mockReset();
     mocks.syncInvoice.mockResolvedValue(data());
+    mocks.payOnline.current = false;
+    mocks.payments.current = [];
   });
 
-  async function render() {
+  async function render(payment?: string) {
     const { default: InvoicePage } = await import("@/app/invoice/[caseId]/page");
-    return renderToStaticMarkup((await InvoicePage({ params })) as ReactElement);
+    const searchParams = Promise.resolve(payment ? { payment } : {});
+    return renderToStaticMarkup((await InvoicePage({ params, searchParams })) as ReactElement);
   }
 
   it("shows the firm its own case's invoice, and names the PDF after its number", async () => {
@@ -168,5 +180,56 @@ describe("invoice page", () => {
     expect(html).toContain("Void");
     expect(html).toContain("nothing is owed");
     expect(html).not.toContain("checks payable");
+  });
+
+  describe("paying online", () => {
+    beforeEach(() => {
+      mocks.payOnline.current = true;
+    });
+
+    it("offers the firm, and only the firm, to pay an owed invoice, at the top and under the invoice", async () => {
+      expect((await render()).match(/\[pay: \$1,700\.00\]/g)).toHaveLength(2);
+      mocks.role.current = "admin";
+      expect(await render()).not.toContain("[pay:");
+    });
+
+    it("doesn't offer it until Stripe is set up", async () => {
+      mocks.payOnline.current = false;
+      expect(await render()).not.toContain("[pay:");
+    });
+
+    it("doesn't offer it once paid or void", async () => {
+      mocks.syncInvoice.mockResolvedValue(data({ paidAt: ct("2026-10-21", "16:00") }));
+      expect(await render()).not.toContain("[pay:");
+      mocks.syncInvoice.mockResolvedValue(data({ voidedAt: heldSince }));
+      expect(await render()).not.toContain("[pay:");
+    });
+
+    it("says a bank payment is on its way instead of offering another", async () => {
+      mocks.payments.current = [{ status: "processing" }];
+      const html = await render();
+      expect(html).not.toContain("[pay:");
+      expect(html).toContain("bank payment for this invoice is on its way");
+    });
+
+    it("says what happened when Stripe sends the firm back", async () => {
+      expect(await render("cancelled")).toContain("Nothing was charged");
+      expect(await render("done")).toContain("recording your payment");
+      mocks.syncInvoice.mockResolvedValue(data({ paidAt: ct("2026-10-21", "16:00") }));
+      expect(await render("done")).toContain("your payment was received");
+    });
+
+    it("says what a paid invoice was paid with, even with online payment off", async () => {
+      mocks.syncInvoice.mockResolvedValue(data({ paidAt: ct("2026-10-21", "16:00") }));
+      mocks.payments.current = [{ status: "succeeded", method_type: "card", method_brand: "visa", method_last4: "4242" }];
+      expect(await render()).toContain("Visa ending in 4242");
+      mocks.payOnline.current = false;
+      expect(await render()).toContain("Visa ending in 4242");
+    });
+
+    it("says nothing about a method on a paid invoice marked paid by hand", async () => {
+      mocks.syncInvoice.mockResolvedValue(data({ paidAt: ct("2026-10-21", "16:00") }));
+      expect(await render()).not.toContain("ending in");
+    });
   });
 });

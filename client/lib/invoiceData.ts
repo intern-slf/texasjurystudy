@@ -69,10 +69,11 @@ export async function syncInvoice(caseId: string, nowMs: number = Date.now()): P
 
   const booking = bookings.get(caseId) ?? null;
   const slot = booking?.slot ?? null;
+  const sessionTime = caseSessionTime(theCase.session_cases);
   const content = invoiceContent({
     theCase,
     slot,
-    sessionTime: caseSessionTime(theCase.session_cases),
+    sessionTime,
     firm: {
       name: agreement ? `${agreement.first_name ?? ""} ${agreement.last_name ?? ""}`.trim() || null : null,
       email: (role?.email as string | null) ?? null,
@@ -112,7 +113,7 @@ export async function syncInvoice(caseId: string, nowMs: number = Date.now()): P
   }
 
   return {
-    invoice: record ? invoiceView({ record, booking, slot, nowMs }) : null,
+    invoice: record ? invoiceView({ record, booking, slot, sessionTime, nowMs }) : null,
     ownerIds: [theCase.user_id, theCase.requestee_id].filter((id): id is string => !!id),
   };
 }

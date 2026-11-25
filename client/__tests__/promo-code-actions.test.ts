@@ -51,6 +51,9 @@ vi.mock("@/lib/supabase/admin", () => ({
 // What brings the case's invoice up to date; tested in invoice.test.ts.
 const syncInvoiceQuietly = vi.hoisted(() => vi.fn<(caseId: string) => Promise<void>>(async () => {}));
 vi.mock("@/lib/invoiceData", () => ({ syncInvoiceQuietly }));
+// Closes payment pages left open before the discount changes; tested in invoice-payment.test.ts.
+const closeOpenPayments = vi.hoisted(() => vi.fn<(caseId: string) => Promise<"clear" | "in_flight">>(async () => "clear"));
+vi.mock("@/lib/invoicePaymentData", () => ({ closeOpenPayments }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 
 import { applyPromoCode, checkPromoCode, removePromoCode } from "@/lib/actions/requesteePromoCode";
@@ -97,6 +100,7 @@ beforeEach(() => {
   rpcCalls.length = 0;
   rpcAnswer = () => ({ data: null, error: null });
   syncInvoiceQuietly.mockClear();
+  closeOpenPayments.mockClear();
 });
 
 const answers = (data: unknown): typeof rpcAnswer => () => ({ data, error: null });
@@ -205,6 +209,22 @@ describe("a firm applying a code to its case", () => {
     expect(syncInvoiceQuietly).not.toHaveBeenCalled();
   });
 
+  it("closes any payment page left open first, so it can't be paid at the old amount", async () => {
+    await applyPromoCode(CASE, "FALL10");
+    expect(closeOpenPayments).toHaveBeenCalledWith(CASE);
+  });
+
+  it("is refused while a payment is under way, or when that can't be checked", async () => {
+    closeOpenPayments.mockResolvedValueOnce("in_flight");
+    expect(await applyPromoCode(CASE, "FALL10")).toEqual({
+      ok: false,
+      error: expect.stringContaining("payment for this invoice is already under way"),
+    });
+    closeOpenPayments.mockRejectedValueOnce(new Error("Stripe is down"));
+    expect(await applyPromoCode(CASE, "FALL10")).toMatchObject({ ok: false });
+    expect(rpcCalls).toHaveLength(0);
+  });
+
   it("says so when the database fails, and syncs nothing", async () => {
     rpcAnswer = () => ({ data: null, error: { message: "boom" } });
     expect(await applyPromoCode(CASE, "FALL10")).toEqual({
@@ -235,6 +255,12 @@ describe("a firm removing the discount from its case", () => {
 
   it("can't touch another firm's case", async () => {
     expect(await removePromoCode(OTHER_FIRMS_CASE)).toEqual({ ok: false, error: "That case doesn't exist." });
+    expect(rpcCalls).toHaveLength(0);
+  });
+
+  it("is refused while a payment is under way, so a discounted payment can't be followed by freeing the code", async () => {
+    closeOpenPayments.mockResolvedValueOnce("in_flight");
+    expect(await removePromoCode(CASE)).toMatchObject({ ok: false });
     expect(rpcCalls).toHaveLength(0);
   });
 });

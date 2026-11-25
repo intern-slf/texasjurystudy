@@ -34,7 +34,7 @@ const CHIPS_PER_DAY = 3;
 const LONG_DATE: Intl.DateTimeFormatOptions = { weekday: "long", month: "long", day: "numeric" };
 
 /** The state a slot's chip shows: the one most needing the admin, of all its bookings. */
-const STATE_URGENCY: Exclude<BookingState, "open">[] = ["overdue", "past", "unpaid", "paid"];
+const STATE_URGENCY: Exclude<BookingState, "open">[] = ["overdue", "unpaid", "paid"];
 function slotState(list: BookingView[]): Exclude<BookingState, "open"> {
   return STATE_URGENCY.find((state) => list.some((b) => b.state === state)) ?? "paid";
 }

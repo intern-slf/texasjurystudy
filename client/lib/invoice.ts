@@ -1,5 +1,5 @@
 import { calculateReceiptPrice, formatCents } from "@/lib/receipt-pricing";
-import { bookingState, firmLabel, formatDeadline, paymentDueAt, type SlotBookingRow } from "@/lib/slotBooking";
+import { firmLabel, formatDeadline, paymentDueAt, type SlotBookingRow } from "@/lib/slotBooking";
 import { LEGAL_ENTITY, MAILING_ADDRESS, SUPPORT_EMAIL } from "@/lib/legal-constants";
 import {
   SLOT_TIME_ZONE_LABEL,
@@ -28,6 +28,10 @@ import { discountLabel } from "@/lib/promoCode";
  * follows the case while unpaid, so it keeps matching the receipt, and is
  * frozen once paid. If the case is rejected or archived before payment it is
  * voided. Its number and issue date never change.
+ *
+ * Payment is only asked for once the case is scheduled (a held slot or a
+ * session), and is due by the end of that day (paymentDueAt). Until then the
+ * invoice has no due date, and no way to pay is offered.
  */
 
 export type InvoiceCase = {
@@ -71,14 +75,13 @@ export type InvoiceRecord = InvoiceContent & {
   voided_at: string | null;
 };
 
-/** past (held, unpaid, its time has come) reads as overdue on an invoice. */
 export type InvoiceStatus = "paid" | "unpaid" | "overdue" | "void";
 
 export type InvoiceView = {
   number: string;
   caseTitle: string;
   issuedAt: string;
-  /** When payment is (or was) due, while unpaid. Null when no payment clock is running. */
+  /** When payment is (or was) due, while unpaid. Null until the case is scheduled: nothing is asked for yet. */
   dueAt: string | null;
   paidAt: string | null;
   status: InvoiceStatus;
@@ -111,16 +114,22 @@ export function invoiceFooterNote(invoice: Pick<InvoiceView, "status" | "dueAt">
     return `Payment was due ${formatDeadline(invoice.dueAt)}. Questions? Email ${SUPPORT_EMAIL}.`;
   }
   if (invoice.dueAt) return `Payment is due by ${formatDeadline(invoice.dueAt)}. Questions? Email ${SUPPORT_EMAIL}.`;
+  if (invoice.status === "unpaid") {
+    return `Payment will be due on the day of your focus group, once it's scheduled. Questions? Email ${SUPPORT_EMAIL}.`;
+  }
   return `Questions about this invoice? Email ${SUPPORT_EMAIL}.`;
 }
 
 /**
  * Who a check is made out to and where to mail it, the street and the city a
- * line each, while payment is owed. Null once paid or void, or with no
- * MAILING_ADDRESS. Shared by the page, the PDF and the email.
+ * line each, while payment is asked for. Null once paid or void, before the
+ * case is scheduled, or with no MAILING_ADDRESS. Shared by the page, the PDF
+ * and the email.
  */
-export function invoiceCheckPayable(status: InvoiceStatus): { payee: string; addressLines: string[] } | null {
-  if (status === "paid" || status === "void" || !MAILING_ADDRESS) return null;
+export function invoiceCheckPayable(
+  invoice: Pick<InvoiceView, "status" | "dueAt">
+): { payee: string; addressLines: string[] } | null {
+  if (invoice.status === "paid" || invoice.status === "void" || !invoice.dueAt || !MAILING_ADDRESS) return null;
   // "402 Simonton St, Conroe, TX 77301" splits at its first comma.
   const comma = MAILING_ADDRESS.indexOf(", ");
   const addressLines = comma < 0 ? [MAILING_ADDRESS] : [MAILING_ADDRESS.slice(0, comma), MAILING_ADDRESS.slice(comma + 2)];
@@ -265,20 +274,21 @@ export function invoiceView({
   record,
   booking,
   slot,
+  sessionTime,
   nowMs,
 }: {
   record: InvoiceRecord;
   booking: Booking | null;
   slot: Pick<TimeSlot, "starts_at"> | null;
+  sessionTime: Pick<CaseSessionTime, "sessionDate"> | null;
   nowMs: number;
 }): InvoiceView {
   const paidAt = booking?.paid_at ?? null;
-  const due = !paidAt && !record.voided_at && booking?.held_since ? paymentDueAt(booking.held_since) : null;
+  const due = !paidAt && !record.voided_at ? paymentDueAt({ slot, sessionDate: sessionTime?.sessionDate }) : null;
 
   let status: InvoiceStatus;
   if (paidAt) status = "paid";
   else if (record.voided_at) status = "void";
-  else if (booking && slot) status = bookingState(slot, booking, nowMs) === "unpaid" ? "unpaid" : "overdue";
   else status = due && nowMs >= due.getTime() ? "overdue" : "unpaid";
 
   return {

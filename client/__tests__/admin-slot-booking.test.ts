@@ -45,6 +45,9 @@ vi.mock("@/lib/slotBookingEmails", () => ({
 // What issues or updates the case's invoice; tested in invoice.test.ts.
 const syncInvoiceQuietly = vi.hoisted(() => vi.fn<(caseId: string) => Promise<void>>(async () => {}));
 vi.mock("@/lib/invoiceData", () => ({ syncInvoiceQuietly }));
+// Expires payment pages left open; tested in invoice-payment.test.ts.
+const closeOpenPaymentsQuietly = vi.hoisted(() => vi.fn<(caseId: string) => Promise<void>>(async () => {}));
+vi.mock("@/lib/invoicePaymentData", () => ({ closeOpenPaymentsQuietly }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 
 const ADMIN = "0a000000-0000-4000-8000-000000000001";
@@ -164,6 +167,8 @@ describe("payment", () => {
     expect(bookingOf(CASE)).toMatchObject({ paid_at: NOW, paid_by: ADMIN });
     // Brought up to date before payment freezes it.
     expect(syncInvoiceQuietly).toHaveBeenCalledWith(CASE);
+    // A payment page the firm left open can't be paid as well.
+    expect(closeOpenPaymentsQuietly).toHaveBeenCalledWith(CASE);
     await expect(actions.markBookingPaid(CASE)).resolves.toMatchObject({ ok: false });
   });
 
@@ -175,9 +180,10 @@ describe("payment", () => {
 });
 
 describe("releasing a hold", () => {
-  it("won't release for non-payment before the deadline", async () => {
+  it("won't release for non-payment before the deadline: the end of the slot's day", async () => {
+    seed({ held_since: HELD_OVERDUE });
     const result = await actions.cancelBooking(CASE, SLOT_A, "unpaid");
-    expect(result).toEqual({ ok: false, error: "Payment isn't due until Wed, Oct 21, 9:00 AM CT." });
+    expect(result).toEqual({ ok: false, error: "Payment isn't due until Tue, Oct 27, 11:59 PM CT." });
     expect(db.writes).toEqual([]);
   });
 
@@ -188,6 +194,8 @@ describe("releasing a hold", () => {
   });
 
   it("releases an overdue hold, stops the clock, and tells the firm it can pick again", async () => {
+    // The day after SLOT_A's day.
+    vi.setSystemTime(new Date("2026-10-28T15:00:00.000Z"));
     seed({ held_since: HELD_OVERDUE });
     await expect(actions.cancelBooking(CASE, SLOT_A, "unpaid")).resolves.toEqual({ ok: true, warning: undefined });
     expect(bookingOf(CASE)).toMatchObject({ slot_id: null, held_since: null });

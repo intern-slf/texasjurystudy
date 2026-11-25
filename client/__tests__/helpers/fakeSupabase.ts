@@ -13,6 +13,9 @@
  *   promo_codes: code is unique (23505 on promo_codes_code_key), and an
  *   insert without an id gets one, as its DEFAULT gen_random_uuid() gives.
  *
+ *   invoice_payments: the session id is unique, and a case has at most one
+ *   open or processing row (23505, 20261121_invoice_payment_guards.sql).
+ *
  * select() understands one embed, `cases(...)` on requestee_slot_bookings,
  * which brings the booked case's row along as `cases`.
  *
@@ -74,6 +77,18 @@ export class FakeDb {
     if (table === "promo_codes") {
       const taken = this.rows(table).some((r) => r !== ignore && r.code === candidate.code);
       return taken ? { code: "23505", message: 'duplicate key value violates unique constraint "promo_codes_code_key"' } : null;
+    }
+    if (table === "invoice_payments") {
+      const others = this.rows(table).filter((r) => r !== ignore);
+      const inFlight = (r: Row) => r.status === "open" || r.status === "processing";
+      if (others.some((r) => r.stripe_checkout_session_id === candidate.stripe_checkout_session_id)) {
+        return { code: "23505", message: 'duplicate key value violates unique constraint "invoice_payments_session_key"' };
+      }
+      const status = candidate.status ?? "open";
+      if (inFlight({ status }) && others.some((r) => r.case_id === candidate.case_id && inFlight(r))) {
+        return { code: "23505", message: 'duplicate key value violates unique constraint "invoice_payments_one_in_flight_idx"' };
+      }
+      return null;
     }
     if (table !== "requestee_slot_bookings") return null;
     const others = this.rows(table).filter((r) => r !== ignore);

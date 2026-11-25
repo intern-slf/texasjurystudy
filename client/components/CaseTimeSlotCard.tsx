@@ -64,7 +64,7 @@ export default async function CaseTimeSlotCard({ caseId }: { caseId: string }) {
     }
   }
   const slot = record?.slot ?? null;
-  const due = record?.held_since && !record.paid_at ? paymentDueAt(record.held_since) : null;
+  const due = slot && !record?.paid_at ? paymentDueAt({ slot }) : null;
 
   // Nothing to show: no time held, and nothing the firm can do about it here.
   if (!slot && !underReview) return null;
@@ -90,7 +90,7 @@ export default async function CaseTimeSlotCard({ caseId }: { caseId: string }) {
             {record?.paid_at
               ? "Payment received. Thank you."
               : due && nowMs >= due.getTime()
-                ? `Payment was due ${formatDeadline(due)}. If we haven't received it, we may release this time.`
+                ? `Payment was due ${formatDeadline(due)}.`
                 : due
                   ? `Payment is due by ${formatDeadline(due)}.`
                   : null}

@@ -589,7 +589,7 @@ export default function NewCasePage() {
                   <>
                     <p className="text-xs text-muted-foreground">
                       Times are Central Time. We hold the time you pick while we review your case. Payment is due
-                      within one working day; an invoice will follow from our team.
+                      by the end of your focus group&apos;s day.
                     </p>
                     <TimeSlotPicker
                       slots={openSlots}
@@ -862,7 +862,7 @@ export default function NewCasePage() {
                     <p className="mt-1 text-sm text-blue-800">
                       {booking.paid || !booking.dueAt
                         ? "Payment for this case has been received."
-                        : `Payment is due by ${formatDeadline(booking.dueAt)}. An invoice will follow from our team; if payment hasn't reached us by then, we may release the time.`}
+                        : `Payment is due by ${formatDeadline(booking.dueAt)}. You can view and pay the invoice from your case page.`}
                     </p>
                     <p className="mt-1 text-sm text-blue-800">
                       You can change or cancel it on your case page until we approve the case.

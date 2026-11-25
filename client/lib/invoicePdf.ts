@@ -187,7 +187,8 @@ class Pen {
   }
 }
 
-export async function renderInvoicePdf(invoice: InvoiceView): Promise<Uint8Array> {
+/** `paidWith`: how a paid invoice was paid ("Visa ending in 4242"), from lib/invoicePayment.ts's invoicePaidWith. */
+export async function renderInvoicePdf(invoice: InvoiceView, paidWith: string | null = null): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   doc.setTitle(`Invoice ${invoice.number} - ${LEGAL_ENTITY}`, { showInWindowTitleBar: true });
   doc.setAuthor(LEGAL_ENTITY);
@@ -243,6 +244,10 @@ export async function renderInvoicePdf(invoice: InvoiceView): Promise<Uint8Array
     pen.text(`Paid ${formatCentralDate(invoice.paidAt) ?? "—"}`, RIGHT, right, { size: 10, color: C.slate600, align: "right" });
     right += 15;
   }
+  if (paid && paidWith) {
+    pen.text(paidWith, RIGHT, right, { size: 10, color: C.slate600, align: "right" });
+    right += 15;
+  }
   if (!paid && invoice.dueAt) {
     pen.text(`Due ${formatDeadline(invoice.dueAt)}`, RIGHT, right, { size: 10, color: C.slate600, align: "right" });
     right += 15;
@@ -286,7 +291,7 @@ export async function renderInvoicePdf(invoice: InvoiceView): Promise<Uint8Array
   }
 
   /* TOTAL, then where to mail a check, kept on one page together */
-  const checks = invoiceCheckPayable(invoice.status);
+  const checks = invoiceCheckPayable(invoice);
   const checksHeight = checks ? 30 + 17 + checks.addressLines.length * 14 : 0;
   if (top + 24 + 56 + checksHeight > FOOTER_TOP - 16) {
     pen = new Pen(doc.addPage([PAGE_W, PAGE_H]), fonts);

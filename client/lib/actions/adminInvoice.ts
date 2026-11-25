@@ -4,6 +4,8 @@ import { requireAdmin } from "@/lib/requireAdmin";
 import { syncInvoice } from "@/lib/invoiceData";
 import { sendInvoiceEmail } from "@/lib/invoiceEmail";
 import { renderInvoicePdf } from "@/lib/invoicePdf";
+import { getInvoicePayments } from "@/lib/invoicePaymentData";
+import { invoicePaidWith } from "@/lib/invoicePayment";
 
 // An admin action, so it starts with requireAdmin(): as a server action it can
 // be called by anyone signed in, with any arguments.
@@ -37,9 +39,20 @@ export async function emailInvoice(caseId: string): Promise<Result> {
   const to = invoice.billedTo.email;
   if (!to) return fail("The firm has no email address on file. Download the PDF and send it directly.");
 
+  // Only the "paid with" line depends on this, so a failed read just leaves it off.
+  const paidWith =
+    invoice.status === "paid"
+      ? invoicePaidWith(
+          await getInvoicePayments(caseId).catch((err) => {
+            console.error("[emailInvoice] couldn't read online payments:", err);
+            return null;
+          })
+        )
+      : null;
+
   let pdf: Uint8Array;
   try {
-    pdf = await renderInvoicePdf(invoice);
+    pdf = await renderInvoicePdf(invoice, paidWith);
   } catch (err) {
     console.error("[emailInvoice] couldn't make the PDF:", err);
     return fail("Couldn't make the invoice PDF, so nothing was sent.");

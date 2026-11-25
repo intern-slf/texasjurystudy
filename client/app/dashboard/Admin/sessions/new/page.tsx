@@ -646,10 +646,10 @@ export default async function NewSessionPage({
                             // A session can still be built; the admin should know.
                             const state = bookingState(booking.slot, booking, nowMs);
                             if (state === "paid") return null;
-                            const due = booking.held_since ? paymentDueAt(booking.held_since) : null;
+                            const due = paymentDueAt({ slot: booking.slot })!;
                             return (
                               <p className="text-[11px] text-amber-700">
-                                {state === "unpaid" && due
+                                {state === "unpaid"
                                   ? `Not paid yet · due ${formatDeadline(due)}`
                                   : "Not paid · payment is overdue"}
                               </p>

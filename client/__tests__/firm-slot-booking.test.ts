@@ -229,11 +229,11 @@ describe("the open times on a firm's own case page", () => {
 });
 
 describe("booking a time", () => {
-  it("holds a free slot and starts the payment clock", async () => {
+  it("holds a free slot, with payment due at the end of its day", async () => {
     const result = await actions.chooseTimeSlot(CASE, SLOT_OK);
     expect(result).toMatchObject({ ok: true, paid: false, slot: { id: SLOT_OK } });
-    // Due Wednesday 10:00 AM CDT, one working day later.
-    expect(result.ok && result.dueAt).toBe("2026-10-21T15:00:00.000Z");
+    // The slot is Monday Oct 26: due 11:59 PM CDT that day.
+    expect(result.ok && result.dueAt).toBe("2026-10-27T04:59:00.000Z");
     expect(bookingOf(CASE)).toMatchObject({ slot_id: SLOT_OK, held_since: NOW, booked_by: FIRM });
     expect(syncInvoiceQuietly).toHaveBeenCalledWith(CASE);
     expect(mail.held).toHaveBeenCalledWith(expect.objectContaining({ caseId: CASE, paid: false }));
@@ -318,11 +318,12 @@ describe("booking a time", () => {
     expect(mail.team).toHaveBeenCalledWith(expect.objectContaining({ heading: "A firm changed its booked time" }));
   });
 
-  it("re-books after a cancel on the clock it already had", async () => {
-    const earlier = "2026-10-19T14:00:00.000Z"; // Monday 9:00 AM CDT, due Tuesday 9:00 AM
+  it("re-books after a cancel, due at the end of the new slot's day", async () => {
+    const earlier = "2026-10-19T14:00:00.000Z";
     seed({ slot_id: null, held_since: earlier });
     const result = await actions.chooseTimeSlot(CASE, SLOT_OK_2);
-    expect(result).toMatchObject({ ok: true, dueAt: "2026-10-20T14:00:00.000Z" });
+    // The slot is Tuesday Oct 27.
+    expect(result).toMatchObject({ ok: true, dueAt: "2026-10-28T04:59:00.000Z" });
     expect(bookingOf(CASE)).toMatchObject({ slot_id: SLOT_OK_2, held_since: earlier });
   });
 });

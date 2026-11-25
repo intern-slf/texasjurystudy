@@ -48,37 +48,46 @@ describe("shared slots: several cases take the hours their firms pay for", () =>
   });
 });
 
-describe("payment deadline: 24 working hours, Monday to Friday on the Central clock", () => {
-  it.each([
-    ["Mon 9:00 → Tue 9:00", ct("2026-10-19", "09:00"), ct("2026-10-20", "09:00")],
-    ["Tue 15:00 → Wed 15:00", ct("2026-10-20", "15:00"), ct("2026-10-21", "15:00")],
-    ["Thu 15:00 → Fri 15:00", ct("2026-10-22", "15:00"), ct("2026-10-23", "15:00")],
-    ["Fri 15:00 → Mon 15:00", ct("2026-10-23", "15:00"), ct("2026-10-26", "15:00")],
-    ["Fri 23:30 → Mon 23:30", ct("2026-10-23", "23:30"), ct("2026-10-26", "23:30")],
-    ["Sat 10:00 → end of Monday", ct("2026-10-24", "10:00"), ct("2026-10-27", "00:00")],
-    ["Sun 23:59 → end of Monday", ct("2026-10-25", "23:59"), ct("2026-10-27", "00:00")],
-    ["Mon 00:00 → Tue 00:00", ct("2026-10-19", "00:00"), ct("2026-10-20", "00:00")],
-  ])("%s", (_label, heldSince, due) => {
-    expect(paymentDueAt(heldSince).toISOString()).toBe(new Date(due).toISOString());
+describe("payment deadline: 11:59 PM Central on the day the case runs", () => {
+  it("is the end of the held slot's day", () => {
+    const slot = { starts_at: ct("2026-10-29", "09:00") };
+    expect(paymentDueAt({ slot })!.toISOString()).toBe(new Date(ct("2026-10-29", "23:59")).toISOString());
+    expect(formatDeadline(paymentDueAt({ slot })!)).toBe("Thu, Oct 29, 11:59 PM CT");
+  });
+
+  it("goes by the Central day, not the UTC one", () => {
+    // 8:00 PM CDT on Oct 29 is already Oct 30 in UTC.
+    const slot = { starts_at: ct("2026-10-29", "20:00") };
+    expect(paymentDueAt({ slot })!.toISOString()).toBe(new Date(ct("2026-10-29", "23:59")).toISOString());
+  });
+
+  it("is the end of the session's day once the case is in one, whatever slot it held", () => {
+    const slot = { starts_at: ct("2026-10-29", "09:00") };
+    // Nov 3 is Central Standard Time (UTC-6).
+    expect(paymentDueAt({ slot, sessionDate: "2026-11-03" })!.toISOString()).toBe("2026-11-04T05:59:00.000Z");
+    expect(paymentDueAt({ sessionDate: "2026-11-03" })!.toISOString()).toBe("2026-11-04T05:59:00.000Z");
+  });
+
+  it("is null until the case is scheduled", () => {
+    expect(paymentDueAt({})).toBeNull();
+    expect(paymentDueAt({ slot: null, sessionDate: null })).toBeNull();
+  });
+});
+
+describe("working hours, Monday to Friday on the Central clock", () => {
+  it("skips the weekend", () => {
+    expect(addWorkingHours(ct("2026-10-23", "15:00"), 1).toISOString()).toBe(new Date(ct("2026-10-23", "16:00")).toISOString());
+    expect(addWorkingHours(ct("2026-10-23", "23:00"), 2).toISOString()).toBe(new Date(ct("2026-10-26", "01:00")).toISOString());
+    expect(addWorkingHours(ct("2026-10-24", "10:00"), 24).toISOString()).toBe(new Date(ct("2026-10-27", "00:00")).toISOString());
   });
 
   it("keeps the wall-clock time across the weekend the clocks go back (Nov 1)", () => {
-    // Fri Oct 30 3:00 PM CDT is due Mon Nov 2 3:00 PM CST, which is 21:00 UTC.
-    expect(paymentDueAt(ct("2026-10-30", "15:00")).toISOString()).toBe("2026-11-02T21:00:00.000Z");
-  });
-
-  it("keeps the wall-clock time across the weekend the clocks go forward (Mar 14, 2027)", () => {
-    // Fri Mar 12 3:00 PM CST (21:00 UTC) is due Mon Mar 15 3:00 PM CDT (20:00 UTC).
-    expect(paymentDueAt("2027-03-12T21:00:00.000Z").toISOString()).toBe("2027-03-15T20:00:00.000Z");
+    // Fri Oct 30 3:00 PM CDT + 24 working hours is Mon Nov 2 3:00 PM CST, which is 21:00 UTC.
+    expect(addWorkingHours(ct("2026-10-30", "15:00"), 24).toISOString()).toBe("2026-11-02T21:00:00.000Z");
   });
 
   it("keeps seconds and milliseconds", () => {
-    expect(paymentDueAt("2026-10-20T20:00:07.250Z").toISOString()).toBe("2026-10-21T20:00:07.250Z");
-  });
-
-  it("counts other spans the same way", () => {
-    expect(addWorkingHours(ct("2026-10-23", "15:00"), 1).toISOString()).toBe(new Date(ct("2026-10-23", "16:00")).toISOString());
-    expect(addWorkingHours(ct("2026-10-23", "23:00"), 2).toISOString()).toBe(new Date(ct("2026-10-26", "01:00")).toISOString());
+    expect(addWorkingHours("2026-10-20T20:00:07.250Z", 24).toISOString()).toBe("2026-10-21T20:00:07.250Z");
   });
 });
 
@@ -86,13 +95,6 @@ describe("earliest bookable start: 48 working hours ahead", () => {
   it("Thu 15:00 → Mon 15:00, Fri 15:00 → Tue 15:00", () => {
     expect(earliestBookableStart(ct("2026-10-22", "15:00")).toISOString()).toBe(new Date(ct("2026-10-26", "15:00")).toISOString());
     expect(earliestBookableStart(ct("2026-10-23", "15:00")).toISOString()).toBe(new Date(ct("2026-10-27", "15:00")).toISOString());
-  });
-
-  it("puts payment due at least a working day before the earliest slot", () => {
-    for (const now of [ct("2026-10-19", "09:00"), ct("2026-10-23", "17:00"), ct("2026-10-24", "12:00")]) {
-      const due = paymentDueAt(now).getTime();
-      expect(earliestBookableStart(now).getTime()).toBeGreaterThan(due);
-    }
   });
 });
 
@@ -120,14 +122,15 @@ describe("which slots a case can book", () => {
 
 describe("booking state", () => {
   const slot = { starts_at: ct("2026-10-28", "10:00") };
-  const held = ct("2026-10-20", "15:00"); // due Wed Oct 21 15:00
+  const held = ct("2026-10-20", "15:00");
 
-  it("reads open, unpaid, overdue, paid and past", () => {
+  it("reads open, unpaid, overdue once the slot's day is over, and paid", () => {
     expect(bookingState(slot, null, Date.parse(ct("2026-10-20", "16:00")))).toBe("open");
-    expect(bookingState(slot, { held_since: held, paid_at: null }, Date.parse(ct("2026-10-21", "14:59")))).toBe("unpaid");
-    expect(bookingState(slot, { held_since: held, paid_at: null }, Date.parse(ct("2026-10-21", "15:00")))).toBe("overdue");
+    expect(bookingState(slot, { held_since: held, paid_at: null }, Date.parse(ct("2026-10-22", "15:00")))).toBe("unpaid");
+    // Its time has come, but payment isn't due until the end of the day.
+    expect(bookingState(slot, { held_since: held, paid_at: null }, Date.parse(ct("2026-10-28", "13:00")))).toBe("unpaid");
+    expect(bookingState(slot, { held_since: held, paid_at: null }, Date.parse(ct("2026-10-28", "23:59")))).toBe("overdue");
     expect(bookingState(slot, { held_since: held, paid_at: ct("2026-10-21", "09:00") }, Date.parse(ct("2026-10-29", "10:00")))).toBe("paid");
-    expect(bookingState(slot, { held_since: held, paid_at: null }, Date.parse(ct("2026-10-28", "10:00")))).toBe("past");
   });
 });
 
