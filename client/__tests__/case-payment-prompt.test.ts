@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createElement } from "react";
-import CasePaymentPrompt from "@/components/CasePaymentPrompt";
+import CasePaymentPrompt, { CasePaymentBadge } from "@/components/CasePaymentPrompt";
 
 /* ---------------------------------------------------------------------------
    The payment box under a case on the firm's dashboard: nothing before the
@@ -59,5 +59,25 @@ describe("CasePaymentPrompt", () => {
   it("says paid once paid, scheduled or not", () => {
     expect(render({ paid: true, dueAt: null })).toContain("Invoice paid");
     expect(render({ paid: true })).not.toContain("Pay invoice");
+  });
+});
+
+describe("CasePaymentBadge, beside the case's name", () => {
+  const badge = (over: Partial<Parameters<typeof CasePaymentBadge>[0]> = {}) =>
+    renderToStaticMarkup(createElement(CasePaymentBadge, { dueAt: DUE, paid: false, underway: null, nowMs: BEFORE, ...over }));
+
+  it("says when the invoice is due, then that it's overdue", () => {
+    expect(badge()).toContain("Invoice due Nov 26");
+    expect(badge({ nowMs: AFTER })).toContain("Invoice overdue");
+  });
+
+  it("says paid, or that a payment is underway", () => {
+    expect(badge({ paid: true })).toContain("Invoice paid");
+    expect(badge({ underway: "processing" })).toContain("Payment processing");
+    expect(badge({ underway: "review" })).toContain("Payment received");
+  });
+
+  it("shows nothing before the case is scheduled", () => {
+    expect(badge({ dueAt: null })).toBe("");
   });
 });

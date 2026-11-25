@@ -27,7 +27,7 @@ import { getBookingsForCases } from "@/lib/slotBookingData";
 import { paymentDueAt } from "@/lib/slotBooking";
 import { getPaymentsUnderway } from "@/lib/invoicePaymentData";
 import { onlinePaymentEnabled } from "@/lib/stripe";
-import CasePaymentPrompt from "@/components/CasePaymentPrompt";
+import CasePaymentPrompt, { CasePaymentBadge, type CasePayment } from "@/components/CasePaymentPrompt";
 import { describeSlot, type TimeSlot } from "@/lib/requesteeTimeSlots";
 import { SUPPORT_EMAIL } from "@/lib/legal-constants";
 import { TEXAS_COUNTIES } from "@/lib/constants/texas-counties";
@@ -200,6 +200,13 @@ export default async function RequesteeDashboard({
   });
   const payOnline = onlinePaymentEnabled();
   const nowMs = Date.now();
+  // Where each case's payment stands: the badge by its name and the box under it.
+  const paymentOf = (c: Case): CasePayment => ({
+    dueAt: paymentDueAt({ slot: heldSlotByCase.get(c.id), sessionDate: sessionTimeOf(c)?.sessionDate }),
+    paid: paidCaseIds.has(c.id),
+    underway: paymentsUnderway.get(c.id) ?? null,
+    nowMs,
+  });
 
 
   /* ===========================
@@ -378,9 +385,12 @@ export default async function RequesteeDashboard({
                 <CardHeader className="bg-muted/10 pb-4">
                     <div className="flex justify-between items-start">
                         <div className="flex-1 min-w-0">
-                            <Link href={`/dashboard/requestee/${c.id}`} className="hover:underline underline-offset-4">
-                              <CardTitle className="text-xl">{c.title}</CardTitle>
-                            </Link>
+                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                              <Link href={`/dashboard/requestee/${c.id}`} className="hover:underline underline-offset-4">
+                                <CardTitle className="text-xl">{c.title}</CardTitle>
+                              </Link>
+                              <CasePaymentBadge {...paymentOf(c)} />
+                            </div>
                             <CardDescription className="line-clamp-2 mt-1">
                                 {c.description}
                             </CardDescription>
@@ -533,14 +543,7 @@ export default async function RequesteeDashboard({
                           </div>
                         )}
 
-                      <CasePaymentPrompt
-                        caseId={c.id}
-                        dueAt={paymentDueAt({ slot: heldSlotByCase.get(c.id), sessionDate: sessionTimeOf(c)?.sessionDate })}
-                        paid={paidCaseIds.has(c.id)}
-                        underway={paymentsUnderway.get(c.id) ?? null}
-                        payOnline={payOnline}
-                        nowMs={nowMs}
-                      />
+                      <CasePaymentPrompt caseId={c.id} payOnline={payOnline} {...paymentOf(c)} />
 
                     </div>
                     </div>
